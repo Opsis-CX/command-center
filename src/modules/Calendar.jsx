@@ -180,7 +180,7 @@ function CalendarColors({ value, onChange, onClose }) {
           const prev = cur === RAINBOW
             ? (soft ? { background: RAINBOW_SOFT, color: '#3b2a5a', borderLeft: '3px solid #8b5cf6' } : { background: RAINBOW_GRAD, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.45)' })
             : soft
-              ? { background: `color-mix(in srgb, ${cur} 18%, #fff)`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
+              ? { background: `color-mix(in srgb, ${cur} 18%, light-dark(#fff, #161d21))`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
               : { background: cur, color: '#fff' }
           return (
             <div key={k} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
@@ -465,7 +465,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       // Stored in company time (sync v5) — show in the viewer's zone like everything else.
       start: g.all_day ? g.start_time : toViewerHHMM(g.event_date, g.start_time, COMPANY_TZ, viewerTZ),
       end: g.all_day ? g.end_time : toViewerHHMM(g.event_date, g.end_time, COMPANY_TZ, viewerTZ),
-      color: gcalConn?.color || '#EA4335', calendarName: g.calendar_name,
+      color: gcalConn?.color || 'light-dark(#EA4335, #e86a60)', calendarName: g.calendar_name,
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
     // Shared calendars: other people's manual events + intervals + Google events,
@@ -511,7 +511,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         kind: 'coaching', id: 'co-' + s.id, title, allDay: false,
         start: toViewerHHMM(s.session_date, s.start_time, COMPANY_TZ, viewerTZ),
         end: toViewerHHMM(s.session_date, s.end_time, COMPANY_TZ, viewerTZ),
-        color: isMock ? (calColors.mock || '#7C3AED') : (calColors.coaching || '#DB2777'), hangoutLink: s.meeting_url || undefined,
+        color: isMock ? (calColors.mock || 'light-dark(#7C3AED, #a378ec)') : (calColors.coaching || 'light-dark(#DB2777, #e5649e)'), hangoutLink: s.meeting_url || undefined,
       }
     })
     const order = (a, b) => {
@@ -806,8 +806,8 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
   const TaskRow = ({ t, overdue }) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '6px 0', fontSize: 12.5, lineHeight: 1.35 }}>
       <span style={{ width: 13, height: 13, marginTop: 2, borderRadius: '50%', border: '1.5px solid ' + (overdue ? '#DC2626' : (t.priority === 'high' ? COLORS.priority : 'var(--cal-line)')), flexShrink: 0 }} />
-      <span style={{ minWidth: 0, color: overdue ? '#DC2626' : 'var(--cal-ink)', fontWeight: overdue ? 600 : 400 }}>
-        {t.name}{overdue && <span style={{ color: '#DC2626', fontWeight: 400 }}> · due {fmtDue(t.due_date)}</span>}
+      <span style={{ minWidth: 0, color: overdue ? 'light-dark(#DC2626, #e76c6c)' : 'var(--cal-ink)', fontWeight: overdue ? 600 : 400 }}>
+        {t.name}{overdue && <span style={{ color: 'light-dark(#DC2626, #e76c6c)', fontWeight: 400 }}> · due {fmtDue(t.due_date)}</span>}
       </span>
     </div>
   )
@@ -821,7 +821,7 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
       </div>
       {pastDue.length > 0 && (
         <>
-          <div style={{ color: '#DC2626', fontSize: 11, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>PAST DUE ({pastDue.length})</div>
+          <div style={{ color: 'light-dark(#DC2626, #e76c6c)', fontSize: 11, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>PAST DUE ({pastDue.length})</div>
           {pastDue.map(t => <TaskRow key={t.id} t={t} overdue />)}
         </>
       )}
@@ -1118,6 +1118,9 @@ function useNarrow(breakpoint = 900) {
   return narrow
 }
 // ---------- DAY VIEW ----------
+// Day grid starts at 5 am (2026-11-04, Becky) instead of midnight. Anything that
+// starts before 5 am is clipped to the top of the grid rather than dropped.
+const DAY_START_HOUR = 5
 function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries, prefs = {} }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
@@ -1125,7 +1128,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   const allDay = items.filter(i => i.allDay)
   const timed = items.filter(i => !i.allDay && i.start)
   const { priority, other } = tasksOn(ds)
-  const hours = Array.from({ length: 24 }, (_, i) => i) // 12a–11p (full day)
+  const hours = Array.from({ length: 24 - DAY_START_HOUR }, (_, i) => i + DAY_START_HOUR) // 5a–11p
+  const startMins = DAY_START_HOUR * 60
   const [q, who] = quoteFor(cursor)
   const narrow = useNarrow(900)
   // Fixed pixels-per-hour so block height == duration. (The old grid used flex:1
@@ -1133,7 +1137,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   // no longer linear.)
   const ROW = narrow ? 52 : 40
   const AXIS_W = 46
-  const laid = layoutTimed(timed)
+  // Events that end at or before 5 am have nothing to show in the grid.
+  const laid = layoutTimed(timed).filter(r => r.e > startMins)
   const isToday = ds === isoDate(new Date())
   const [nowMins, setNowMins] = useState(localNowMins())
   useEffect(() => {
@@ -1160,10 +1165,10 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
         {allDay.map(i => (
           <div key={i.id} onClick={(e) => openItem(i, e)} style={{ ...blockStyle(i.color), fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
-        <div style={{ position: 'relative', height: 24 * ROW }}>
+        <div style={{ position: 'relative', height: hours.length * ROW }}>
           {/* hour gutter + gridlines */}
-          {hours.map(h => (
-            <div key={h} style={{ position: 'absolute', top: h * ROW, left: 0, right: 0, height: ROW, borderTop: '1px solid var(--cal-line-3)' }}>
+          {hours.map((h, idx) => (
+            <div key={h} style={{ position: 'absolute', top: idx * ROW, left: 0, right: 0, height: ROW, borderTop: '1px solid var(--cal-line-3)' }}>
               <div style={{ width: AXIS_W, fontSize: 11, color: 'var(--cal-ink-mute)', paddingTop: 2 }}>
                 {h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}
               </div>
@@ -1173,8 +1178,10 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
           {/* event surface — click empty space to add */}
           <div style={{ position: 'absolute', top: 0, bottom: 0, left: AXIS_W, right: 0 }} onClick={() => onAddEvent(cursor)}>
             {laid.map(({ i, s, e, col, cols, overlapped }) => {
-              const top = (s / 60) * ROW
-              const height = Math.max(16, ((e - s) / 60) * ROW - 2)
+              const rawTop = ((s - startMins) / 60) * ROW
+              const rawHeight = ((e - s) / 60) * ROW - 2
+              const top = Math.max(0, rawTop)
+              const height = Math.max(16, rawHeight - (top - rawTop))
               const widthPct = 100 / cols
               return (
                 <div key={i.kind + i.id} onClick={(ev) => openItem(i, ev)}
@@ -1197,9 +1204,9 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
                 </div>
               )
             })}
-            {/* current-time line */}
-            {isToday && (
-              <div style={{ position: 'absolute', top: (nowMins / 60) * ROW, left: 0, right: 0, pointerEvents: 'none', zIndex: 5 }}>
+            {/* current-time line (hidden before 5 am — it would be above the grid) */}
+            {isToday && nowMins >= startMins && (
+              <div style={{ position: 'absolute', top: ((nowMins - startMins) / 60) * ROW, left: 0, right: 0, pointerEvents: 'none', zIndex: 5 }}>
                 <div style={{ borderTop: '2px solid ' + COLORS.priority }} />
                 <div style={{ position: 'absolute', top: -4, left: -4, width: 8, height: 8, borderRadius: '50%', background: COLORS.priority }} />
               </div>
@@ -1384,7 +1391,7 @@ function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTas
             <span style={{ textDecoration: done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
             {onToggleTaskTimer && !done && (
               <button onClick={() => onToggleTaskTimer(t)} title={isRunning ? 'Stop timer' : 'Start timer'}
-                style={{ marginLeft: 'auto', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: isRunning ? '#DC2626' : '#16A34A' }}>
+                style={{ marginLeft: 'auto', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: isRunning ? 'light-dark(#DC2626, #e76c6c)' : '#16A34A' }}>
                 {isRunning ? '■ stop' : '▶ start'}
               </button>
             )}
@@ -1686,6 +1693,12 @@ function EventDetailModal({ item, onClose, onEdit }) {
               : <span key={idx}>{p}</span>)}
           </div>
         )}
+        {item.kind === 'event' && item.raw?.attachments?.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 }}>Attachments</span>
+            <AttachmentList files={item.raw.attachments} />
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
           {item.htmlLink && <a href={item.htmlLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Open in Google ↗</a>}
           {item.kind === 'event' && item.raw && <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onEdit(item.raw)}>Edit</button>}
@@ -1696,6 +1709,91 @@ function EventDetailModal({ item, onClose, onEdit }) {
   )
 }
 // ---------- EVENT DETAIL end ----------
+// ---------- ATTACHMENTS ----------
+// Files live in the private 'calendar-attachments' bucket under <uid>/<uuid>/<name>.
+// The event row stores [{ path, name, size, type }]. Storage RLS lets the
+// uploader and anyone who can see the event read them; google-calendar-write
+// adds a download link for each file to the emailed invite.
+const ATTACH_BUCKET = 'calendar-attachments'
+const ATTACH_MAX = 25 * 1024 * 1024
+function fmtSize(n) {
+  if (!n && n !== 0) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+async function openAttachment(a) {
+  const { data, error } = await supabase.storage.from(ATTACH_BUCKET).createSignedUrl(a.path, 300, { download: a.name || true })
+  if (error || !data?.signedUrl) { window.alert(`Couldn't open ${a.name || 'file'}: ${error?.message || 'not found'}`); return }
+  window.open(data.signedUrl, '_blank', 'noopener')
+}
+function AttachmentList({ files }) {
+  if (!files || !files.length) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {files.map(a => (
+        <a key={a.path} href="#" onClick={e => { e.preventDefault(); openAttachment(a) }}
+          style={{ fontSize: 13, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>
+          📎 {a.name}{a.size ? <span style={{ color: 'var(--ink-soft)', fontSize: 11 }}> · {fmtSize(a.size)}</span> : null}
+        </a>
+      ))}
+    </div>
+  )
+}
+function AttachmentsField({ userId, value, onChange, disabled }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const inputRef = useRef(null)
+  async function onPick(e) {
+    const picked = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!picked.length) return
+    setErr(''); setBusy(true)
+    const added = []
+    const problems = []
+    for (const f of picked) {
+      if (f.size > ATTACH_MAX) { problems.push(`${f.name} is over 25 MB`); continue }
+      const safe = f.name.replace(/[^\w.\-() ]+/g, '_')
+      const path = `${userId}/${newUuid()}/${safe}`
+      const { error } = await supabase.storage.from(ATTACH_BUCKET).upload(path, f, { contentType: f.type || undefined, upsert: false })
+      if (error) problems.push(`${f.name}: ${error.message}`)
+      else added.push({ path, name: f.name, size: f.size, type: f.type || null })
+    }
+    if (added.length) onChange([...(value || []), ...added])
+    if (problems.length) setErr(problems.join(' · '))
+    setBusy(false)
+  }
+  // Removing only detaches the file from this event. The file itself is kept,
+  // because other dates in a repeating series point at the same file.
+  const remove = (path) => onChange((value || []).filter(a => a.path !== path))
+  return (
+    <div>
+      {(value || []).length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+          {value.map(a => (
+            <div key={a.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, border: '1px solid var(--line)', borderRadius: 8, padding: '5px 8px' }}>
+              <a href="#" onClick={e => { e.preventDefault(); openAttachment(a) }} style={{ flex: 1, minWidth: 0, color: 'var(--accent, #0077B6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.name}>📎 {a.name}</a>
+              <span style={{ fontSize: 11, color: 'var(--ink-soft)', flexShrink: 0 }}>{fmtSize(a.size)}</span>
+              {!disabled && <span onClick={() => remove(a.path)} title="Remove" style={{ cursor: 'pointer', fontWeight: 700, fontSize: 15, lineHeight: 1, padding: '0 3px', color: 'var(--ink-soft)' }}>×</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {!disabled && (
+        <>
+          <input ref={inputRef} type="file" multiple onChange={onPick} style={{ display: 'none' }} />
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} disabled={busy} onClick={() => inputRef.current?.click()}>
+            {busy ? 'Uploading…' : '+ Attach files'}
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Up to 25 MB each. Invitees can open them here, and the emailed invite includes download links.</div>
+        </>
+      )}
+      {disabled && !(value || []).length && <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>No attachments</div>}
+      {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginTop: 4 }}>{err}</div>}
+    </div>
+  )
+}
+// ---------- ATTACHMENTS end ----------
 // ---------- INVITEE PICKER ----------
 // A compact searchable multi-select over team members. Selected people show as
 // removable chips; the list below toggles membership. Excludes the current user
@@ -1754,6 +1852,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
   const [scope, setScope] = useState(event.scope || 'personal')
   const [color, setColor] = useState(event.color || '#0077B6')
   const [invitees, setInvitees] = useState(event.invitee_ids || [])
+  const [attachments, setAttachments] = useState(Array.isArray(event.attachments) ? event.attachments : [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // --- recurrence (new events only) ---------------------------------------
@@ -1807,6 +1906,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
       notes: notes.trim() || null, scope: event.calendar_id ? 'personal' : scope, color, owner_id: isNew ? userId : (event.owner_id || userId), tz: detectedTZ(),
       calendar_id: event.calendar_id || null,
       invitee_ids: invitees, meeting_url: meetingUrl.trim() || null,
+      attachments,
     }
     let savedId = event.id
     let res
@@ -1956,6 +2056,9 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
           {meetingUrl && /^https?:\/\//i.test(meetingUrl.trim()) && (
             <a href={meetingUrl.trim()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>Join meeting ↗</a>
           )}
+        </div>
+        <div className="field"><label>Attachments</label>
+          <AttachmentsField userId={userId} value={attachments} onChange={setAttachments} disabled={!isOwner} />
         </div>
         <div className="field"><label>Invitees</label>
           {isOwner ? (

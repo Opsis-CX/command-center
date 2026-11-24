@@ -18,9 +18,9 @@ const LEVELS = [
 ]
 const LEVEL_COLOR = {
   0: { bg: 'var(--bg-soft, #f2f3f5)', fg: '#8a9099' },
-  1: { bg: '#e7f0fb', fg: '#1f5fa8' },
-  2: { bg: '#fdf1dc', fg: '#9a6a12' },
-  3: { bg: '#e7f3e7', fg: '#2e7d32' },
+  1: { bg: 'light-dark(#e7f0fb, #1b2327)', fg: 'light-dark(#1f5fa8, #4e92de)' },
+  2: { bg: 'light-dark(#fdf1dc, #392b13)', fg: 'light-dark(#9a6a12, #c98c1d)' },
+  3: { bg: 'light-dark(#e7f3e7, #222c31)', fg: 'light-dark(#2e7d32, #3ea843)' },
 }
 
 export default function RolesPermissions() {

@@ -63,7 +63,7 @@ export default function SalesSprintReport({ pipelineKey = 'sales', onClose }) {
           .eq('pipeline', pipelineKey),
         supabase.from('deal_activities').select('id, kind, actor_id, actor_name, created_at').gte('created_at', iso),
         supabase.from('deal_stage_events').select('id, to_status, actor_id, created_at').gte('created_at', iso),
-        supabase.from('profiles').select('id, full_name').eq('is_active', true),
+        supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true),
       ])
       const bad = [dealsRes, actRes, evRes, profRes].find(r => r.error)
       if (bad) throw bad.error
@@ -176,7 +176,7 @@ export default function SalesSprintReport({ pipelineKey = 'sales', onClose }) {
           Activity is counted from what the app logged, not from what anyone reported. Only a meeting marked <b>They showed up</b> earns the ${MEETING_INCENTIVE}.
         </p>
 
-        {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+        {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
         {!rows && <p className="page-sub">Loading…</p>}
 
         {rows?.totals && (
@@ -231,8 +231,8 @@ export default function SalesSprintReport({ pipelineKey = 'sales', onClose }) {
                     <td style={num}>{r.moves}</td>
                     <td style={num}>{r.booked}</td>
                     <td style={{ ...num, fontWeight: 700 }}>{r.showed}</td>
-                    <td style={{ ...num, color: r.noShow ? '#B91C1C' : 'var(--ink-soft)' }}>{r.noShow}</td>
-                    <td style={{ ...num, fontWeight: 800, color: r.owedMeetings ? '#1b5e20' : 'var(--ink-soft)' }}>
+                    <td style={{ ...num, color: r.noShow ? 'light-dark(#B91C1C, #e86464)' : 'var(--ink-soft)' }}>{r.noShow}</td>
+                    <td style={{ ...num, fontWeight: 800, color: r.owedMeetings ? 'light-dark(#1b5e20, #33b23d)' : 'var(--ink-soft)' }}>
                       ${r.owedMeetings}
                       {r.paidMeetings > 0 && <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--ink-soft)' }}>${r.paidMeetings} paid</div>}
                     </td>

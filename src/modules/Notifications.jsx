@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useUnread } from '../lib/unread'
 import { NOTIF_CATEGORIES, categoryForType, CATEGORY_LABEL } from '../lib/notify'
 
 // ============================================================
@@ -25,6 +26,7 @@ const PAGE_SIZE = 30
 
 export default function Notifications() {
   const [items, setItems] = useState([])
+  const { total: chatUnread, markAllRead: markAllChatRead } = useUnread()
   const [meId, setMeId] = useState(null)
   const [filter, setFilter] = useState('all')     // 'all' | category key
   const [loading, setLoading] = useState(true)
@@ -80,7 +82,9 @@ export default function Notifications() {
     if (n.link) navigate(n.link)
   }
 
+  // "Mark all read" also clears the chat sidebar's unread badges (Becky, 2026-11-23).
   async function markAllRead() {
+    markAllChatRead()
     const ids = items.filter(n => !n.read_at).map(n => n.id)
     if (!ids.length) return
     const now = new Date().toISOString()
@@ -125,7 +129,7 @@ export default function Notifications() {
           <button key={c.key} style={pill(filter === c.key)} onClick={() => setFilter(c.key)}>{c.label}</button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-          {unreadCount > 0 && (
+          {(unreadCount > 0 || chatUnread > 0) && (
             <button onClick={markAllRead} style={{ border: 0, background: 'transparent', color: 'var(--accent)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
               Mark all read
             </button>

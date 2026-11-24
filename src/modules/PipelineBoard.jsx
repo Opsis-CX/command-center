@@ -253,11 +253,11 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   useEffect(() => {
     let alive = true
     const byName = (a, b) => (a.full_name || '').localeCompare(b.full_name || '')
-    supabase.from('profiles').select('id, full_name, role, can_own_deals').eq('is_active', true)
+    supabase.from('profiles').select('id, full_name, role, can_own_deals').is('client_id', null).eq('is_active', true)
       .then(({ data, error }) => {
         if (!alive) return
         if (error || !data) {
-          supabase.from('profiles').select('id, full_name, role').eq('is_active', true)
+          supabase.from('profiles').select('id, full_name, role').is('client_id', null).eq('is_active', true)
             .then(({ data: d2 }) => {
               if (!alive || !d2) return
               setOwners(d2.filter(p => /admin|marketing|sales|owner/i.test(p.role || '')).sort(byName))
@@ -543,9 +543,9 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
         </div>
       </div>
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
       {notice && (
-        <div style={{ background: '#FFF7E6', border: '1px solid #FBD38D', color: '#8A5200', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{ background: 'light-dark(#FFF7E6, #392d13)', border: '1px solid light-dark(#FBD38D, #644f2b)', color: 'light-dark(#8A5200, #c9831d)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <span style={{ flex: 1 }}>{notice}</span>
           <button onClick={() => setNotice('')} style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' }}>Dismiss</button>
         </div>
@@ -665,8 +665,8 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
 function ResearchChip({ deal, compact }) {
   const { done, total, missing, complete } = researchStatus(deal)
   const tone = complete
-    ? { bg: '#e8f5e9', fg: '#1b5e20' }
-    : done >= total - 2 ? { bg: '#fff4e5', fg: '#8a5200' } : { bg: '#fdecea', fg: '#b71c1c' }
+    ? { bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)' }
+    : done >= total - 2 ? { bg: 'light-dark(#fff4e5, #392913)', fg: 'light-dark(#8a5200, #c9831d)' } : { bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' }
   return (
     <span
       title={complete ? 'Research complete' : 'Still needed: ' + missing.join(', ')}
@@ -762,7 +762,7 @@ function MeetingBlock({ deal, onUpdate, busy }) {
         </div>
       </div>
       <div style={{ marginTop: 10, fontSize: 12.5, borderRadius: 8, padding: '8px 11px',
-        background: pays ? '#e8f5e9' : 'var(--canvas)', color: pays ? '#1b5e20' : 'var(--ink-soft)', border: '1px solid ' + (pays ? '#c8e6c9' : 'var(--line)') }}>
+        background: pays ? 'light-dark(#e8f5e9, #1b2327)' : 'var(--canvas)', color: pays ? 'light-dark(#1b5e20, #33b23d)' : 'var(--ink-soft)', border: '1px solid ' + (pays ? '#c8e6c9' : 'var(--line)') }}>
         {pays
           ? <>Earns <b>${MEETING_INCENTIVE}</b> for {deal.booked_by_name || 'whoever booked it'}
               {deal.meeting_incentive_paid_at ? ' — already paid.' : ' — not yet paid.'}</>
@@ -776,9 +776,9 @@ function MeetingBlock({ deal, onUpdate, busy }) {
 
 const PROP_STATUS = {
   draft:    { label: 'Draft',    bg: 'var(--line-soft)', fg: 'var(--ink-soft)' },
-  sent:     { label: 'Sent',     bg: '#e3f2fd', fg: '#0d47a1' },
-  accepted: { label: 'Accepted', bg: '#e8f5e9', fg: '#1b5e20' },
-  declined: { label: 'Declined', bg: '#fdecea', fg: '#b71c1c' },
+  sent:     { label: 'Sent',     bg: 'light-dark(#e3f2fd, #132939)', fg: 'light-dark(#0d47a1, #5a91e7)' },
+  accepted: { label: 'Accepted', bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)' },
+  declined: { label: 'Declined', bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' },
 }
 
 function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal, emailForStage = () => null, templateForDeal = () => null }) {
@@ -972,7 +972,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <button disabled={busy} onClick={() => onWon(deal)}
                   style={{ border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>🏆 Won</button>
                 <button disabled={busy} onClick={() => onLost(deal)}
-                  style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Lost</button>
+                  style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'light-dark(#DC2626, #e76c6c)', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Lost</button>
               </div>
             )}
             {/* jump to ANY stage — forward or backward, or reopen a closed deal */}
@@ -1043,7 +1043,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
             )}
           </div>
 
-          {editErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 12 }}>{editErr}</div>}
+          {editErr && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 12 }}>{editErr}</div>}
 
           {editing ? (
             <div style={{ marginBottom: 18 }}>
@@ -1181,7 +1181,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 })}
               </div>
             )}
-            {upErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12, marginTop: 8 }}>{upErr}</div>}
+            {upErr && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12, marginTop: 8 }}>{upErr}</div>}
           </div>
 
           {/* add note */}
@@ -1207,9 +1207,9 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                   const tone = inbound
                     ? { bg: 'var(--accent-bg, #EFF6FF)', bd: 'var(--accent, #2563EB)', fg: 'var(--accent, #2563EB)', word: 'Reply' }
                     : m.status === 'sent'
-                      ? { bg: '#ECFDF5', bd: '#A7F3D0', fg: '#065F46', word: 'Sent' }
+                      ? { bg: 'light-dark(#ECFDF5, #133927)', bd: '#A7F3D0', fg: 'light-dark(#065F46, #1dc998)', word: 'Sent' }
                       : m.status === 'failed'
-                        ? { bg: '#FEF2F2', bd: '#FECACA', fg: '#B91C1C', word: 'Failed' }
+                        ? { bg: 'light-dark(#FEF2F2, #391313)', bd: '#FECACA', fg: 'light-dark(#B91C1C, #e86464)', word: 'Failed' }
                         : { bg: 'var(--canvas)', bd: 'var(--line)', fg: 'var(--ink-soft)', word: m.status === 'test' ? 'Test' : 'Not sent' }
                   return (
                     <div key={m.id} style={{ display: 'flex', gap: 9, alignItems: 'baseline', fontSize: 12.5, background: inbound ? 'var(--canvas)' : 'transparent', borderRadius: inbound ? 7 : 0, padding: inbound ? '6px 8px' : 0 }}>
@@ -1329,7 +1329,7 @@ function AccountsView({ deals, owners, busy, onAssign, onOpenDeal, me }) {
       </div>
 
       {splitCount > 0 && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>
+        <div style={{ background: 'light-dark(#FFFBEB, #393213)', border: '1px solid light-dark(#FDE68A, #64592b)', color: 'light-dark(#92400E, #e1712d)', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>
           {splitCount} {splitCount === 1 ? 'company has contacts' : 'companies have contacts'} owned by different people. Pick one owner below to pull the whole company back together.
         </div>
       )}
@@ -1376,7 +1376,7 @@ function AccountsView({ deals, owners, busy, onAssign, onOpenDeal, me }) {
                             (o ? o.full_name : 'nobody') + '?')) return
                           onAssign(a.org, o)
                         }}
-                        style={{ width: '100%', border: mixed ? '1px solid #FDE68A' : '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: mixed ? '#FFFBEB' : 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+                        style={{ width: '100%', border: mixed ? '1px solid #FDE68A' : '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: mixed ? 'light-dark(#FFFBEB, #393213)' : 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
                         <option value="">{mixed ? `Mixed (${names.join(', ')})` : 'Unassigned'}</option>
                         {owners.map(o => <option key={o.id} value={o.full_name}>{o.full_name}</option>)}
                       </select>
@@ -1637,11 +1637,11 @@ function ImportModal({ pipelineKey = 'sales', stages = SALES_STAGES, onCancel, o
         <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-soft)' }}>
           Each row becomes a lead at the "New Lead" stage. Only mapped columns are imported.
         </p>
-        {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
+        {localErr && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
 
         {result ? (
           <div>
-            <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: 8, padding: '12px 14px', fontSize: 13.5, marginBottom: 16 }}>
+            <div style={{ background: 'light-dark(#ECFDF5, #133927)', border: '1px solid light-dark(#A7F3D0, #2b644a)', color: 'light-dark(#065F46, #1dc998)', borderRadius: 8, padding: '12px 14px', fontSize: 13.5, marginBottom: 16 }}>
               Imported <b>{result.inserted}</b> lead{result.inserted === 1 ? '' : 's'}.{result.skipped > 0 ? ` Skipped ${result.skipped} row${result.skipped === 1 ? '' : 's'} with no organization.` : ''}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1689,7 +1689,7 @@ function ImportModal({ pipelineKey = 'sales', stages = SALES_STAGES, onCancel, o
               const badInd = (map.industry ?? -1) >= 0 ? buildable.filter(r => clean(cell(r, 'industry')) && !matchLabel(cell(r, 'industry'), verticals)).length : 0
               const badFit = (map.service_fit ?? -1) >= 0 ? buildable.filter(r => clean(cell(r, 'service_fit')) && !matchLabel(cell(r, 'service_fit'), serviceLines)).length : 0
               if (!badInd && !badFit) return null
-              return <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, marginBottom: 12 }}>
+              return <div style={{ background: 'light-dark(#FFFBEB, #393213)', border: '1px solid light-dark(#FDE68A, #64592b)', color: 'light-dark(#92400E, #e1712d)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, marginBottom: 12 }}>
                 {badInd > 0 && <div>{badInd} row{badInd === 1 ? '' : 's'} have an Industry that isn't one of the pipeline's verticals — those will import with Industry blank (set it in the panel afterwards).</div>}
                 {badFit > 0 && <div>{badFit} row{badFit === 1 ? '' : 's'} have a Service fit that isn't a known service line — imported blank.</div>}
               </div>
@@ -1804,7 +1804,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
         <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-soft)' }}>
           Adds a deal to the pipeline at the "New Lead" stage.
         </p>
-        {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
+        {localErr && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
           <FormField lbl="Organization *" value={f.organization} onChange={set('organization')} placeholder="Acme Corp" full autoFocus />

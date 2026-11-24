@@ -47,7 +47,7 @@ const todayISO = () => new Date().toLocaleDateString('en-CA')
 const BUILT_IN_TEMPLATES = [
   { id: 'meeting', name: 'Meeting Notes', description: 'Two-column notes and tasks layout', icon: '📋', layout: 'two_col', meeting: true,
     body: '<h2>Notes</h2><ul><li></li></ul><h3>Key Takeaways:</h3><ul><li></li></ul><h3>Next Meeting:</h3><ul><li></li></ul>',
-    page_style: { paper: 'lined', bg: '#FFFBEA', margin: true, spacing: 'normal' }, tasks: 3 },
+    page_style: { paper: 'lined', bg: 'light-dark(#FFFBEA, #393213)', margin: true, spacing: 'normal' }, tasks: 3 },
   { id: 'blank', name: 'Blank Note', description: 'Start with a clean page', icon: '📄', layout: 'single', body: '', page_style: {}, tasks: 0 },
 ]
 
@@ -76,7 +76,7 @@ const NP_CSS = `
 .np-row.on { background: var(--accent-bg); }
 .np-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 9px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .np-btn:hover { background: var(--canvas); }
-.np-btn.on { border-color: #FCA5A5; color: #DC2626; background: #FEF2F2; }
+.np-btn.on { border-color: light-dark(#FCA5A5, #642b2b); color: light-dark(#DC2626, #e76c6c); background: light-dark(#FEF2F2, #391313); }
 .np-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 8px; font-size: 12.5px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 .np-chip button { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); padding: 0; font-size: 12px; }
 .np-pop { position: absolute; z-index: 50; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 36px rgba(0,0,0,.16); padding: 14px; }
@@ -106,10 +106,10 @@ const NP_CSS = `
 .np-task .fld input, .np-task .fld select { border: 0; border-bottom: 1.5px solid rgba(100,116,139,.45); border-radius: 0; background: transparent; font: inherit; font-size: 12px; color: var(--ink); padding: 1px 2px; max-width: 150px; outline: none; cursor: pointer; }
 .np-task .fld input:focus, .np-task .fld select:focus { border-bottom-color: var(--accent); }
 .np-task .fld input[type=date] { width: 118px; }
-.np-task .linked { display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 0 27px; font-size: 11.5px; font-weight: 700; color: #047857; text-decoration: none; }
+.np-task .linked { display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 0 27px; font-size: 11.5px; font-weight: 700; color: light-dark(#047857, #1dc998); text-decoration: none; }
 .np-tasks-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
 .np-push { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-  background: linear-gradient(120deg, #CFFAFE, #A7F3D0); color: #065F46; box-shadow: 0 6px 18px -8px rgba(16,185,129,.6); }
+  background: linear-gradient(120deg, light-dark(#CFFAFE, #133639), #A7F3D0); color: #065F46; box-shadow: 0 6px 18px -8px rgba(16,185,129,.6); }
 .np-push:disabled { opacity: .6; cursor: default; }
 @media (max-width: 860px) { .np-tb-grid { grid-template-columns: 1fr !important; } }
 `
@@ -552,7 +552,7 @@ function NoteEditor({ note, isDraft, me, people, nameOf, teams, folders, project
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input value={title} disabled={!canEdit} onChange={e => { setTitle(e.target.value); queue('title', e.target.value, 600) }} placeholder="Note title" aria-label="Note title"
               style={{ flex: 1, minWidth: 0, fontSize: 24, fontWeight: 800, border: 0, outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: 'inherit' }} />
-            <span style={{ fontSize: 11.5, color: isDraft ? '#B45309' : 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{isDraft ? 'Not saved yet' : canEdit ? (saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Saved') : 'View only'}</span>
+            <span style={{ fontSize: 11.5, color: isDraft ? 'light-dark(#B45309, #e07524)' : 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{isDraft ? 'Not saved yet' : canEdit ? (saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Saved') : 'View only'}</span>
           </div>
           {/* meeting details */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
@@ -708,7 +708,7 @@ function PeoplePicker({ people, onPick, style }) {
 function PageStylePanel({ ps, onChange, onClose, inline = false }) {
   const set = (k, v) => onChange({ ...ps, [k]: v })
   const box = (on) => ({ border: '1.5px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 8, cursor: 'pointer', padding: 6, fontFamily: 'inherit', fontSize: 11.5, color: 'var(--ink)' })
-  const thumb = (paper) => { const ls = paperLayers(paper, 10); return { width: 46, height: 40, borderRadius: 4, border: '1px solid var(--line)', backgroundColor: '#fff',
+  const thumb = (paper) => { const ls = paperLayers(paper, 10); return { width: 46, height: 40, borderRadius: 4, border: '1px solid var(--line)', backgroundColor: 'light-dark(#fff, #161d21)',
     backgroundImage: ls.length ? ls.map(l => l[0]).join(', ') : 'none', backgroundSize: ls.length ? ls.map(l => l[1]).join(', ') : 'auto' } }
   return (
     <div className={inline ? '' : 'np-pop'} style={inline ? {} : { right: 0, top: 'calc(100% + 6px)', width: 330, maxHeight: '75vh', overflowY: 'auto' }}>
@@ -716,7 +716,7 @@ function PageStylePanel({ ps, onChange, onClose, inline = false }) {
       <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Background Color</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 7, marginBottom: 12 }}>
         {PAGE_BGS.map(b => <button key={b.key || 'w'} title={b.label} aria-label={`Background ${b.label}`} onClick={() => set('bg', b.key)}
-          style={{ width: 24, height: 24, borderRadius: '50%', background: b.key || '#fff', cursor: 'pointer', padding: 0, border: (ps.bg || '') === b.key ? '2px solid var(--accent)' : '1px solid var(--line)' }} />)}
+          style={{ width: 24, height: 24, borderRadius: '50%', background: b.key || 'light-dark(#fff, #161d21)', cursor: 'pointer', padding: 0, border: (ps.bg || '') === b.key ? '2px solid var(--accent)' : '1px solid var(--line)' }} />)}
         <label title="Pick any color" style={{ width: 24, height: 24, borderRadius: '50%', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden', cursor: 'pointer', fontSize: 13, color: 'var(--ink-soft)',
           ...(ps.bg && !PAGE_BGS.some(b => b.key === ps.bg) ? { background: ps.bg, border: '2px solid var(--accent)' } : {}) }}>＋
           <input type="color" aria-label="Pick any background color" value={/^#[0-9a-f]{6}$/i.test(ps.bg || '') ? ps.bg : '#FFFBEA'} onChange={e => set('bg', e.target.value)}

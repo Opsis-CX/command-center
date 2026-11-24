@@ -181,7 +181,7 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         {isSelf && (
           <>
             <button onClick={() => person.avatar_url ? setPhotoMenu(v => !v) : fileRef.current?.click()} disabled={busy} aria-label={person.avatar_url ? 'Change profile photo' : 'Add profile photo'} title="Change profile photo"
-              style={{ position: 'absolute', right: -2, bottom: -2, width: 34, height: 34, borderRadius: '50%', border: '2px solid #0E3A48', background: '#fff', color: '#0E3A48', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+              style={{ position: 'absolute', right: -2, bottom: -2, width: 34, height: 34, borderRadius: '50%', border: '2px solid #0E3A48', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0E3A48, #259bc0)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
               {busy ? '…' : <Icon d={I.cam} size={16} />}
             </button>
             {photoMenu && (
@@ -653,8 +653,8 @@ function platformOf(url) {
   if (!url) return null
   if (/zoom\.us/i.test(url)) return { name: 'Zoom', color: '#2D8CFF' }
   if (/meet\.google\.com/i.test(url)) return { name: 'Google Meet', color: '#16A34A' }
-  if (/teams\.(microsoft|live)\.com/i.test(url)) return { name: 'Teams', color: '#6264A7' }
-  if (/webex\.com/i.test(url)) return { name: 'Webex', color: '#0F766E' }
+  if (/teams\.(microsoft|live)\.com/i.test(url)) return { name: 'Teams', color: 'light-dark(#6264A7, #898bbd)' }
+  if (/webex\.com/i.test(url)) return { name: 'Webex', color: 'light-dark(#0F766E, #1dc9bb)' }
   return { name: 'Online meeting', color: '#3B82F6' }
 }
 async function loadMeetings(userId, days = 30) {

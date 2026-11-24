@@ -1,13 +1,58 @@
+import { printReport } from '../lib/printReport';
+// 2026-11-16: brand dashboard (Rob + Brian) lives on each brand's page: phone row under the header + sortable By CSR table with drill-down; Overview gets the phone row for the brands picked. No separate Dashboard tab (Becky). Data: RPC qa_brand_dash via cfg.brandDash.
+// 2026-11-13: Card capture — clicking a CSR/brand row opens its calls with no card ask (or the calls behind the number clicked) and scrolls to them.
+// 2026-11-09: Revenue Leaderboard brand/CSR column is left-aligned (lbtbl).
+// 2026-11-09: nav gains "AI Speed to Lead" and "Workforce" (Erlang C) when the host passes mountExt (OpsisQAPortal.jsx).
 // Opsis QA client portal — the app shown at garageco.opsiscx.com.
+// 2026-11-05: every on-screen "AI receptionist" label now says "AI CSR" (nav, page titles, settings, reports, Reporting, downloads).
+// 2026-11-05: Ask panel can hand out downloads (brand one-pager, CSR scorecard, executive summary, call lists, human vs AI) -> askDownload().
+// 2026-11-05: AI CSR Settings gains a "Call alert emails" box (who gets the after-call email, per brand) -> ai-csr-alerts.
 // 2026-10-22: hand-edited — wording points to the account's own admins (not Opsis CX), and QA settings
 // gains "Suggested scoring rules" (opsis-qa-portal action 'rulesugs' -> opsis-qa-rules).
 // Adds the Card capture page (2026-10-22). Built from the Opsis QA preview page by scratchpad/portal/build.py. All data comes from the
 // authenticated edge function opsis-qa-portal (scoped to the signed-in login's client + brand).
 // mountOpsisQA(rootEl, cfg) renders the app and returns a destroy() function.
 // cfg: { invoke(body) -> Promise<json>, role, brandLock, clientName, clientId, staff, userName, email,
-//        logo, hasCsrs, phone, mountCsr(el) -> cleanup, onSignOut(), onClassic() }
-var CSS = "#oqa{--bg:#F5F3EE;--card:#FFFFFF;--line:#E8E4DC;--line2:#F1EEE8;--ink:#1C2421;--mut:#5F6763;--g:#2F7D5B;--gd:#1F5A41;--gl:#E6F0EA;--o:#E0662A;--od:#A8441A;--ol:#FCEBDD;--side:#14302A;--blue:#3A4380}\n#oqa *{box-sizing:border-box}\n#oqa{margin:0;background:var(--bg);color:var(--ink);font-family:Montserrat,Arial,sans-serif;font-size:14px}\n#oqa a{color:var(--g)}\n#oqa button{font-family:inherit;font-size:inherit}\n#oqa .oq-app{display:flex;flex-wrap:wrap;min-height:100vh}\n#oqa aside{flex:1 1 236px;max-width:100%;background:var(--side);color:#fff;padding:22px 14px 18px;display:flex;flex-direction:column;gap:22px}\n#oqa main{flex:999 1 640px;min-width:0;padding:16px 24px 32px;display:flex;flex-direction:column;gap:16px}\n#oqa .logo{background:#fff;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:center;min-height:64px}\n#oqa .logo img{max-width:100%;max-height:48px;display:block}\n#oqa .nav{display:flex;flex-direction:column;gap:2px}\n@media (min-width:900px){#oqa aside{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto}}\n@media (max-width:899px){#oqa aside{flex-basis:100%;padding:10px 12px;gap:8px}#oqa aside .nav{flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px;scrollbar-width:thin}#oqa aside .nav button{width:auto;flex:none;padding:8px 12px;min-height:40px;font-size:13px;gap:8px;white-space:nowrap}#oqa aside .navsec{display:none}#oqa aside > :first-child{padding:8px!important;min-height:0!important;height:auto!important}#oqa aside > :first-child img{max-height:34px}#oqa aside > :last-child:not(#nav){display:none}}@media (max-width:899px){#oqa .tbl td:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:2px 0 4px -2px rgba(0,0,0,.12)}#oqa .tbl thead th:first-child{position:sticky;left:0;z-index:2}#oqa .swipe{display:block!important}}#oqa .hubpick>[data-hubslot]:has(audio){flex:1 1 100%;order:2}#oqa .hubpick>[data-hubslot] audio{width:100%!important}#oqa .tbl thead th{background:#F3F1EC;padding-top:9px;padding-bottom:9px}#oqa .tbl thead th:first-child{border-radius:8px 0 0 8px}#oqa .tbl thead th:last-child{border-radius:0 8px 8px 0}\n#oqa .nav button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:10px;color:#D6E2DC;font-size:14px;cursor:pointer;min-height:44px}\n#oqa .nav button:hover{background:#1F3F37;color:#fff}\n#oqa .nav button.on{background:#2A4A42;color:#fff;font-weight:600}\n#oqa .nav button:focus-visible,#oqa .click:focus-visible,#oqa button:focus-visible{outline:2px solid #7CC4A4;outline-offset:2px}\n#oqa .navsec{font-size:10px;letter-spacing:.18em;color:#9DBBAE;padding:14px 14px 4px;font-weight:600}\n#oqa .powered{margin-top:auto;border-top:1px solid #234840;padding:14px 8px 0;font-size:11.5px;color:#BFD1C8;display:flex;align-items:center;gap:8px}\n#oqa .oq-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;min-width:0}\n#oqa .ttl{margin:0;font-size:17px;font-weight:700;letter-spacing:-0.02em;color:#14302A}\n#oqa .sub{margin:4px 0 0;font-size:12.5px;color:var(--mut);line-height:1.45}\n#oqa .cap{font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:#56605B}\n#oqa .mut{color:var(--mut)}\n#oqa .num{font-variant-numeric:tabular-nums}\n#oqa .more{all:unset;cursor:pointer;font-size:12.5px;font-weight:600;color:#2F5E4E;min-height:32px;display:inline-flex;align-items:center;gap:4px}\n#oqa .more:hover{color:var(--ink)}\n#oqa .sel{border:1px solid #E1DCD2;background:#fff;font-size:13px;color:var(--ink);padding:9px 14px;border-radius:10px;cursor:pointer;min-height:42px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;white-space:nowrap}\n#oqa .sel:hover{border-color:#B9B2A6}\n#oqa .btnd{background:var(--side);border-color:var(--side);color:#fff}\n#oqa .btnd:hover{border-color:var(--side)}\n#oqa .pill{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:4px 9px;border-radius:8px;white-space:nowrap}\n#oqa .tbl{width:100%;border-collapse:collapse;font-size:13px}\n#oqa .tbl th{text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#56605B;padding:0 8px 10px;white-space:nowrap;cursor:default}\n#oqa .tbl th.sortable{cursor:pointer}\n#oqa .av{width:32px;height:32px;border-radius:999px;background:#E6F0EA;color:#1F5A41;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}\n#oqa .tbl th.sortable:hover{color:var(--ink)}\n#oqa .tbl td{padding:10px 8px;white-space:nowrap;border-top:1px solid var(--line2)}\n#oqa .tbl th,#oqa .tbl td{text-align:center!important}\n#oqa .tbl th:first-child,#oqa .tbl td:first-child{text-align:left!important}\n#oqa .tbl tr.click{cursor:pointer}\n#oqa .tbl tr.click:hover td{background:#FAF8F3}\n#oqa .track{height:6px;border-radius:999px;background:#EEEBE4;overflow:hidden}\n#oqa .track>div{height:100%;border-radius:999px}\n#oqa .row{display:flex;flex-wrap:wrap;gap:12px}\n#oqa .grid{display:grid;gap:12px}\n#oqa .banner{background:#FFF8E8;border:1px solid #F0DDB0;color:#6B4E12;border-radius:12px;padding:9px 14px;font-size:12.5px}\n#oqa input,#oqa textarea,#oqa select{font-family:inherit;font-size:13.5px;color:var(--ink)}\n#oqa .oq-field{border:1px solid #E1DCD2;border-radius:10px;padding:10px 12px;width:100%;background:#fff}\n#oqa label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B4541}\n#oqa .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--side);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:80;display:none}\n#oqa .overlay{position:fixed;inset:0;background:rgba(20,48,42,.35);display:flex;justify-content:flex-end;z-index:60}\n#oqa .drawer{width:640px;max-width:100%;height:100%;overflow-y:auto;background:#F7F5F0;padding:22px;display:flex;flex-direction:column;gap:14px}\n#oqa .click{cursor:pointer}\n#oqa .chip{border:1px solid #E1DCD2;background:#fff;font-size:12.5px;padding:7px 12px;border-radius:999px;cursor:pointer;min-height:34px;color:var(--ink);text-align:left}\n#oqa .chip:hover{border-color:var(--g);color:var(--gd)}\n#oqa .chip.on{background:var(--side);color:#fff;border-color:var(--side)}\n#oqa .seg{display:inline-flex;background:#fff;border:1px solid #E1DCD2;border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}\n#oqa .seg button{border:none;background:transparent;padding:7px 11px;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--ink);min-height:34px}\n#oqa .seg button.on{background:var(--side);color:#fff}\n#oqa .skel{background:linear-gradient(90deg,#EEEBE4 25%,#F6F4EF 50%,#EEEBE4 75%);background-size:200% 100%;animation:sk 1.2s infinite;border-radius:8px}\n\n@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}#oqa .ai{background:linear-gradient(0deg,#fff,#fff);border:1px solid #CFE3D8;border-radius:14px;padding:18px}\n#oqa .ai .md{line-height:1.6;font-size:13.5px}\n#oqa .ai .md ul{margin:8px 0;padding-left:20px}\n#oqa .ai .md li{margin:3px 0}\n#oqa .lnk{color:var(--gd);font-weight:600;cursor:pointer;border-bottom:1px dashed #9CC6B2}\n#oqa .lnk:hover{color:var(--ink)}\n#oqa .dots span{display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--g);margin-right:4px;animation:bl 1s infinite}\n#oqa .dots span:nth-child(2){animation-delay:.15s}\n#oqa .dots span:nth-child(3){animation-delay:.3s}\n\n@keyframes bl{0%,100%{opacity:.25}50%{opacity:1}}#oqa .pop{position:absolute;z-index:50;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.12);padding:12px;min-width:260px;max-height:420px;overflow:auto}\n#oqa .oq-crumb{font-size:12.5px;color:var(--mut);display:flex;gap:6px;align-items:center;flex-wrap:wrap}\n#oqa .oq-crumb button{all:unset;cursor:pointer;color:var(--gd);font-weight:600}\n#oqa .step{padding:12px;border-top:1px solid var(--line2)}\n#oqa .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}\n#oqa .foot{text-align:center;font-size:12px;color:var(--mut);padding:8px 0 0}\n@media (max-width:760px){#oqa main{padding:12px 14px 28px}\n#oqa .hero h1{font-size:26px!important}\n#oqa .drawer{padding:16px}\n}\n\n#oqa{min-height:100vh;font-family:Montserrat,Arial,sans-serif;font-size:14px;color:var(--ink);background:var(--bg)}\n#oqa .who{border-top:1px solid #234840;padding:12px 8px 0;font-size:12px;color:#BFD1C8;display:flex;flex-direction:column;gap:6px}\n#oqa .who b{color:#fff;font-weight:600;font-size:12.5px}\n#oqa .who button{all:unset;cursor:pointer;color:#D6E2DC;text-decoration:underline;text-underline-offset:2px;font-size:12px}\n#oqa .who button:hover{color:#fff}\n";
+//        logo, hasCsrs, phone, mountCsr(el) -> cleanup, mountExt(kind 'wfm'|'aistl', el) -> cleanup, onSignOut(), onClassic() }
+var CSS = "#oqa{--bg:#F5F3EE;--card:#FFFFFF;--line:#E8E4DC;--line2:#F1EEE8;--ink:#1C2421;--mut:#5F6763;--g:#2F7D5B;--gd:#1F5A41;--gl:#E6F0EA;--o:#E0662A;--od:#A8441A;--ol:#FCEBDD;--side:#14302A;--blue:#3A4380}\n#oqa *{box-sizing:border-box}\n#oqa{margin:0;background:var(--bg);color:var(--ink);font-family:Montserrat,Arial,sans-serif;font-size:14px}\n#oqa a{color:var(--g)}\n#oqa button{font-family:inherit;font-size:inherit}\n#oqa .oq-app{display:flex;flex-wrap:wrap;min-height:100vh}\n#oqa aside{flex:1 1 236px;max-width:100%;background:var(--side);color:#fff;padding:22px 14px 18px;display:flex;flex-direction:column;gap:22px}\n#oqa main{flex:999 1 640px;min-width:0;padding:16px 24px 32px;display:flex;flex-direction:column;gap:16px}\n#oqa .logo{background:#fff;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:center;min-height:64px}\n#oqa .logo img{max-width:100%;max-height:48px;display:block}\n#oqa .nav{display:flex;flex-direction:column;gap:2px}\n@media (min-width:900px){#oqa aside{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto}}\n@media (max-width:899px){#oqa aside{flex-basis:100%;padding:10px 12px;gap:8px}#oqa aside .nav{flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px;scrollbar-width:thin}#oqa aside .nav button{width:auto;flex:none;padding:8px 12px;min-height:40px;font-size:13px;gap:8px;white-space:nowrap}#oqa aside .navsec{display:none}#oqa aside > :first-child{padding:8px!important;min-height:0!important;height:auto!important}#oqa aside > :first-child img{max-height:34px}#oqa aside > :last-child:not(#nav){display:none}}@media (max-width:899px){#oqa .tbl td:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:2px 0 4px -2px rgba(0,0,0,.12)}#oqa .tbl thead th:first-child{position:sticky;left:0;z-index:2}#oqa .swipe{display:block!important}}#oqa .hubpick>[data-hubslot]:has(audio){flex:1 1 100%;order:2}#oqa .hubpick>[data-hubslot] audio{width:100%!important}#oqa .tbl thead th{background:#F3F1EC;padding-top:9px;padding-bottom:9px}#oqa .tbl thead th:first-child{border-radius:8px 0 0 8px}#oqa .tbl thead th:last-child{border-radius:0 8px 8px 0}\n#oqa .nav button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:10px;color:rgba(255,255,255,.85);font-size:14px;cursor:pointer;min-height:44px}\n#oqa .nav button:hover{background:rgba(255,255,255,.08);color:#fff}\n#oqa .nav button.on{background:var(--hl,#2A4A42);color:#fff;font-weight:600}\n#oqa .nav button:focus-visible,#oqa .click:focus-visible,#oqa button:focus-visible{outline:2px solid #7CC4A4;outline-offset:2px}\n#oqa .navsec{font-size:10px;letter-spacing:.18em;color:#9DBBAE;padding:14px 14px 4px;font-weight:600}\n#oqa .powered{margin-top:auto;border-top:1px solid #234840;padding:14px 8px 0;font-size:11.5px;color:#BFD1C8;display:flex;align-items:center;gap:8px}\n#oqa .oq-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;min-width:0}\n#oqa .oq-card.click{position:relative;transition:border-color .15s,box-shadow .15s}\n#oqa .oq-card.click:hover{border-color:#9DC7B3;box-shadow:0 2px 10px rgba(20,48,42,.06)}\n#oqa .oq-card.click .go{position:absolute;top:14px;right:14px;color:#9AA39F;font-size:14px;line-height:1;opacity:0;transition:opacity .15s}\n#oqa .oq-card.click:hover .go{opacity:1}\n#oqa .navsec2{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:14px 12px 4px;font-weight:700}\n#oqa .ttl{margin:0;font-size:17px;font-weight:700;letter-spacing:-0.02em;color:#14302A}\n#oqa .sub{margin:4px 0 0;font-size:12.5px;color:var(--mut);line-height:1.45}\n#oqa .cap{font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:#56605B}\n#oqa .mut{color:var(--mut)}\n#oqa .num{font-variant-numeric:tabular-nums}\n#oqa .more{all:unset;cursor:pointer;font-size:12.5px;font-weight:600;color:#2F5E4E;min-height:32px;display:inline-flex;align-items:center;gap:4px}\n#oqa .more:hover{color:var(--ink)}\n#oqa .sel{border:1px solid #E1DCD2;background:#fff;font-size:13px;color:var(--ink);padding:9px 14px;border-radius:10px;cursor:pointer;min-height:42px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;white-space:nowrap}\n#oqa .sel:hover{border-color:#B9B2A6}\n#oqa .btnd{background:var(--side);border-color:var(--side);color:#fff}\n#oqa .btnd:hover{border-color:var(--side)}\n#oqa .pill{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:4px 9px;border-radius:8px;white-space:nowrap}\n#oqa .tbl{width:100%;border-collapse:collapse;font-size:13px}\n#oqa .tbl th{text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#56605B;padding:0 8px 10px;white-space:nowrap;cursor:default}\n#oqa .tbl th.sortable{cursor:pointer}\n#oqa .av{width:32px;height:32px;border-radius:999px;background:#E6F0EA;color:#1F5A41;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}\n#oqa .tbl th.sortable:hover{color:var(--ink)}\n#oqa .tbl td{padding:10px 8px;white-space:nowrap;border-top:1px solid var(--line2)}\n#oqa .tbl th,#oqa .tbl td{text-align:center!important}\n#oqa .tbl th:first-child,#oqa .tbl td:first-child{text-align:left!important}#oqa .tbl.lbtbl th:nth-child(2),#oqa .tbl.lbtbl td:nth-child(2){text-align:left!important}#oqa .tbl.rctbl th,#oqa .tbl.rctbl td{text-align:left!important;vertical-align:top}#oqa .tbl.rctbl .r{text-align:right!important}#oqa .tbl.rctbl td.req{white-space:normal;min-width:360px;line-height:1.4}\n#oqa .tbl.efftbl th,#oqa .tbl.efftbl td{padding-left:6px;padding-right:6px}\n#oqa .tbl tr.click{cursor:pointer}\n#oqa .tbl tr.click:hover td{background:#FAF8F3}\n#oqa .track{height:6px;border-radius:999px;background:#EEEBE4;overflow:hidden}\n#oqa .track>div{height:100%;border-radius:999px}\n#oqa .row{display:flex;flex-wrap:wrap;gap:12px}\n#oqa .grid{display:grid;gap:12px}\n#oqa .banner{background:#FFF8E8;border:1px solid #F0DDB0;color:#6B4E12;border-radius:12px;padding:9px 14px;font-size:12.5px}\n#oqa input,#oqa textarea,#oqa select{font-family:inherit;font-size:13.5px;color:var(--ink)}\n#oqa .oq-field{border:1px solid #E1DCD2;border-radius:10px;padding:10px 12px;width:100%;background:#fff}\n#oqa label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B4541}\n#oqa .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--side);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:80;display:none}\n#oqa .overlay{position:fixed;inset:0;background:rgba(20,48,42,.35);display:flex;justify-content:flex-end;z-index:60}\n#oqa .drawer{width:640px;max-width:100%;height:100%;overflow-y:auto;background:#F7F5F0;padding:22px;display:flex;flex-direction:column;gap:14px}\n#oqa .click{cursor:pointer}\n#oqa .chip{border:1px solid #E1DCD2;background:#fff;font-size:12.5px;padding:7px 12px;border-radius:999px;cursor:pointer;min-height:34px;color:var(--ink);text-align:left}\n#oqa .chip:hover{border-color:var(--g);color:var(--gd)}\n#oqa .chip.on{background:var(--side);color:#fff;border-color:var(--side)}\n#oqa .seg{display:inline-flex;background:#fff;border:1px solid #E1DCD2;border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}\n#oqa .seg button{border:none;background:transparent;padding:7px 11px;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--ink);min-height:34px}\n#oqa .seg button.on{background:var(--side);color:#fff}\n#oqa .skel{background:linear-gradient(90deg,#EEEBE4 25%,#F6F4EF 50%,#EEEBE4 75%);background-size:200% 100%;animation:sk 1.2s infinite;border-radius:8px}\n\n@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}#oqa .ai{background:linear-gradient(0deg,#fff,#fff);border:1px solid #CFE3D8;border-radius:14px;padding:18px}\n#oqa .ai .md{line-height:1.6;font-size:13.5px}\n#oqa .ai .md ul{margin:8px 0;padding-left:20px}\n#oqa .ai .md li{margin:3px 0}\n#oqa .ai .md .mdh2{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#2F7D5B;margin:18px 0 6px;padding-top:12px;border-top:1px solid #E3EEE8}\n#oqa .ai .md .mdh3{font-size:14.5px;font-weight:700;color:#14302A;margin:12px 0 4px}\n#oqa .ai .md > p:first-child{font-size:14.5px;font-weight:500;color:#14302A}\n#oqa .ai .md ul.sub{margin:3px 0 6px;padding-left:18px;list-style:circle}\n#oqa .ai .md ul.sub li{margin:2px 0;color:#3B4541;font-size:13px}\n#oqa .ai .md > ul > li{margin-top:7px}\n#oqa .lnk{color:var(--gd);font-weight:600;cursor:pointer;border-bottom:1px dashed #9CC6B2}\n#oqa .lnk:hover{color:var(--ink)}#oqa button.lnk{background:none;border:none;border-bottom:1px dashed #9CC6B2;border-radius:0;padding:0;margin:0;font:inherit;font-weight:600;color:var(--gd);min-height:0}\n#oqa .dots span{display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--g);margin-right:4px;animation:bl 1s infinite}\n#oqa .dots span:nth-child(2){animation-delay:.15s}\n#oqa .dots span:nth-child(3){animation-delay:.3s}\n\n@keyframes bl{0%,100%{opacity:.25}50%{opacity:1}}#oqa .pop{position:absolute;z-index:50;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.12);padding:12px;min-width:260px;max-height:420px;overflow:auto}\n#oqa .oq-crumb{font-size:12.5px;color:var(--mut);display:flex;gap:6px;align-items:center;flex-wrap:wrap}\n#oqa .oq-crumb button{all:unset;cursor:pointer;color:var(--gd);font-weight:600}\n#oqa .step{padding:12px;border-top:1px solid var(--line2)}\n#oqa .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}\n#oqa .obp{position:fixed;right:18px;bottom:18px;z-index:70;width:330px;max-width:calc(100vw - 24px);background:#fff;border:1px solid #CFE3D8;border-radius:14px;box-shadow:0 12px 36px rgba(20,48,42,.18);padding:14px}#oqa .obp.min{width:auto;padding:0;border:none;background:none;box-shadow:none}#oqa .obpill{all:unset;cursor:pointer;background:var(--side);color:#fff;border-radius:999px;padding:11px 16px;font-size:13px;box-shadow:0 8px 24px rgba(20,48,42,.25)}#oqa .obx{all:unset;cursor:pointer;font-size:18px;line-height:1;padding:2px 8px;color:#55615C}#oqa .obrow{all:unset;box-sizing:border-box;display:flex;gap:10px;align-items:flex-start;width:100%;padding:8px 6px;border-radius:10px;cursor:pointer;font-size:13px;color:var(--ink)}#oqa .obrow:hover{background:#F5F7F6}#oqa .obrow.cur{background:#EEF4EF}#oqa .obck{flex:none;width:22px;height:22px;border-radius:999px;border:1.5px solid #B9C4BF;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#55615C}#oqa .obck.ok{background:var(--g);border-color:var(--g);color:#fff}#oqa .nav button.obnext{box-shadow:0 0 0 2px #7CC4A4;animation:obpulse 1.6s infinite}@keyframes obpulse{0%,100%{box-shadow:0 0 0 2px rgba(124,196,164,.9)}50%{box-shadow:0 0 0 6px rgba(124,196,164,.25)}}#oqa .obtip{position:fixed;z-index:65;background:#14302A;color:#fff;font-size:12.5px;padding:8px 10px 8px 12px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.2);display:flex;gap:8px;align-items:center;white-space:nowrap}#oqa .obtip:before{content:'';position:absolute;left:-6px;top:50%;margin-top:-6px;border:6px solid transparent;border-left:0;border-right-color:#14302A}#oqa .obtipgo{all:unset;cursor:pointer;background:#7CC4A4;color:#14302A;font-weight:700;border-radius:7px;padding:3px 8px}\n#oqa .foot{text-align:center;font-size:12px;color:var(--mut);padding:8px 0 0}\n@media (max-width:760px){#oqa main{padding:12px 14px 28px}\n#oqa .hero h1{font-size:26px!important}\n#oqa .drawer{padding:16px}\n}\n\n#oqa{min-height:100vh;font-family:Montserrat,Arial,sans-serif;font-size:14px;color:var(--ink);background:var(--bg)}\n#oqa .who{border-top:1px solid #234840;padding:12px 8px 0;font-size:12px;color:#BFD1C8;display:flex;flex-direction:column;gap:6px}\n#oqa .who b{color:#fff;font-weight:600;font-size:12.5px}\n#oqa .who button{all:unset;cursor:pointer;color:#D6E2DC;text-decoration:underline;text-underline-offset:2px;font-size:12px}\n#oqa .who button:hover{color:#fff}\n";
 var MARKUP = "<div class=\"oq-app\">\n  <aside>\n    <div class=\"logo\"><img id=\"oqlogo\" alt=\"\"></div>\n    <nav class=\"nav\" id=\"nav\" aria-label=\"Main\"></nav>\n    <div class=\"who\" id=\"oqwho\"></div><div class=\"powered\" style=\"margin-top:0\"><svg width=\"22\" height=\"18\" viewBox=\"0 0 34 30\" fill=\"none\" stroke=\"#BFD1C8\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M1 15h7l3-9 4 18 4-14 3 5h11\"/></svg><span>Powered by <b style=\"color:#fff;font-weight:600\">Opsis CX</b></span></div>\n  </aside>\n  <main id=\"main\"></main>\n</div>\n<div id=\"layer\"></div>\n<div class=\"toast\" id=\"toast\" role=\"status\"></div>";
+
+// Hide / show the left menu (Rob 11/19). Remembered per browser; the floating "Menu" button brings it back.
+function oqSideToggle(ROOT) {
+  if (!document.getElementById('oqa-side-style')) {
+    var ss = document.createElement('style'); ss.id = 'oqa-side-style';
+    ss.textContent = '#oqa .oq-sidehide{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;align-self:flex-start;margin:-10px 0 -12px;padding:6px 10px;border-radius:10px;color:#BFD1C8;font-family:Montserrat,Arial,sans-serif;font-size:12.5px;font-weight:500}' +
+      '#oqa .oq-sidehide:hover,#oqa .oq-sidehide:focus-visible{background:rgba(255,255,255,.12);color:#fff}' +
+      '#oqa .oq-sideshow{all:unset;cursor:pointer;position:fixed;top:12px;left:12px;z-index:50;display:none;align-items:center;gap:6px;background:var(--side);color:#fff;font-family:Montserrat,Arial,sans-serif;font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.18)}' +
+      '#oqa .oq-sideshow:hover,#oqa .oq-sideshow:focus-visible{background:#1F4A3E}' +
+      '#oqa .oq-app.oq-noside>aside{display:none}' +
+      '#oqa .oq-app.oq-noside~.oq-sideshow{display:flex}' +
+      '#oqa .oq-app.oq-noside>main{padding-left:96px}' +
+      '@media (max-width:899px){#oqa .oq-sidehide{padding:6px 10px}#oqa .oq-app.oq-noside>main{padding-left:24px;padding-top:56px}}';
+    document.head.appendChild(ss);
+  }
+  var app = ROOT.querySelector('.oq-app'), aside = app && app.querySelector('aside');
+  if (!app || !aside) return;
+  var KEY = 'oqa.sideHidden';
+  var hideBtn = document.createElement('button');
+  hideBtn.type = 'button'; hideBtn.className = 'oq-sidehide'; hideBtn.innerHTML = '<span aria-hidden="true" style="font-size:15px;line-height:1">&laquo;</span> Hide menu';
+  hideBtn.title = 'Hide menu'; hideBtn.setAttribute('aria-label', 'Hide menu');
+  aside.insertBefore(hideBtn, aside.firstChild);
+  var showBtn = document.createElement('button');
+  showBtn.type = 'button'; showBtn.className = 'oq-sideshow';
+  showBtn.innerHTML = '<span aria-hidden="true" style="font-size:15px;line-height:1">&#9776;</span> Menu';
+  showBtn.title = 'Show menu'; showBtn.setAttribute('aria-label', 'Show menu');
+  app.parentNode.insertBefore(showBtn, app.nextSibling);
+  function set(hidden, save) {
+    app.classList.toggle('oq-noside', hidden);
+    if (save) { try { localStorage.setItem(KEY, hidden ? '1' : '0'); } catch (e) { /* storage off */ } }
+    if (save) (hidden ? showBtn : hideBtn).focus();
+  }
+  var start = false; try { start = localStorage.getItem(KEY) === '1'; } catch (e) { /* storage off */ }
+  set(start, false);
+  hideBtn.addEventListener('click', function () { set(true, true); });
+  showBtn.addEventListener('click', function () { set(false, true); });
+}
 
 export function mountOpsisQA(ROOT, cfg) {
   var st = document.getElementById('oqa-style');
@@ -15,9 +60,19 @@ export function mountOpsisQA(ROOT, cfg) {
   if (!document.getElementById('oqa-font')) { var ln = document.createElement('link'); ln.id = 'oqa-font'; ln.rel = 'stylesheet'; ln.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap'; document.head.appendChild(ln); }
   ROOT.id = 'oqa';
   ROOT.innerHTML = MARKUP;
+  oqSideToggle(ROOT);
   var destroy = (function () {
   'use strict';
   var CFG = cfg || {};
+  // Opsis CX internal portal (10/29): staff open /opsis-qa?portal=opsiscx to see Opsis CX's own Five9 calls.
+  var OPSIS_ID = '9726e6eb-1364-4dba-8ddb-10c07a408ecb';
+  var PORTALQ = (function () { try { return new URLSearchParams(location.search).get('portal'); } catch (x) { return null; } })();
+  if (CFG.staff && !CFG.clientId && PORTALQ === 'opsiscx') CFG.clientId = OPSIS_ID;
+  var OPSIS = CFG.clientId === OPSIS_ID;
+  if (OPSIS) { CFG.phone = false; CFG.clientName = 'Opsis CX'; }
+  var W_BRAND = OPSIS ? 'Campaign' : 'Brand', W_BRANDS = OPSIS ? 'Campaigns' : 'Brands', W_CSR = OPSIS ? 'Agent' : 'CSR', W_CSRS = OPSIS ? 'Agents' : 'CSRs';
+  // Multi-brand coach (Becky 11/20): brands this coach may switch between (CFG.myBrands -> RPC my_portal_brands).
+  var MYBR = [];
   var ROLE = CFG.role || 'manager', LOCK = CFG.brandLock || null, CAN_EDIT = ROLE !== 'viewer', IS_ADMIN = ROLE === 'admin';
   var CLIENT = CFG.clientName || 'GarageCo';
   var LISTENERS = [];
@@ -32,7 +87,9 @@ export function mountOpsisQA(ROOT, cfg) {
   var short = function (b) { return SHORT[b] || b || '—'; };
   var BCOL = ['#1F5A41', '#8A5A2B', '#B4452A', '#3B4541', '#7A2E1C', '#8C7A1E', '#6B2E2E', '#2F5E4E', '#2E4A6B', '#4A5A3B', '#5B3A6B', '#2B5B6B'];
   var bcol = function (b) { var h = 0; for (var i = 0; i < (b || '').length; i++) h = (h * 31 + b.charCodeAt(i)) >>> 0; return BCOL[h % BCOL.length]; };
-  var STEPNAMES = { introduce: 'Introduce', listen: 'Listen', collect_info: 'Collect info', sell_appointment: 'Sell the appointment', sell_offer: 'Offer the booking', sell_ask: 'Ask for the booking', sell_card: 'Card on file', sell_objection: 'Overcome the objection', sell_expert: 'Tech is the expert', confirm_thank: 'Confirm and thank', greeting: 'Greeting', empathy: 'Acknowledge / empathy', verify_approver: 'Verify + confirm approver', discovery: 'Discovery', set_expectations: 'Set expectations', explain_fee: 'Explain the fee', offer_appt: 'Offer next appointment', ask_booking: 'Ask for the booking', capture_payment: 'Capture payment', confirm_details: 'Confirm appointment details', thank_close: 'Thank customer + close' };
+  // 11/18 (QA-07): the "Missed step" filter on Call reviews uses the current 5-step call flow keys (the old 11-step keys matched no calls).
+  var CUR_STEPS = [['introduce', 'Step 1 Introduce'], ['listen', 'Step 2 Listen'], ['collect_info', 'Step 3 Collect info'], ['sell_expert', 'Step 3b Tech is the expert'], ['sell_offer', 'Step 4a Offer the booking'], ['sell_ask', 'Step 4b Ask for the booking'], ['sell_card', 'Step 4c Card on file'], ['sell_objection', 'Step 4d Overcome the objection'], ['confirm_thank', 'Step 5 Confirm and thank']];
+  var STEPNAMES = { verify: 'Verify details', knowledge: 'Knowledge & policy', professionalism: 'Professionalism', rebuttals: 'Ask for the appointment', closing: 'Closing', document: 'Documentation', timewindow: 'Calling window', booking_questions: 'Booking questions', callflow: 'Open-ended questions', transfer: 'Transfer to the brand', asked_for_role: 'Asked for the right role', gatekeeper_value: 'Got value from gatekeeper', clear_intro: 'Clear introduction', tailored_value: 'Tailored value', objection_handling: 'Handled objections', asked_for_meeting: 'Asked for the meeting', locked_next_step: 'Locked the next step', professional_close: 'Professional close', introduce: 'Introduce', listen: 'Listen', collect_info: 'Collect info', sell_appointment: 'Sell the appointment', sell_offer: 'Offer the booking', sell_ask: 'Ask for the booking', sell_card: 'Card on file', sell_objection: 'Overcome the objection', sell_expert: 'Tech is the expert', confirm_thank: 'Confirm and thank', greeting: 'Greeting', empathy: 'Acknowledge / empathy', verify_approver: 'Verify + confirm approver', discovery: 'Discovery', set_expectations: 'Set expectations', explain_fee: 'Explain the fee', offer_appt: 'Offer next appointment', ask_booking: 'Ask for the booking', capture_payment: 'Capture payment', confirm_details: 'Confirm appointment details', thank_close: 'Thank customer + close' };
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var fdate = function (d) { if (!d) return ''; var p = d.split('-'); return MONTHS[+p[1] - 1] + ' ' + (+p[2]); };
   var fhour = function (h) { return h == null ? '' : (h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p'); };
@@ -45,7 +102,8 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------------- state ----------------
   var S = {
     view: 'overview', brand: null, agent: null,           // drill targets
-    range: '30', start: null, end: null, brands: [],       // filters
+    range: '7', start: null, end: null, brands: [],       // default 7 days (Rob 11/2)
+          // filters
     calls: { outcome: null, step: null, scoreMax: null, scoreMin: null, winnable: null, q: '', offset: 0, sort: 'new' },
     callId: null, adj: {}, change: null, pop: null, ask: { open: false, msgs: [], busy: false },
     csrSort: 'calls', brandSort: 'calls'
@@ -58,15 +116,16 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.range === 'month') { S.end = t; S.start = t.slice(0, 8) + '01'; return; }
     if (S.range === 'lastmonth') { var f = t.slice(0, 8) + '01'; S.end = addDays(f, -1); S.start = S.end.slice(0, 8) + '01'; return; }
     // Last 7 / 30 / 90 days = completed days, today left out (2026-10-26, matches LightSpeed and Switchboard)
-    var n = +S.range || 30; S.end = addDays(t, -1); S.start = addDays(t, -n);
+    var n = +S.range || 7; S.end = addDays(t, -1); S.start = addDays(t, -n);
   }
   applyRange();
   function prevWin() { var n = daysBetween(S.start, S.end); return { start: addDays(S.start, -n), end: addDays(S.start, -1) }; }
 
   // ---------------- data ----------------
   var cache = {};
-  var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1, cardcap: 1, qaextras: 1 };
-  function api(body) {
+  var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1, cardcap: 1, pricetalk: 1, qaextras: 1 };
+  function api(body) { var pr = apiRaw(body); expRec(body, pr); return pr; }
+  function apiRaw(body) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
@@ -114,30 +173,100 @@ export function mountOpsisQA(ROOT, cfg) {
   function skel(h, n) { var s = ''; for (var i = 0; i < (n || 1); i++) s += '<div class="skel" style="height:' + h + 'px;margin:8px 0"></div>'; return s; }
   function errBox(e) { var m = e && e.status && e.status < 500 && e.status !== 408 && e.message ? esc(e.message) : 'This is taking longer than usual.'; return '<div class="oq-card" style="color:#A8441A">' + m + ' <button class="more" data-act="retry">Try again</button></div>'; }
   function iconPath(k) {
+    if (k === 'brandset') k = 'settings';
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
-      kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', reviews: 'M5 3h10l4 4v14H5zM14 3v5h5M8 17v-3M12 17v-6M16 17v-4', coach: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21v-1a6 6 0 0 1 9-5.2M16 15l2 2 4-4', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', supervisor: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7zM9 12l2 2 4-4', tasks: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      connect: 'M12 22v-5M9 8V2M15 8V2M18 8v4a6 6 0 0 1-12 0V8z', kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
-    }[k];
+    }[k] || (k === 'callbacks' ? 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3v6h6M21 3l-6 6' : '');
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['cardcap', 'Card capture'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat([['hub', 'Coaching Hub']]).concat(!LOCK && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])],
-    ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access']] : [])]];
+  // Menu order (Becky 2026-11-12): Overview, Insights, Phone stats, Brands, CSRs, Call reviews, Card capture, Price talk,
+  // Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, [Wallboard, Phone for supervisors], Workforce.
+  // Wallboard + Phone sit under AI Speed to Lead until the CCaaS phone system is finished and ready for use.
+  // Practice + AI CSR are added after the pilot check (see vPractice access below).
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview']].concat(!OPSIS && CFG.bizReview && (ROLE === 'admin' || CFG.staff) && !(CFG.portalRole === 'rm' || CFG.portalRole === 'gm') ? [['reviews', 'Business reviews']] : [])
+    .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
+    .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(CFG.callbacks && ROLE !== 'viewer' ? [['callbacks', 'Callbacks']] : []).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']].concat(CFG.leadTime ? [['leadtime', 'Booking lead time']] : []))
+    .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
+    .concat(!OPSIS && CFG.supervisor && CFG.coachHistory ? [['coach', 'Coach view']] : [])
+    .concat(OPSIS ? [] : [['hub', 'Coaching Hub']])
+    .concat(!OPSIS && CFG.tasks ? [['tasks', 'Tasks']] : [])
+    .concat([['reporting', 'Reporting']])
+    .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
+    .concat(CFG.mountExt && CFG.supervisor ? [['supervisor', 'Supervisor'], ['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
+    .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
+    ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.callSources && (IS_ADMIN || CFG.staff) ? [['connect', 'Connect your calls']] : []).concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
+  // Tile navigation (Becky 11/17): these pages also open from Overview / brand tiles.
+  // They stay in the sidebar too (Becky 11/17 pm: removing them caused confusion).
+  var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money', 'leadtime'];
+  // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR.
+  // Becky 11/18 (go-live test plan): plus the supervisor tools Wallboard, Phone, Workforce and Intraday. Still no settings or Calibration.
+  var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
+  // Coach logins (portal_role 'coach', Becky 11/20): always in Coach mode, coaching pages only.
+  var COACH_ROLE = !CFG.csrSelf && !OPSIS && CFG.portalRole === 'coach';
+  if (COACH_ROLE && CFG.myBrands) CFG.myBrands().then(function (b) { if (b && b.length > 1) { MYBR = b; try { render(); } catch (e) {} } }).catch(function () {});
+  // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
+  // dialer campaigns hidden for non-staff).
+  var MGR_NAV = ['overview', 'trends', 'callbacks', 'coach', 'hub', 'coachclips', 'tasks', 'receptionist', 'aistl', 'supervisor', 'wallboard', 'myphone', 'wfm', 'intraday'];
+  // reachable by drilling down from the dashboard, but not in the sidebar
+  var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
+  function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
+  mgrNav();
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
-    w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(RNAME[ROLE] || '') + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
-      '<span style="display:flex;gap:14px;flex-wrap:wrap">' + (CFG.onClassic ? '<button data-act="classic">Classic view</button>' : '') + (CFG.onSignOut ? '<button data-act="signout">Sign out</button>' : '') + '</span>';
+    w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(MGR ? (CFG.portalRole === 'rm' ? 'Regional manager' : 'General manager') : COACH_ROLE ? 'Coach' : ROLE === 'manager' ? 'Brand manager' : (RNAME[ROLE] || '')) + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
+      (CFG.staff ? '<a href="' + esc(location.pathname + (OPSIS ? '' : '?portal=opsiscx')) + '" style="color:#9CC6B2;font-size:12px;font-weight:600;text-decoration:none">Switch to ' + (OPSIS ? 'GarageCo' : 'Opsis CX') + ' →</a>' : '') + '<span style="display:flex;gap:14px;flex-wrap:wrap">' + (CFG.onClassic ? '<button data-act="classic">Classic view</button>' : '') + (CFG.onSignOut ? '<button data-act="signout">Sign out</button>' : '') + '</span>';
+      // "View as" Admin / RM / GM / CSR (2026-11-10): your own +rm / +gm / +csr logins
+    if (CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount) {
+      var cur = CFG.accounts.filter(function (x) { return x.current; })[0] || {};
+      var box = document.createElement('label');
+      box.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px;color:#BFD1C8;margin-top:2px';
+      box.innerHTML = 'View as <select style="flex:1;background:#234840;color:#fff;border:1px solid #3B6158;border-radius:8px;padding:6px 8px;font:inherit;font-weight:700;cursor:pointer">' +
+        CFG.accounts.map(function (x) { return '<option value="' + esc(x.email) + '"' + (x.current ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') +
+        // PORT-05 (11/18): see exactly what one CSR sees — opens the Coaching Hub list (your brand / location) to pick them
+        (CFG.csrSelf || OPSIS ? '' : '<option value="__csr">A specific CSR…</option>') + (COACH_OK() ? '<option value="__coach"' + (COACHMODE ? ' selected' : '') + '>Coach mode</option>' : '') + '</select>';
+      w.insertBefore(box, w.children[2] || null);
+      var sel = box.querySelector('select');
+      sel.onchange = function () { var v = sel.value; if (v === '__coach') { setCoachMode(true); return; } if (COACHMODE && v === cur.email) { setCoachMode(false); return; } if (v === '__csr') { sel.value = COACHMODE ? '__coach' : cur.email; S.hubCsr = null; HUB.tab = 'home'; go('hub'); toast('Pick a CSR to see exactly what they see.'); return; } if (!v || v === cur.email) return; sel.disabled = true; toast('Switching…'); Promise.resolve(CFG.onSwitchAccount(v)).catch(function (e) { sel.disabled = false; sel.value = cur.email; toast((e && e.message) || 'Couldn\u2019t switch accounts.'); }); };
+    }
   }
+
+  // Coach mode (Becky + Rob 11/19): a coach's landing page with everything else out of the way. On by default for
+  // Opsis coaches (staff who aren't app admins); anyone with the Coach view can switch it on or off (remembered per browser).
+  var COACH_NAV = ['coach', 'hub', 'csrs', 'calls', 'cardcap', 'calib', 'practice', 'coachclips'];
+  function COACH_OK() { return !OPSIS && !CFG.csrSelf && !!CFG.coachHistory && !!CFG.supervisor; }
+  var COACHMODE = (function () { if (COACH_ROLE) return true; if (!COACH_OK()) return false; try { var v = localStorage.getItem('oq_coachmode'); if (v === '1' || v === '0') return v === '1'; } catch (e) {} return !!CFG.coachDefault; })();
+  function setCoachMode(on) { if (COACH_ROLE && !on) return; COACHMODE = !!on; try { localStorage.setItem('oq_coachmode', on ? '1' : '0'); } catch (e) {} if (on) go('coach'); else { renderNav(); renderWho(); } toast(on ? 'Coach mode on: just the coaching pages.' : 'Coach mode off: full menu.'); }
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
-    $('nav').innerHTML = NAV.map(function (sec) {
+    var GRP = { phone: 'Performance', brands: 'Performance', csrs: 'Performance', calls: 'Performance', cardcap: 'Performance', pricetalk: 'Performance', money: 'Performance', leadtime: 'Performance',
+      reviews: 'Performance', calib: 'Coaching', coach: 'Coaching', hub: 'Coaching', practice: 'Coaching', coachclips: 'Coaching',
+      reporting: 'Tools', tasks: 'Tools', supervisor: 'Tools', receptionist: 'Tools', aistl: 'Tools', wallboard: 'Tools', myphone: 'Tools', wfm: 'Tools', intraday: 'Tools' };
+    var ORD = { '': 0, Performance: 1, Coaching: 2, Tools: 3 };
+    var NAV0 = NAV; if (COACHMODE) NAV = [['', NAV0[0][1].filter(function (n) { return COACH_NAV.indexOf(n[0]) >= 0; })]];
+    $('nav').innerHTML = NAV.map(function (sec, si) {
+      if (si === 0 && !sec[0] && sec[1].length > 8) {
+        var items = sec[1].map(function (n, i) { return { n: n, g: GRP[n[0]] || '', i: i }; }).sort(function (a, b) { return (ORD[a.g] - ORD[b.g]) || (a.i - b.i); }), last = '';
+        return items.map(function (it) { var n = it.n, hd = it.g !== last ? (it.g ? '<div class="navsec2">' + it.g + '</div>' : '') : ''; last = it.g;
+          return hd + '<button class="' + (cur === n[0] ? 'on' : '') + '" data-go="' + n[0] + '"' + (cur === n[0] ? ' aria-current="page"' : '') + '><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + iconPath(n[0]) + '"/></svg>' + n[1] + '</button>'; }).join('');
+      }
       return (sec[0] ? '<div class="navsec">' + sec[0] + '</div>' : '') + sec[1].map(function (n) {
         return '<button class="' + (cur === n[0] ? 'on' : '') + '" data-go="' + n[0] + '"' + (cur === n[0] ? ' aria-current="page"' : '') + '><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + iconPath(n[0]) + '"/></svg>' + n[1] + '</button>';
       }).join('');
     }).join('');
+    NAV = NAV0;
+    if (COACH_OK() && !COACH_ROLE && !(CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount)) {
+      var tg = document.createElement('button'); tg.setAttribute('data-coachmode', COACHMODE ? '0' : '1');
+      tg.style.cssText = 'margin-top:10px;font-size:12px;opacity:.85;justify-content:center';
+      tg.textContent = COACHMODE ? 'Show the full menu' : 'Coach mode';
+      tg.title = COACHMODE ? 'Show every page in the menu' : 'Keep only the coaching pages in the menu';
+      tg.addEventListener('click', function () { setCoachMode(!COACHMODE); });
+      $('nav').appendChild(tg);
+    }
   }
   var RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['custom', 'Custom…']];
   function rangeLabel() { if (S.range === 'custom') return fdate(S.start) + ' – ' + fdate(S.end); var r = RANGES.filter(function (x) { return x[0] === S.range; })[0]; return r ? r[1] : ''; }
@@ -145,19 +274,23 @@ export function mountOpsisQA(ROOT, cfg) {
   function askBrand() { return LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : null; }
   function askEx() { var b = askBrand(); return b ? 'Who is the top performer at ' + b + '?' : 'Which brand has the best booking rate?'; }
   function topbar() {
-    var bl = S.view === 'brand' && S.brand ? short(S.brand) : S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : 'All brands';
-    return '<div class="row" style="align-items:center;position:relative">' + ((HIST.length || (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib')) ? '<button class="sel" data-oqback="1" aria-label="Back to the previous page" title="Back to the previous page" style="min-height:46px">\u2190 Back</button>' : '') +
+    var bl = S.view === 'brand' && S.brand ? short(S.brand) : S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' ' + W_BRANDS.toLowerCase()) : 'All ' + W_BRANDS.toLowerCase();
+    return '<div class="row" style="align-items:center;position:relative">' + ((HIST.length || typeof window.__oqExtBack === 'function' || (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib')) ? '<button class="sel" data-oqback="1" aria-label="Back to the previous page" title="Back to the previous page" style="min-height:46px">\u2190 Back</button>' : '') +
       '<form id="askform" style="flex:1 1 360px;max-width:620px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #CFE3D8;border-radius:12px;padding:0 6px 0 14px;min-height:46px">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>' +
       '<label for="askq" class="sr">Ask anything about your calls</label><input id="askq" autocomplete="off" placeholder="Ask anything — “' + esc(askEx()) + '”" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:14px">' +
       '<button class="sel btnd" type="submit" style="min-height:36px;padding:6px 14px">Ask</button></form>' +
       '<div style="flex:1 1 0"></div>' +
-      (LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
+      (/^hub/.test(S.view) ? '' : '<button class="sel" data-pop="export" aria-haspopup="true" title="Download what this page shows">\u2913 Export</button>') +
+      (LOCK && MYBR.length > 1 ? '<label class="sr" for="mybr">Brand</label><select id="mybr" class="sel" data-mybr="1" title="Switch between your brands" style="cursor:pointer">' + MYBR.map(function (b) { return '<option value="' + esc(b) + '"' + (b === LOCK ? ' selected' : '') + '>' + esc(short(b)) + '</option>'; }).join('') + '</select>'
+        : LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
       (/^hub/.test(S.view) ? (SELF ? '<span class="sel" style="cursor:default" title="The Coaching Hub runs week by week, Monday to Sunday">' + esc((HUB.roster && HUB.roster.week_label) || 'This week') + '</span>' : '<label class="sr" for="hubwk">Week</label><select id="hubwk" class="sel" data-hubweek="1" title="The Coaching Hub runs week by week, Monday to Sunday. Pick a past week to look back." style="cursor:pointer">' + hubWeeks().map(function (w) { return '<option value="' + w[0] + '"' + (HUB.week === w[0] ? ' selected' : '') + '>' + esc(w[1]) + '</option>'; }).join('') + '</select>') : '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>') +
       popHtml() + '</div>' +
       (CFG.staff ? '<div class="banner"><b>Opsis view</b> · You’re seeing ' + esc(CLIENT) + '’s portal as an account admin. Changes you make here are real and are logged.</div>' : '');
   }
   function popHtml() {
+    if (S.pop === 'export') return '<div class="pop" style="right:150px;top:52px;min-width:250px"><div class="cap" style="margin-bottom:6px">Export this page</div><div class="mut" style="font-size:12.5px;margin-bottom:10px">Everything this page shows for the dates and brands at the top.</div>' +
+      [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="pgexp" data-fmt="' + f[0] + '" style="width:100%;justify-content:flex-start;margin-bottom:6px">' + f[1] + '</button>'; }).join('') + '</div>';
     if (S.pop === 'range') {
       return '<div class="pop" style="right:0;top:52px"><div class="cap" style="margin-bottom:8px">Date range</div><div style="display:flex;flex-direction:column;gap:4px">' +
         RANGES.filter(function (r) { return r[0] !== 'custom'; }).map(function (r) { return '<button class="chip' + (S.range === r[0] ? ' on' : '') + '" data-range="' + r[0] + '">' + r[1] + '</button>'; }).join('') +
@@ -184,17 +317,252 @@ export function mountOpsisQA(ROOT, cfg) {
     var side = Math.abs(r.getBoundingClientRect().top - s.getBoundingClientRect().top) < 4;
     r.style.maxHeight = side ? Math.max(260, s.offsetHeight) + 'px' : '470px';
   }
+  // ---------------- Brand Dashboard (2026-11-16, Rob + Brian spec) ----------------
+  // Brand view: calls, abandon %, avg time to answer, avg time to abandon, avg talk time.
+  // CSR drill-down: calls answered, time to answer, talk time, opportunities, booked, conversion,
+  // card asks on card-eligible bookings, QA score, sentiment. Data: RPC qa_brand_dash via CFG.brandDash.
+  var DASHC = {}, DASH = { d: null, sort: 'answered', dir: -1, open: null };
+  var DASHON = function () { return !!CFG.brandDash && !OPSIS; };
+  var QAFLOW = function () { return !!($('fsteps') && $('dtrend')); }; // brand page: Call Flow opens from the QA score tile
+  // Location filter (Becky 11/18): GMs start on their own location and can switch to any other location of their brand;
+  // RMs and admins start on all locations. Applies to the dashboard tiles (Phones, Booking, trend, By CSR).
+  if (S.locs === undefined) S.locs = CFG.portalRole === 'gm' && CFG.portalLocation ? [CFG.portalLocation] : [];
+  function loadDash(brands) {
+    brands = brands || S.brands;
+    var k = [S.start, S.end, brands.join('|'), S.locs.join('|')].join('~');
+    if (!DASHC[k]) { DASHC[k] = CFG.brandDash({ start: S.start, end: S.end, brands: brands.length ? brands : null, locations: S.locs.length ? S.locs : null }); DASHC[k].catch(function () { delete DASHC[k]; }); }
+    return DASHC[k];
+  }
+  function dSec(v) { if (v == null || isNaN(v)) return '—'; v = +v; return v < 60 ? v.toFixed(1) + 's' : fsecs(Math.round(v)); }
+  function dTalk(v) { return v == null || isNaN(v) ? '—' : fsecs(Math.round(+v)); }
+  function dPct(v) { return v == null || isNaN(v) ? '—' : (+v).toFixed(1) + '%'; }
+  function dNum(v, n) { return v == null || isNaN(v) ? '—' : (+v).toFixed(n); }
+  // Clean tiles (Becky 11/17): label + ⓘ, one big number, one short line (the change or one fact). Details live in the ⓘ.
+  function dTile(label, val, sub, dl, tip) {
+    return '<div class="oq-card" style="padding:16px 18px 14px;min-width:0">' + capRow(label, tip) + '<div class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.03em;line-height:1.1;margin-top:10px;white-space:nowrap">' + val + '</div><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.4;display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:18px">' + (dl || '') + (sub ? '<span>' + sub + '</span>' : '') + '</div></div>';
+  }
+  // A tile that opens another page (Becky 11/17): whole card is clickable, with a green "Opens X ›" tag.
+  function tGo(h, to, label) { return h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-tgo="' + to + '" role="link" tabindex="0" title="Open ' + label + '" aria-label="Open ' + label + '" style="').replace(/<\/div>$/, '<span class="go" aria-hidden="true">↗</span></div>'); }
+  function dNeutral(cur, prev, f) { return cur == null || prev == null ? '' : '<span class="pill num" style="background:#F3F1EC;color:#56605B" title="Previous period">was ' + f(prev) + '</span>'; }
+  function vDash(tok) {
+    // 11/16 (Becky): no separate Dashboard tab. The dashboard lives on each brand's page; Overview gets the phone row.
+    var one = LOCK || (S.brands.length === 1 ? S.brands[0] : null);
+    if (one) { S.view = 'brand'; S.brand = one; vFocus(tok, 'brand'); } else { S.view = 'brands'; vBrands(tok); }
+    writeHash(); renderNav(); return;
+    setMain(crumb([['Dashboard']]) + '<div id="dhead"></div><div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>');
+    loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
+      .catch(function (e) { if (tok === T) $('dphone').innerHTML = errBox(e); ['dbook', 'dtrend', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); });
+  }
+  function drawDash() {
+    var d = DASH.d || {}, c = d.cur || {}, p = d.prev || {}, x = d.cdr, xp = d.cdr_prev || {}, cd = d.card || {}, n = (d.range || {}).days || daysBetween(S.start, S.end);
+    var stale = d.cdr_latest && d.cdr_latest < S.end;
+    var bl = (d.brands || []).length === 1 ? (d.brands[0]) : (d.brands || []).length ? (d.brands.length + ' ' + W_BRANDS.toLowerCase()) : 'All ' + W_BRANDS.toLowerCase();
+    var banner = (stale || !x ? '<div class="banner" style="margin-top:10px">Phone numbers (calls, abandons, time to answer and time to abandon) ' + (d.cdr_latest ? 'run through <b>' + fdate(d.cdr_latest) + '</b>' : 'aren’t available for these dates') + '. The LightSpeed daily phone summary from Switchboard hasn’t come in for later days yet. Talk time, bookings, card asks, QA and sentiment are current.</div>' : '');
+    if ($('dhead')) $('dhead').innerHTML = '<h2 class="ttl" style="font-size:20px">' + esc(bl) + '</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · compared with the ' + n + ' days before</p>' + banner;
+    if (!$('dphone')) return;
+    var abd = x && x.abandon_pct != null ? delta(+x.abandon_pct, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) : '';
+    var G4 = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">', SEC = function (t) { return '<div class="cap" style="margin:6px 0 8px 2px;font-size:11px;letter-spacing:.14em">' + t + '</div>'; };
+    var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
+    $('dphone').innerHTML = ($('dhead') ? '' : banner) + SEC('Phones') + G4 +
+      tGo(dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(Math.round(x.offered / Math.max(1, x.days))) + ' a day' : 'No phone data', '', 'Every inbound call that reached a CSR queue in the LightSpeed phone system, answered or not (' + (x ? fmt(x.answered) + ' answered' : 'no data') + '). This is the phone system’s count, so it is higher than customer conversations.'), 'phone', 'Phone stats') +
+      tGo(dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x && !abd ? fmt(x.abandoned) + ' hung up' : '', abd, 'Callers who hung up after reaching the CSR queue but before a CSR answered, as a share of all calls that reached the queue' + (x ? ' (' + fmt(x.abandoned) + ' callers)' : '') + '. Average wait before hanging up: ' + (x && x.tab != null ? dSec(x.tab) : 'not timed') + '.'), 'phone', 'Phone stats') +
+      tGo(dTile('Time to answer', x ? dSec(x.tta) : '—', '', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Average seconds from a call reaching the CSR queue to a CSR picking up, on answered calls.'), 'phone', 'Phone stats') +
+      tGo(dTile('Avg talk time', dTalk(c.aht), p.aht != null ? 'was ' + dTalk(p.aht) : '', '', 'Average length of the customer conversations CSRs answered, minutes:seconds (' + fmt(c.answered) + ' conversations, ' + fmt((d.agents || []).length) + ' CSRs). Internal calls, voicemail and calls with no conversation are left out.'), 'csrs', W_CSRS) + '</div>';
+    var locs = d.locations || [];
+    if (locs.length > 1 && (d.brands || []).length === 1) {
+      var cur0 = S.locs[0] || '';
+      $('dphone').insertAdjacentHTML('afterbegin', '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 12px"><label class="cap" for="dloc" style="font-size:11px;letter-spacing:.14em">Location</label>' +
+        '<select id="dloc" class="sel" style="min-width:180px"><option value="">All locations</option>' + locs.map(function (l) { return '<option value="' + esc(l) + '"' + (l === cur0 ? ' selected' : '') + '>' + esc(l) + (d.my_location === l ? ' (yours)' : '') + '</option>'; }).join('') + '</select>' +
+        '<span class="mut" style="font-size:12px">Filters Phones, Booking, the trend and the CSR table.</span></div>');
+      $('dloc').addEventListener('change', function () { S.locs = this.value ? [this.value] : []; render(); });
+    }
+    if ($('dbook')) $('dbook').innerHTML = SEC('Booking') + G4 +
+      tGo(dTile('Conversion', dPct(c.conv), '', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Same booking rate as the Overview page.'), 'calls:notbooked', 'Not-booked calls') +
+      tGo(dTile('Booked', fmt(c.booked), 'of ' + fmt(c.opps) + ' opportunities', '', 'Opportunities that ended with the job booked. Opportunities are customer conversations where a sales or service job could be booked; follow-ups on existing work are not. ' + fmt(p.booked) + ' booked the period before.'), 'calls:booked', 'Booked calls') +
+      (CFG.leadTime ? tGo(dTile('Booking lead time', '<span id="dlead">…</span>', '<span id="dleads"></span>', '', LT_TIP), 'leadtime', 'Booking lead time') : '') +
+      tGo(dTile('Avg order value', '<span id="daov">…</span>', '<span id="daovs"></span>', '', 'Average value of a booked job, from Acumatica invoices (or the brand’s Acumatica average for that job type when the invoice isn’t matched yet).'), 'money', 'Revenue') +
+      '</div>' + SEC('Quality') + G4 +
+      (function (h) { return QAFLOW() ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-qaflow="1" role="button" tabindex="0" aria-expanded="false" title="Show the call flow" style="').replace(/<\/div>$/, '<span class="go" aria-hidden="true">▾</span></div>') : h; })(dTile('QA score', dNum(c.qa, 1), '', delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score (0–100) on ' + fmt(c.scored) + ' scored opportunity calls.' + (QAFLOW() ? ' Click the tile to see each step of the call flow.' : ''))) +
+      tGo(dTile('Card asks', dPct(cr), '', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card' + (cd.booked ? ' (' + fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings)' : '') + '. Same numbers as Card capture.'), 'cardcap', 'Card capture') +
+      tGo(dTile('Booking ask rate', dPct(c.ask_rate), '', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.'), 'calls:noask', 'Calls with no ask') +
+      (function (h) { return QAFLOW() && $('fmood') ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-ddrill="fmood" role="button" tabindex="0" aria-expanded="false" title="Show sentiment details" style="').replace(/<\/div>$/, '<span class="go" aria-hidden="true">▾</span></div>') : h; })(dTile('Sentiment', dNum(c.sentiment, 2), '1–5 scale', delta(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, ''), 'Average customer sentiment at the end of the call (1 = upset, 5 = happy).' + (QAFLOW() && $('fmood') ? ' Click the tile for details.' : ''))) +
+      '</div>';
+    drawDashTrend(); drawDashTable(); dashLate();
+  }
+  // AOV + price-talk tiles fill in after the main numbers (separate data).
+  function dashLate() {
+    var br = (DASH.d && DASH.d.brands && DASH.d.brands.length) ? DASH.d.brands : (S.brands.length ? S.brands : null);
+    fillLead('dlead', 'dleads', br || []);
+    var set = function (id, v) { var e = $(id); if (e) e.innerHTML = v; };
+    api({ action: 'money', start: S.start, end: S.end, brands: br }).then(function (m) { var t = (m || {}).totals || {}, n = (+t.booked || 0) - (+t.booked_unvalued || 0);
+      set('daov', n > 0 && +t.booked_value ? '$' + Math.round(t.booked_value / n).toLocaleString() : '—'); set('daovs', n > 0 ? fmt(n) + ' booked jobs' : 'No valued bookings'); }).catch(function () { set('daov', '—'); });
+    api({ action: 'pricetalk', start: S.start, end: S.end, brands: br }).then(function (r) { var K = (r || {}).kinds || {}, g = function (k) { return +((K[k] || {}).n) || 0; }, read = +(r || {}).read || 0, talk = g('asked_answered') + g('asked_no_number') + g('volunteered');
+      set('dprice', read ? Math.round(100 * talk / read) + '%' : '—'); set('dprices', read ? fmt(talk) + ' of ' + fmt(read) + ' calls · ' + fmt(g('volunteered')) + ' brought up by the CSR' : 'No calls read in this range'); }).catch(function () { set('dprice', '—'); });
+  }
+  // ---------- Booking lead time (Rob 11/17) ----------
+  // Business days (Mon–Fri) from the day a service order was booked in Acumatica to its first scheduled appointment.
+  // Booked Friday for Monday = 1 day. Data: RPC qa_lead_time_report via CFG.leadTime (daily copy from Switchboard).
+  var LT_TIP = 'Business days from booking to the first scheduled appointment, residential service orders (repairs, springs, openers, tune-ups). Weekends are not counted: booked Friday for Monday = 1 day. From Acumatica, through Switchboard. Lower is better; same or next business day is the goal.';
+  var LTC = {};
+  function loadLead(brands) {
+    brands = brands || S.brands;
+    var k = [S.start, S.end, brands.join('|')].join('~');
+    if (!LTC[k]) { LTC[k] = CFG.leadTime({ start: S.start, end: S.end, brands: brands.length ? brands : null }); LTC[k].catch(function () { delete LTC[k]; }); }
+    return LTC[k];
+  }
+  function ltColor(v) { return v == null ? 'inherit' : +v <= 1.5 ? '#1F5A41' : +v <= 3 ? '#9A6A00' : '#A8441A'; }
+  function ltDays(v) { return v == null || isNaN(v) ? '—' : (+v).toFixed(1) + (+v === 1 ? ' day' : ' days'); }
+  function fillLead(idVal, idSub, brands) {
+    if (!CFG.leadTime) return;
+    var set = function (id, v) { var e = $(id); if (e) e.innerHTML = v; };
+    loadLead(brands).then(function (r) { var o = (r || {}).overall || {};
+      set(idVal, o.avg != null ? '<span style="color:' + ltColor(o.avg) + '">' + ltDays(o.avg) + '</span>' : '—');
+      set(idSub, o.orders ? Math.round(+o.le1) + '% same or next day' : 'No Acumatica orders'); })
+      .catch(function () { set(idVal, '—'); });
+  }
+  function vLeadTime(tok) {
+    setMain(crumb([['Booking lead time']]) + '<div id="ltwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    loadLead().then(function (r) { if (tok !== T) return; drawLead(r || {}); })
+      .catch(function (e) { if (tok === T && $('ltwrap')) $('ltwrap').innerHTML = errBox(e); });
+  }
+  function drawLead(r) {
+    var el = $('ltwrap'); if (!el) return;
+    var o = r.overall || {}, rows = r.by_brand || [], locs = r.by_location || [];
+    var cell = function (v, pct) { return '<td class="num" style="' + (pct ? '' : 'color:' + ltColor(v) + ';font-weight:600') + '">' + (pct ? dPct(v) : ltDays(v)) + '</td>'; };
+    var h = '<div class="oq-card"><h2 class="ttl">Booking Lead Time: Days From Booking to Appointment</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · business days from the day a job was booked in Acumatica to its first scheduled appointment. Weekends don’t count, so booked Friday for Monday is 1 day. Lower is better.' + (r.thru ? ' Acumatica data through ' + fdate(r.thru) + '.' : '') + '</p>' +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:12px">' +
+      dTile('Residential service', '<span style="color:' + ltColor(o.avg) + '">' + ltDays(o.avg) + '</span>', 'Average business days to the appointment', '', LT_TIP) +
+      dTile('Same or next business day', dPct(o.le1), 'Share of residential service orders', '', 'Residential service orders whose first appointment is the same business day or the next one.') +
+      dTile('Orders', fmt(o.orders), 'Residential service orders booked', '', 'Residential service orders created in Acumatica in this date range that have a scheduled appointment.') + '</div></div>';
+    h += '<div class="oq-card"><h2 class="ttl">By ' + W_BRAND + '</h2><p class="sub">Service = repairs, springs, openers, gates and entry-door service. Install = new doors, replacements and new builds, which naturally book further out.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th>' +
+      '<th>Resi service' + itip('Average business days from booking to the first appointment, residential service orders.') + '</th>' +
+      '<th>Same / next day' + itip('Residential service orders scheduled the same or the next business day.') + '</th>' +
+      '<th>2–3 days' + itip('Residential service orders scheduled 2 or 3 business days out.') + '</th>' +
+      '<th>Orders' + itip('Residential service orders with a scheduled appointment.') + '</th>' +
+      '<th>Commercial service' + itip('Average business days, commercial service orders.') + '</th>' +
+      '<th>Install / replace' + itip('Average business days, new doors, replacements and new builds (residential and commercial).') + '</th>' +
+      '<th>Maintenance' + itip('Average business days, maintenance agreement visits.') + '</th></tr></thead><tbody>';
+    if (!rows.length) h += '<tr><td colspan="8" class="mut">No Acumatica service orders for these ' + W_BRANDS.toLowerCase() + ' in this range. PDQ and Dan’s Doors aren’t in Acumatica.</td></tr>';
+    rows.forEach(function (b) { var rs = b.resi_service || {};
+      h += '<tr><td style="font-weight:600">' + esc(b.brand) + '</td>' + cell(rs.avg) + cell(rs.le1, 1) + cell(rs.d2_3, 1) + '<td class="num">' + fmt(rs.orders || 0) + '</td>' + cell((b.comm_service || {}).avg) + cell((b.install || {}).avg) + cell((b.maint || {}).avg) + '</tr>'; });
+    h += '</tbody></table></div></div>';
+    h += '<div class="oq-card"><h2 class="ttl">Residential Service by Location</h2><p class="sub">Same measure, by the Acumatica branch that took the order.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th><th>Location</th><th>Avg days' + itip('Average business days from booking to the first appointment.') + '</th><th>Same / next day' + itip('Share scheduled the same or the next business day.') + '</th><th>Orders</th></tr></thead><tbody>' +
+      (locs.length ? locs.map(function (l) { return '<tr><td>' + esc(l.brand) + '</td><td style="font-weight:600">' + esc(l.location) + '</td>' + cell(l.avg) + cell(l.le1, 1) + '<td class="num">' + fmt(l.orders) + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="mut">No orders in this range.</td></tr>') + '</tbody></table></div></div>';
+    var wk = r.weekly || [], weeks = [], byB = {};
+    wk.forEach(function (w) { if (weeks.indexOf(w.week) < 0) weeks.push(w.week); (byB[w.brand] = byB[w.brand] || {})[w.week] = w; });
+    weeks.sort(); weeks = weeks.slice(-8);
+    if (weeks.length > 1) {
+      h += '<div class="oq-card"><h2 class="ttl">Residential Service Lead Time, Week by Week</h2><p class="sub">Average business days, weeks starting Monday. The latest week may be partial.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th>' + weeks.map(function (w) { return '<th class="num">' + fdate(w) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        Object.keys(byB).sort().map(function (b) { return '<tr><td style="font-weight:600">' + esc(b) + '</td>' + weeks.map(function (w) { var x = byB[b][w]; return x ? '<td class="num" title="' + fmt(x.orders) + ' orders" style="color:' + ltColor(x.avg) + ';font-weight:600">' + (+x.avg).toFixed(1) + '</td>' : '<td class="num mut">—</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div></div>';
+    }
+    h += '<p class="mut" style="font-size:12px;margin:4px 2px">Colors: green 1.5 days or less, amber up to 3, red over 3. The booking day is when the service order was created in Acumatica, which is usually the day of the call. PDQ and Dan’s Doors aren’t in Acumatica, so they don’t show here.</p>';
+    el.innerHTML = h;
+  }
+  function drawDashTrend() {
+    var el = $('dtrend'); if (!el) return;
+    var T0 = 'Calls Answered and Booking Conversion, by Day';
+    var rows = (DASH.d.daily || []).filter(function (r) { return r.answered > 0 || r.offered > 0; });
+    if (rows.length < 2) { el.innerHTML = '<h2 class="ttl">' + T0 + '</h2><p class="sub">Not enough days in this range to draw a trend.</p>'; return; }
+    var L = 46, R = 46, H = 190, top = 18, W = Math.max(360, (el.clientWidth || 760) - 40), cw = W - L - R, bw = cw / rows.length, bwid = Math.min(bw * 0.6, 46);
+    var mx0 = Math.max.apply(null, rows.map(function (r) { return +r.answered || 0; })) || 1, stp = [1, 2, 5, 10, 25, 50, 100, 250, 500].filter(function (u) { return u * 4 >= mx0 / 1.0001 / 1 && true; })[0] || 1000, mx = 0;
+    [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000].some(function (u) { if (u * 4 >= mx0) { mx = u * 4; return true; } return false; });
+    var y = function (v, m) { return top + (H - top) * (1 - v / m); }, grid = '', labs = '', bars = '', pts = [], vals = '';
+    for (var g = 0; g <= 4; g++) { var gy = y(mx * g / 4, mx).toFixed(1);
+      grid += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + gy + '" y2="' + gy + '" stroke="#ECE8E0" stroke-width="1"/>';
+      labs += '<text x="' + (L - 8) + '" y="' + (+gy + 3.5) + '" text-anchor="end" font-size="10.5" fill="#5F6763">' + fmt(Math.round(mx * g / 4)) + '</text><text x="' + (W - R + 8) + '" y="' + (+gy + 3.5) + '" font-size="10.5" fill="#2F7D5B">' + (25 * g) + '%</text>'; }
+    var step = Math.ceil(rows.length / Math.max(2, Math.floor(cw / 64))), xl = '';
+    rows.forEach(function (r, i) {
+      var a = +r.answered || 0, xx = L + i * bw, cx = xx + bw / 2, by = y(a, mx);
+      bars += '<rect x="' + (cx - bwid / 2).toFixed(1) + '" y="' + by.toFixed(1) + '" width="' + bwid.toFixed(1) + '" height="' + (H - by).toFixed(1) + '" rx="3" fill="#DCE5DD"><title>' + fdate(r.day) + ': ' + fmt(a) + ' conversations answered · ' + fmt(r.booked) + ' booked · ' + dPct(r.conv) + ' conversion</title></rect>';
+      if (rows.length <= 16) vals += '<text x="' + cx.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="#3B4541">' + fmt(a) + '</text>';
+      if (r.conv != null) { var py = y(Math.min(100, +r.conv), 100); pts.push([cx.toFixed(1), py.toFixed(1)]); if (rows.length <= 16) vals += '<text x="' + cx.toFixed(1) + '" y="' + (py - 8).toFixed(1) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="' + G + '">' + Math.round(+r.conv) + '%</text>'; }
+      if (i % step === 0) xl += '<text x="' + cx.toFixed(1) + '" y="' + (H + 16) + '" text-anchor="middle" font-size="10.5" fill="#5F6763">' + fdate(r.day) + '</text>';
+    });
+    var line = pts.map(function (q, i) { return (i ? 'L' : 'M') + q[0] + ' ' + q[1]; }).join(' ');
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + T0 + '</h2><p class="sub">Bars: customer conversations CSRs answered that day (left scale). Line: booking conversion that day, booked ÷ booked + not booked (right scale). Hover a day for details.</p></div>' +
+      '<div class="mut" style="font-size:12px;display:flex;gap:14px;align-items:center"><span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#DCE5DD;margin-right:6px"></span>Conversations answered</span><span><span style="display:inline-block;width:14px;height:2px;background:' + G + ';margin-right:6px;vertical-align:middle"></span>Booking conversion %</span></div></div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + (H + 24) + '" width="' + W + '" height="' + (H + 24) + '" style="display:block;margin-top:10px;max-width:100%" role="img" aria-label="Conversations answered and booking conversion by day">' +
+      '<text x="4" y="10" font-size="10" fill="#5F6763">Calls</text><text x="' + (W - 4) + '" y="10" text-anchor="end" font-size="10" fill="#2F7D5B">Conversion</text>' + grid + labs + bars +
+      '<path d="' + line + '" fill="none" stroke="' + G + '" stroke-width="2" stroke-linejoin="round"/>' + pts.map(function (q) { return '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="3" fill="' + G + '"/>'; }).join('') + vals + xl + '</svg>';
+  }
+  var DCOLS = [['name', W_CSR, ''], ['brand', W_BRAND, ''],
+    ['answered', 'Customer conversations', 'Answered inbound calls with a real customer on the line. Internal/staff calls, voicemail, spam, wrong numbers, hang-ups in the phone menu and calls with no one on the line are left out, so this is lower than the phone system’s inbound count in Call Center Efficiency.'],
+    ['tta', 'Time to answer', 'Average seconds from the call reaching this CSR’s queue to the CSR picking up. From the LightSpeed phone system.'],
+    ['aht', 'Avg talk time', 'Average length of this CSR’s customer conversations, minutes:seconds.'],
+    ['talk_all', 'Total talk time', 'All phone time this CSR spent on calls, inbound and outbound, hours:minutes. From the LightSpeed phone system.'],
+    ['out_calls', 'Outbound calls', 'Calls this CSR dialed out in LightSpeed, with how many connected.'],
+    ['opps', 'Opportunities', 'Customer conversations where a sales or service job could be booked. Follow-ups on existing work (billing, status checks, reschedules, warranty) are not opportunities. Only opportunities get a QA score.'],
+    ['booked', 'Booked', 'Opportunities that ended with the job booked.'],
+    ['conv', 'Conversion', 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Green = 60% or higher.'],
+    ['svc_conv', 'Resi service conv.', 'Booking conversion on residential service calls (repairs, springs, openers, tune-ups): booked ÷ booked + not booked.'],
+    ['sales_conv', 'Resi sales conv.', 'Booking conversion on residential sales calls (new doors, installs, entry-door sales): booked ÷ booked + not booked.'],
+    ['card_rate', 'Card asks', 'Share of this CSR’s booked residential service calls where they asked for a card to hold the appointment (asked ÷ eligible bookings). Commercial, PDQ and Dan’s Doors are left out.'],
+    ['cap_rate', 'Card captured', 'When the CSR asked for a card, how often the customer gave one (captured ÷ asked). Same numbers as the Card capture page.'],
+    ['qa', 'QA score', 'Average call-flow score (0–100) on this CSR’s opportunity calls: introduce, listen, collect info, tech is the expert, offer and ask for the booking, card on file, overcome the objection, confirm and thank.'],
+    ['sentiment', 'Sentiment', 'Average customer mood at the end of the call, from 1 (upset) to 5 (happy). Counts every customer conversation, not just opportunities.']];
+  function drawDashTable() {
+    var el = $('dcsr'); if (!el) return;
+    var multi = (DASH.d.brands || []).length !== 1, cols = DCOLS.filter(function (c) { return multi || c[0] !== 'brand'; });
+    var rows = (DASH.d.agents || []).slice(), k = DASH.sort, dir = DASH.dir;
+    rows.forEach(function (a) { a.cap_rate = +a.card_asked ? 100 * (+a.card_captured || 0) / +a.card_asked : null; a.talk_all = a.talk_all_sec; });
+    rows.sort(function (a, b) { if (k === 'name' || k === 'brand') return dir * String(a[k] || '').localeCompare(String(b[k] || '')); var av = a[k] == null ? -1e9 : +a[k], bv = b[k] == null ? -1e9 : +b[k]; return dir * (av - bv); });
+    var th = function (c) { var on = k === c[0], asc = dir === 1; return '<th class="sortable" data-dsort="' + c[0] + '" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '"><span style="display:inline-flex;align-items:center;white-space:nowrap">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + (c[2] ? itip(c[2]) : '') + '</span></th>'; };
+    var c0 = DASH.d.cur || {}, cd = DASH.d.card || {};
+    var cell = function (a, key) {
+      if (key === 'name') return '<td><div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 28) + '<span style="font-weight:600">' + esc(a.name) + '</span></div></td>';
+      if (key === 'brand') return '<td>' + esc(short(a.brand)) + '</td>';
+      if (key === 'answered' || key === 'opps' || key === 'booked') return '<td class="num">' + fmt(a[key]) + '</td>';
+      if (key === 'tta') return '<td class="num">' + dSec(a.tta) + '</td>';
+      if (key === 'aht') return '<td class="num">' + dTalk(a.aht) + '</td>';
+      if (key === 'talk_all') return '<td class="num">' + (a.talk_all_sec ? Math.floor(+a.talk_all_sec / 3600) + ':' + ('0' + Math.floor((+a.talk_all_sec % 3600) / 60)).slice(-2) : '—') + '</td>';
+      if (key === 'out_calls') return '<td class="num">' + (a.out_calls != null ? fmt(a.out_calls) + (a.out_answered != null ? ' <span class="mut" style="font-size:11.5px">(' + fmt(a.out_answered) + ' connected)</span>' : '') : '—') + '</td>';
+      if (key === 'svc_conv' || key === 'sales_conv') { var dk = key === 'svc_conv' ? 'svc' : 'sales', dd = +a[dk + '_dec'] || 0; return '<td class="num" title="' + (dd ? fmt(a[dk + '_booked'] || 0) + ' booked of ' + fmt(dd) + ' decided' : 'No decided calls') + '">' + (dd ? dPct(a[key]) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a[dk + '_booked'] || 0) + '/' + fmt(dd) + ')</span>' : '—') + '</td>'; }
+      if (key === 'conv') return '<td class="num" style="color:' + (a.conv == null ? 'inherit' : +a.conv >= 60 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + dPct(a.conv) + '</td>';
+      if (key === 'card_rate') return '<td class="num" title="' + (a.card_booked ? fmt(a.card_asked) + ' of ' + fmt(a.card_booked) + ' card-eligible bookings' : 'No card-eligible bookings') + '">' + (a.card_booked ? dPct(a.card_rate) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_asked) + '/' + fmt(a.card_booked) + ')</span>' : '—') + '</td>';
+      if (key === 'cap_rate') return '<td class="num">' + (+a.card_asked ? dPct(100 * (+a.card_captured || 0) / +a.card_asked) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_captured || 0) + '/' + fmt(a.card_asked) + ')</span>' : '—') + '</td>';
+      if (key === 'qa') return '<td class="num"><span class="pill" style="' + (a.qa == null ? 'background:#F3F1EC' : chipScore(+a.qa)) + '">' + dNum(a.qa, 1) + '%' + '</span></td>';
+      if (key === 'sentiment') return '<td class="num">' + dNum(a.sentiment, 2) + '</td>';
+      return '<td></td>';
+    };
+    var cmp = function (label, v, tot, f, upGood) { var good = v == null || tot == null || upGood == null ? null : upGood ? +v >= +tot : +v <= +tot; return '<div style="flex:1 1 150px;min-width:140px;padding:10px 12px;background:#fff;border:1px solid #E8E4DC;border-radius:10px"><div class="cap">' + label + '</div><div class="num" style="font-size:18px;font-weight:600;margin-top:6px;color:' + (good == null ? 'inherit' : good ? '#1F5A41' : '#A8441A') + '">' + f(v) + '</div><div class="mut" style="font-size:11.5px;margin-top:2px">' + W_BRAND.toLowerCase() + ' ' + f(tot) + '</div></div>'; };
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + W_CSR + ' Results: Calls, Bookings and Quality</h2><p class="sub">One row per ' + W_CSR + ' for this period: customer conversations, speed to answer, talk time, bookings, card asks, QA score and customer sentiment. Hover any ⓘ for how a column is counted. Click a ' + W_CSR + ' to compare them with the ' + W_BRAND.toLowerCase() + ' and open their calls.</p></div></div>' +
+      '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + cols.map(th).join('') + '</tr></thead><tbody>';
+    if (!rows.length) h += '<tr><td colspan="' + cols.length + '" class="mut">No ' + W_CSRS.toLowerCase() + ' with calls in this range.</td></tr>';
+    // Roll-up (Rob 11/16): brand total on top, then a subtotal row for each location.
+    var agg = function (list) { var t = { answered: 0, opps: 0, booked: 0, decided: 0, card_booked: 0, card_asked: 0, card_captured: 0, talk_all_sec: 0, out_calls: 0, out_answered: 0, svc_dec: 0, svc_booked: 0, sales_dec: 0, sales_booked: 0 }, w = { tta: [0, 0], aht: [0, 0], qa: [0, 0], sentiment: [0, 0] };
+      list.forEach(function (a) { var n = +a.answered || 0; ['answered', 'opps', 'booked', 'decided', 'card_booked', 'card_asked', 'card_captured', 'talk_all_sec', 'out_calls', 'out_answered', 'svc_dec', 'svc_booked', 'sales_dec', 'sales_booked'].forEach(function (f) { t[f] += +a[f] || 0; });
+        if (a.tta != null) { w.tta[0] += a.tta * n; w.tta[1] += n; } if (a.aht != null) { w.aht[0] += a.aht * n; w.aht[1] += n; } if (a.qa != null) { var sc = +a.scored || +a.opps || 0; w.qa[0] += a.qa * sc; w.qa[1] += sc; } if (a.sentiment != null) { w.sentiment[0] += a.sentiment * n; w.sentiment[1] += n; } });
+      Object.keys(w).forEach(function (f) { t[f] = w[f][1] ? w[f][0] / w[f][1] : null; });
+      t.svc_conv = t.svc_dec ? 100 * t.svc_booked / t.svc_dec : null; t.sales_conv = t.sales_dec ? 100 * t.sales_booked / t.sales_dec : null;
+      t.conv = t.decided ? 100 * t.booked / t.decided : null; t.card_rate = t.card_booked ? 100 * t.card_asked / t.card_booked : null; return t; };
+    var totRow = function (label, sub, t, top) { return '<tr style="background:' + (top ? '#E6F0EA' : '#F1EEE8') + ';font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(label) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + sub + '</span></td>' + cols.slice(1).map(function (c) { return c[0] === 'brand' ? '<td></td>' : cell(t, c[0]); }).join('') + '</tr>'; };
+    var groups = !multi && LROSTER && rows.length ? byLoc(LROSTER, rows, function (a) { return a.name; }) : [['', rows]];
+    if (rows.length > 1) h += totRow(multi ? 'All ' + W_BRANDS.toLowerCase() : short((DASH.d.brands || [])[0] || '') + ' total', rows.length + ' ' + W_CSRS.toLowerCase(), agg(rows), true);
+    groups.forEach(function (g) { if (groups.length > 1) h += totRow(g[0], g[1].length + ' ' + (g[1].length === 1 ? W_CSR : W_CSRS).toLowerCase(), agg(g[1]), false); g[1].forEach(function (a) {
+      var id = a.name + '|' + a.brand, open = DASH.open === id;
+      h += '<tr class="click" data-dopen="' + esc(id) + '" tabindex="0" aria-expanded="' + open + '"' + (open ? ' style="background:#FAF8F3"' : '') + '>' + cols.map(function (c) { return cell(a, c[0]); }).join('') + '</tr>';
+      if (open) h += '<tr><td colspan="' + cols.length + '" style="white-space:normal;background:#F7F5F0;padding:14px"><div style="display:flex;flex-wrap:wrap;gap:10px">' +
+        cmp('Time to answer', a.tta, DASH.d.cdr && DASH.d.cdr.tta, dSec, false) + cmp('Avg talk time', a.aht, c0.aht, dTalk, null) + cmp('Conversion', a.conv, c0.conv, dPct, true) +
+        cmp('Card asks', a.card_rate, cd.ask_rate, dPct, true) + cmp('QA score', a.qa, c0.qa, function (v) { return dNum(v, 1); }, true) + cmp('Sentiment', a.sentiment, c0.sentiment, function (v) { return dNum(v, 2); }, true) +
+        '</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="sel btnd" data-agent="' + esc(a.name) + '">Open ' + esc(a.name.split(' ')[0]) + '’s page</button><button class="sel" data-dcalls="' + esc(a.name) + '">Hear their calls</button>' +
+        (a.card_booked ? '<button class="sel" data-dcalls="' + esc(a.name) + '" data-dnocard="1">Bookings with no card ask</button>' : '') + '</div></td></tr>';
+    }); });
+    el.innerHTML = h + '</tbody></table></div>';
+  }
+
   function vOverview(tok) {
-    setMain('<div class="hero" style="position:relative;overflow:hidden;border-radius:16px;padding:16px 8px 8px;min-height:120px">' +
-      '<svg viewBox="0 0 700 180" preserveAspectRatio="xMaxYMid slice" style="position:absolute;right:0;top:0;width:60%;height:100%" aria-hidden="true"><path d="M0 180 C120 150 180 70 300 90 C420 110 470 20 560 30 C620 36 660 10 700 0 L700 180 Z" fill="#DCE5DD"/><path d="M80 180 C200 140 260 110 360 120 C470 132 520 60 610 70 C650 75 680 60 700 50 L700 180 Z" fill="#C6D5C9"/><path d="M200 180 C300 160 360 140 450 146 C540 152 600 110 700 100 L700 180 Z" fill="#A9C0AF"/><path d="M330 180 C420 170 500 160 580 164 C640 167 680 150 700 146 L700 180 Z" fill="#8AAA93"/></svg>' +
-      '<div style="position:relative"><div class="cap" style="letter-spacing:.3em">GarageCo · Call quality intelligence</div><h1 style="margin:10px 0 0;font-size:34px;font-weight:600;line-height:1.1;letter-spacing:-0.03em">Turn every conversation<br>into a booked job.</h1></div></div>' +
-      '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
-      '<div class="oq-card" id="needscard">' + skel(60, 1) + '</div>' +
+    if (MGR && LOCK && DASHON()) { S.brand = LOCK; vFocus(tok, 'brand', true); return; }
+    if (DASHON()) { vOverviewDash(tok); return; }
+    var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
+    setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before</span></div>' +
+      (DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
+      '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' + '<div id="recapln"></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:3 1 520px;min-width:0" id="fcrcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div></div>' +
       '<div class="oq-card" id="tempcard">' + skel(24, 4) + '</div>' +
       '<div class="row"><div class="oq-card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="oq-card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="oq-card" style="flex:1 1 360px;max-height:470px;overflow-y:auto" id="reviewcard">' + skel(50, 4) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
+    if (DASHON()) loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); }).catch(function () { var x = $('dphone'); if (x) x.remove(); });
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; var cur = r[0], prev = r[1]; noteKnown(cur);
       kpiCards(cur);
@@ -206,7 +574,103 @@ export function mountOpsisQA(ROOT, cfg) {
     loadFocus(null, null).then(function (f) { if (tok === T) stepCard(f, 'stepcard', null, null); fitReview(); }).catch(function () {});
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
     needsCard(tok);
+    recapLine(tok);
     api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawFcr(); drawSent(); drawTemper(); kpiLate(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 8); } }).catch(function () { var a = $('fcrcard'), b = $('sentcard'); if (a) a.innerHTML = '<div class="mut">First contact resolution couldn\u2019t load.</div>'; if (b) b.innerHTML = '<div class="mut">Sentiment couldn\u2019t load.</div>'; var c = $('tempcard'); if (c) c.innerHTML = '<div class="mut">Temper shift couldn\u2019t load.</div>'; });
+  }
+
+  // Overview, tile layout (Becky 11/17): phone + booking tiles open their pages; QA and Sentiment open in place; By brand table; daily trend.
+  function vOverviewDash(tok) {
+    S.tileFrom = null;
+    if (!LOCK && !MGR) { vExec(tok); return; }
+    var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
+    setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before · click a tile for the details</span></div>' +
+      '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div>' + '<div id="recapln"></div>' +
+      '<div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div>' +
+      '<div id="fmood" style="display:none"><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:3 1 420px;min-width:0" id="tempcard">' + skel(24, 4) + '</div></div></div>' +
+      '<div class="oq-card" id="brandcard">' + skel(30, 8) + '</div>' +
+      '<div class="oq-card" id="dtrend">' + skel(180, 1) + '</div>');
+    recapLine(tok);
+    loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); }).catch(function (e) { if (tok === T && $('dphone')) $('dphone').innerHTML = errBox(e); });
+    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok !== T) return; noteKnown(r[0]); LASTBR = [r[0], r[1]]; brandTable(r[0], r[1], 'brandcard', 12); }).catch(function (e) { if (tok === T && $('brandcard')) $('brandcard').innerHTML = errBox(e); });
+    loadFocus(null, null).then(function (f) { if (tok === T && $('fsteps')) stepCard(f, 'fsteps', null, null); }).catch(function () {});
+    api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawSent(); drawTemper(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 12); } }).catch(function () {});
+  }
+
+  // Executive summary (Becky 11/17): the admin Overview for C-level readers. Money first, then operations,
+  // a brand scorecard with status dots, plain-English highlights and the week-by-week trend.
+  // Becky 11/17: targets = conversion 75%+, abandon under 3%, card asks 75%+. Red = conversion under 50%, abandon over 5%, card asks under 70%. Yellow = between target and red.
+  var EXEC_RULES = { convRed: 50, convYel: 75, abRed: 5, abYel: 3, cardRed: 70, cardYel: 75 };
+  var XSORT = { k: 'rev', dir: -1 }, XDRAW = null;
+  function xTile(label, val, sub, to, linkLbl, dark, tip) {
+    var at = to ? (to.charAt(0) === '#' ? ' data-ddrill="' + to.slice(1) + '" role="button" aria-expanded="false"' : ' data-tgo="' + to + '" role="link"') + ' tabindex="0"' : '';
+    return '<div class="oq-card' + (to ? ' click' : '') + '"' + at + ' style="padding:16px 18px 14px;min-width:0;' + (dark ? 'background:#14302A;border-color:#14302A;color:#fff' : '') + '"' + (linkLbl ? ' title="' + esc(String(linkLbl).replace(/[›▾]/g, '').trim()) + '"' : '') + '>' +
+      '<div class="cap" style="' + (dark ? 'color:#9DBBAE' : '') + '">' + label + (tip ? itip(tip) : '') + '</div><div class="num" style="font-size:' + (dark ? 30 : 26) + 'px;font-weight:600;letter-spacing:-0.03em;margin-top:8px;line-height:1.1">' + val + '</div>' +
+      '<div style="font-size:12px;margin-top:6px;line-height:1.4;color:' + (dark ? '#BFD1C8' : 'var(--mut)') + '">' + sub + '</div>' + (to ? '<span class="go" aria-hidden="true"' + (dark ? ' style="color:#9CC6B2"' : '') + '>' + (to.charAt(0) === '#' ? '▾' : '↗') + '</span>' : '') + '</div>';
+  }
+  function xUp(cur, prev, unit, upGood, dark, dec) { if (cur == null || prev == null || isNaN(cur) || isNaN(prev)) return ''; var d = cur - prev; if (Math.abs(d) < (dec ? 0.05 : 0.5)) return '<span style="font-weight:700">no change</span> · '; var good = upGood ? d > 0 : d < 0;
+    return '<span style="font-weight:700;color:' + (good ? (dark ? '#9CC6B2' : '#1F5A41') : (dark ? '#F0A57E' : '#A8441A')) + '">' + (d > 0 ? '▲ ' : '▼ ') + (unit === '$' ? '$' + Math.abs(Math.round(d)).toLocaleString() : unit === '%' ? Math.abs(d).toFixed(1) + '%' : Math.abs(d).toFixed(dec || 1) + unit) + '</span> · '; }
+  function xMoney(v) { v = +v || 0; return v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + Math.round(v / 1e3) + 'K' : '$' + Math.round(v); }
+  function vExec(tok) {
+    var n = daysBetween(S.start, S.end), ps = addDays(S.start, -n), pe = addDays(S.start, -1), br = S.brands.length ? S.brands : null;
+    setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(CFG.clientName || 'GarageCo') + ' · Executive summary</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + n + ' days before</span></div>' +
+      '<div class="cap" style="margin:4px 0 8px 2px;font-size:11px;letter-spacing:.14em">Revenue</div>' +
+      '<div id="xhero" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">' + skel(120, 1).repeat(4) + '</div>' +
+      '<div class="cap" style="margin:4px 0 8px 2px;font-size:11px;letter-spacing:.14em">Phones &amp; quality</div>' +
+      '<div id="xops" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">' + skel(110, 1).repeat(5) + '</div>' + '<div id="recapln"></div>' +
+      '<div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div>' +
+      '<div id="fmood" style="display:none"><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:3 1 420px;min-width:0" id="tempcard">' + skel(24, 4) + '</div></div></div>' +
+      '<div class="oq-card" id="xbrands">' + skel(30, 8) + '</div>' +
+      '<div class="row" style="align-items:flex-start"><div class="ai" style="flex:1 1 320px;min-width:0" id="insightcard">' + skel(30, 4) + '</div><div class="oq-card" style="flex:2 1 560px;min-width:0" id="fweek">' + skel(180, 1) + '</div></div>');
+    var X = { d: null, m: null, mp: null };
+    recapLine(tok);
+    var paint = function () { if (tok !== T) return; var d = X.d, m = X.m; if (!d || !m) return;
+      var c = d.cur || {}, p = d.prev || {}, x = d.cdr, xp = d.cdr_prev || {}, cd = d.card || {}, t = m.totals || {}, tp = (X.mp || {}).totals || {};
+      var aov = function (tt) { var k = (+tt.booked || 0) - (+tt.booked_unvalued || 0); return k > 0 && +tt.booked_value ? tt.booked_value / k : null; };
+      var a1 = aov(t), a0 = aov(tp), perPt = a1 && +t.decided ? (t.decided * 0.01 * a1) * (30 / Math.max(1, n)) : null;
+      var conv = +t.decided ? 100 * t.booked / t.decided : null, pconv = +tp.decided ? 100 * tp.booked / tp.decided : null;
+      var bvPrev = +tp.booked_value || null, bvChg = bvPrev ? 100 * ((+t.booked_value || 0) - bvPrev) / bvPrev : null;
+      $('xhero').innerHTML =
+        xTile('Booked revenue', xMoney(t.booked_value), (bvChg == null ? '' : Math.abs(bvChg) < 0.05 ? '<span style="font-weight:700">no change</span> · ' : '<span style="font-weight:700;color:' + (bvChg >= 0 ? '#9CC6B2' : '#F0A57E') + '">' + (bvChg >= 0 ? '▲ ' : '▼ ') + Math.abs(bvChg).toFixed(1) + '%</span> · ') + fmt(t.booked) + ' booked jobs', 'money', 'Revenue ›', true, 'Value of the jobs booked on calls in this period. Matched Acumatica invoices where we have them, otherwise the brand’s Acumatica average for that kind of job.') +
+        xTile('Revenue left on the table', xMoney(t.ctrl_value), fmt(t.ctrl_n) + ' winnable calls didn’t book', 'calls:notbooked', 'Why they didn’t book ›', true, 'Opportunities that didn’t book for a reason the CSR could have controlled (no ask, no offer, price given first and so on), each valued at the brand’s average job. An estimate of what better calls could recover.') +
+        xTile('Booking conversion', conv == null ? '—' : conv.toFixed(1) + '%', xUp(conv, pconv, ' pts', true, true) + (perPt ? 'each point ≈ ' + xMoney(perPt) + '/month' : 'booked ÷ booked + not booked'), 'calls:notbooked', 'Not-booked calls ›', true, 'Booked ÷ (booked + not booked) on opportunity calls. “Each point” = one more booking per 100 decided calls × average order value, scaled to a month.') +
+        xTile('Avg order value', a1 ? '$' + Math.round(a1).toLocaleString() : '—', xUp(a1, a0, '$', true, true) + 'from Acumatica', 'money', 'Revenue ›', true, 'Booked revenue ÷ valued booked jobs.');
+      var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
+      $('xops').innerHTML =
+        xTile('Calls', x ? fmt(x.offered) : '—', (x && xp.offered ? xUp(100 * (x.offered - xp.offered) / xp.offered, 0, '%', true) : '') + (x ? fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'no phone data'), 'phone', 'Phone stats ›') +
+        xTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', xUp(x ? +x.abandon_pct : null, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) + 'target: under ' + EXEC_RULES.abYel + '%', 'phone', 'Phone stats ›') +
+        xTile('QA score', dNum(c.qa, 1), xUp(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, '', true).replace(/ · $/, '') || fmt(c.scored) + ' calls scored', '#fsteps', 'Call flow ▾') +
+        xTile('Card asks', dPct(cr), xUp(cr, pcr, ' pts', true).replace(/ · $/, '') || 'target ' + EXEC_RULES.cardYel + '%+', 'cardcap', 'Card capture ›') +
+        xTile('Customer sentiment', dNum(c.sentiment, 2), xUp(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, '', true, false, 2) + '1–5 scale', '#fmood', 'Sentiment ▾') +
+        (CFG.leadTime ? xTile('Booking lead time', '<span id="xlead">…</span>', '<span id="xleads"></span>', 'leadtime', 'Booking lead time ›', false, LT_TIP) : '');
+      fillLead('xlead', 'xleads');
+      // Brand scorecard
+      var ab = {}; (d.cdr_by_brand || []).forEach(function (r) { ab[r.brand] = r; });
+      var mb = {}; (m.by_brand || []).forEach(function (r) { mb[r.brand] = r; });
+      var B = {}; (d.agents || []).forEach(function (a) { var b = B[a.brand] || (B[a.brand] = { decided: 0, booked: 0, qs: 0, qn: 0, cb: 0, ca: 0 }); b.decided += +a.decided || 0; b.booked += +a.booked || 0; if (a.qa != null) { var sc = +a.scored || 0; b.qs += a.qa * sc; b.qn += sc; } b.cb += +a.card_booked || 0; b.ca += +a.card_asked || 0; });
+      var rows = Object.keys(B).filter(function (b) { return b && b !== '—'; }).map(function (b) { var o = B[b], cv = o.decided ? 100 * o.booked / o.decided : null, abp = ab[b] ? +ab[b].abandon_pct : null, card = CARD_SKIP.indexOf(b) >= 0 || !o.cb ? null : 100 * o.ca / o.cb, R = EXEC_RULES;
+        var red = (cv != null && cv < R.convRed) || (abp != null && abp > R.abRed) || (card != null && card < R.cardRed), yel = (cv != null && cv < R.convYel) || (abp != null && abp > R.abYel) || (card != null && card < R.cardYel);
+        return { b: b, rev: mb[b] ? +mb[b].booked_value || 0 : 0, lost: mb[b] ? +mb[b].ctrl_value || 0 : 0, cv: cv, ab: abp, qa: o.qn ? o.qs / o.qn : null, card: card, st: red ? 'r' : yel ? 'y' : 'g' }; })
+        ;
+      var dot = { r: '#C2562A', y: '#E0A82A', g: '#2F7D5B' }, stl = { r: 'Needs attention', y: 'Watch', g: 'On track' };
+      // Sortable columns (Becky 11/17): click a header to sort, again to flip. Default = booked revenue, high to low.
+      var SCOLS = [['b', W_BRAND, ''], ['rev', 'Booked revenue', 'Value of jobs booked on calls this period.'], ['lost', 'Left on the table', 'Winnable calls that didn’t book × the brand’s average job.'], ['cv', 'Conversion', ''], ['ab', 'Abandon', ''], ['qa', 'QA', ''], ['card', 'Card asks', 'PDQ and Dan’s Doors don’t take a card at booking.']];
+      var sth = function (c) { var on = XSORT.k === c[0], asc = XSORT.dir === 1; return '<th class="sortable" data-xsort="' + c[0] + '" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '" style="cursor:pointer"><span style="display:inline-flex;align-items:center;white-space:nowrap">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + (c[2] ? itip(c[2]) : '') + '</span></th>'; };
+      var srt = function () { var k = XSORT.k, dir = XSORT.dir; rows.sort(function (a, b) { if (k === 'b') return dir * short(a.b).localeCompare(short(b.b)); var av = a[k] == null ? -1e12 : +a[k], bv = b[k] == null ? -1e12 : +b[k]; return dir * (av - bv) || (b.rev - a.rev); }); };
+      var cell = function (v, f, bad) { return '<td class="num" style="' + (bad ? 'color:#A8441A;font-weight:600' : '') + '">' + f(v) + '</td>'; };
+      var R = EXEC_RULES;
+      XDRAW = function () { if (!$('xbrands')) return; srt();
+      $('xbrands').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Brand Scorecard' + itip('Targets: conversion ' + R.convYel + '%+, abandon under ' + R.abYel + '%, card asks ' + R.cardYel + '%+. Red: conversion under ' + R.convRed + '%, abandon over ' + R.abRed + '% or card asks under ' + R.cardRed + '%. Yellow: between target and red. A brand’s dot is its worst metric.') + '</h2><p class="sub">Click a brand to open its dashboard, or a column to sort.</p></div><div class="mut" style="font-size:11.5px;white-space:nowrap">' + ['g', 'y', 'r'].map(function (k) { return '<span style="display:inline-block;width:9px;height:9px;border-radius:9px;background:' + dot[k] + ';margin:0 4px 0 10px"></span>' + stl[k]; }).join('') + '</div></div>' +
+        '<div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr>' + SCOLS.map(sth).join('') + '</tr></thead><tbody>' +
+        rows.map(function (r) { return '<tr class="click" data-brand="' + esc(r.b) + '" tabindex="0" title="Open ' + esc(short(r.b)) + '’s dashboard"><td><span title="' + stl[r.st] + '" style="display:inline-block;width:10px;height:10px;border-radius:10px;background:' + dot[r.st] + ';margin-right:8px"></span><b style="font-weight:600">' + esc(short(r.b)) + '</b></td><td class="num">' + (r.rev ? xMoney(r.rev) : '—') + '</td><td class="num mut">' + (r.lost ? xMoney(r.lost) : '—') + '</td>' +
+          cell(r.cv, dPct, r.cv != null && r.cv < R.convRed, r.cv != null && r.cv < R.convYel) + cell(r.ab, dPct, r.ab != null && r.ab > R.abRed, r.ab != null && r.ab > R.abYel) + cell(r.qa, function (v) { return dNum(v, 1); }) + cell(r.card, function (v) { return v == null ? '—' : dPct(v); }, r.card != null && r.card < R.cardRed, r.card != null && r.card < R.cardYel) + '</tr>'; }).join('') + '</tbody></table></div>'; };
+      XDRAW();
+    };
+    loadDash().then(function (d) { X.d = d || {}; DASH.d = X.d; paint(); }).catch(function (e) { if (tok === T && $('xhero')) $('xhero').innerHTML = errBox(e); });
+    api({ action: 'money', start: S.start, end: S.end, brands: br }).then(function (m) { X.m = m || {}; paint(); }).catch(function () { X.m = {}; paint(); });
+    api({ action: 'money', start: ps, end: pe, brands: br }).then(function (m) { X.mp = m || {}; paint(); }).catch(function () {});
+    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok !== T) return; noteKnown(r[0]); LASTBR = [r[0], r[1]]; insightCard(r[0], r[1]); }).catch(function () { var e = $('insightcard'); if (e) e.remove(); });
+    loadFocus(null, null).then(function (f) { if (tok !== T) return; if ($('fsteps')) stepCard(f, 'fsteps', null, null); if ($('fweek')) focusWeekly(f); }).catch(function () { var e = $('fweek'); if (e) e.remove(); });
+    api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawSent(); drawTemper(); } }).catch(function () {});
   }
 
   var BKEY = 'oqBrands:' + CLIENT;
@@ -230,13 +694,14 @@ export function mountOpsisQA(ROOT, cfg) {
     var k = rep.kpis || {}, p = rep.prev || {}, d = rep.daily || [];
     var daily = d.filter(function (x) { return x.calls >= 100; });
     var defs = [
-      ['Inbound calls handled', fmt((rep.funnel || {}).conversations || 0), (function (c0, p0) { return p0 ? delta(100 * (c0 - p0) / p0, 0, '%') : delta(null, null); })((rep.funnel || {}).conversations || 0, (rep.prev || {}).scored || 0), G, 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', daily.map(function (x) { return x.calls; }), '<b>Inbound calls handled</b><br>Customer conversations on INBOUND calls answered by the front-line CSRs on the scorecard list (plus the AI receptionists), all of them scored.<br><br>Not counted: outbound calls, CSRs who aren’t on the list, voicemail, internal staff calls, phone-menu hang-ups, wrong numbers and spam.<br><br>Change = % vs the previous period of the same length. Click to see the calls.', 'allcalls'],
-      ['Avg QA score', k.avg != null ? k.avg.toFixed(1) : '—', delta(k.avg, p.avg, ''), G, 'M12 3l2.6 5.6 6 .7-4.5 4.1 1.3 6L12 16.4 6.6 19.4l1.3-6L3.4 9.3l6-.7z', daily.map(function (x) { return x.avg; }), '<b>Avg QA score</b><br>Average call-flow score (0–100) of the inbound calls handled. Each step the CSR did earns its points; a step that didn’t apply to the call counts as done.<br><br>Change = points vs the previous period. Click to see the lowest-scoring calls.', 'lowscore'],
+      ['Inbound calls handled', fmt((rep.funnel || {}).conversations || 0), (function (c0, p0) { return p0 ? delta(100 * (c0 - p0) / p0, 0, '%') : delta(null, null); })((rep.funnel || {}).conversations || 0, (rep.prev || {}).scored || 0), G, 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', daily.map(function (x) { return x.calls; }), '<b>Inbound calls handled</b><br>Customer conversations on INBOUND calls answered by the front-line CSRs on the scorecard list (plus the AI CSRs), all of them scored.<br><br>Not counted: outbound calls, CSRs who aren’t on the list, voicemail, internal staff calls, phone-menu hang-ups, wrong numbers and spam.<br><br>Change = % vs the previous period of the same length. Click to see the calls.', 'allcalls'],
+      ['Avg QA score', k.avg != null ? k.avg.toFixed(1) + '%' : '—', delta(k.avg, p.avg, ''), G, 'M12 3l2.6 5.6 6 .7-4.5 4.1 1.3 6L12 16.4 6.6 19.4l1.3-6L3.4 9.3l6-.7z', daily.map(function (x) { return x.avg; }), '<b>Avg QA score</b><br>Average call-flow score (0–100) of the inbound calls handled. Each step the CSR did earns its points; a step that didn’t apply to the call counts as done.<br><br>Change = points vs the previous period. Click to see the lowest-scoring calls.', 'lowscore'],
       ['Booking rate', p1(k.booking_rate), delta(k.booking_rate, p.booking_rate, ' pts'), G, 'M5 5h14v15H5zM5 9h14M9 3v4M15 3v4M9 14l2 2 4-4', daily.map(function (x) { return x.decided ? x.booked / x.decided * 100 : null; }), '<b>Booking rate</b><br>Booked calls ÷ booking opportunities that ended booked or not booked. Opportunities transferred to another team are left out, and so are calls with no booking opportunity. The Insights cohort bar shows the same counts.<br><br>Change = points vs the previous period. Click to see calls that didn’t book.', 'notbooked'],
       ['Ask rate · not booked', '<span id="kpiasknb">…</span>', '', O, 'M21 12a9 9 0 1 1-4.2-7.6M21 4v5h-5', [], '<b>Ask rate · not booked</b><br>Of the booking opportunities that did NOT book, the share where the CSR still directly asked to put the customer on the schedule. Low = customers leaving without being asked.<br><br>Click to hear the ones where the CSR didn’t ask.', 'asknb'],
       ['Card asked', '<span id="kpicard">…</span>', '', O, 'M3 6h18v12H3zM3 10h18M7 15h3', [], CARD_DEF, 'nocard'],
       ['Avg order value', '<span id="kpiaov">…</span>', '', G, 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', [], '<b>Avg order value</b><br>Average value of a booked job. Each booked call gets its brand’s average won-job total from Acumatica for its type (residential or commercial, service or sales, warranty). Where an invoice is matched to the call, its real amount is used instead.<br><br><b>est.</b> means it’s built from those averages rather than each call’s own invoice.<br><br>Click for the Revenue page.', 'aov']
     ];
+    if (OPSIS) { defs = defs.filter(function (x) { return x[7] !== 'nocard' && x[7] !== 'aov'; }); defs[0][0] = 'Conversations handled'; }
     var h = defs.map(function (x) {
       var s = series(x[5], 200, 34, 3), bg = x[3] === G ? '#E6F0EA' : '#FCEBDD';
       return '<button class="oq-card click" data-kpi="' + x[7] + '" aria-label="' + esc(x[0] + '. ' + String(x[6]).replace(/<[^>]+>/g, ' ')) + '" style="padding:16px 18px 12px;text-align:left;font:inherit;color:inherit"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:9px;background:' + bg + ';display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + x[3] + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + x[4] + '"/></svg></div><span class="cap">' + x[0] + '</span><span aria-hidden="true" data-tip="' + esc(x[6]) + '" title="" style="margin-left:auto;cursor:help;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">i</span></div>' +
@@ -248,7 +713,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="position:relative;width:70px;height:70px;flex-shrink:0"><svg width="70" height="70" viewBox="0 0 72 72" role="img" aria-label="' + ratio + ' percent were real conversations"><circle cx="36" cy="36" r="30" fill="none" stroke="#EEEBE4" stroke-width="7"/><circle cx="36" cy="36" r="30" fill="none" stroke="#14302A" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + dash + ' 188.5" transform="rotate(-90 36 36)"/></svg><span class="num" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">' + ratio + '%</span></div></div><div class="mut" style="font-size:11px;margin-top:8px">The rest were voicemail, internal, IVR or wrong numbers.</div></div>';
     $('kpis').innerHTML = h; kpiLate();
   }
-  var CARD_SKIP = ['PDQ', 'Dan\u2019s Doors', "Dan's Doors"];
+  // 11/20 Becky: Dan's Doors now has a card ask rate. The server leaves out Dan's calls before 11/21 (qa_card_skip); PDQ stays out.
+  var CARD_SKIP = ['PDQ'];
   var CARD_DEF = '<b>Card asked</b><br><b>Booked residential service calls only</b> (repairs, springs, openers, tune-ups; not new doors, installs or commercial customers) where the CSR asked for a credit or debit card to hold the appointment. It counts as asked even if the customer said no. Paying an invoice or a deposit on finished work doesn’t count.<br><br>PDQ and Dan’s Doors are left out (they don’t take a card at booking). Same numbers as the Card capture page.<br><br>Click to compare brands and hear the booked service calls with no card ask.';
   function cardTot(cc) { var b = 0, a = 0, k = 0; ((cc || {}).by_brand || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; b += +x.booked || 0; a += +x.asked_cc || 0; k += +x.captured_cc || 0; }); return { booked: b, asked: a, captured: k }; }
   function kpiLate() {
@@ -279,10 +745,10 @@ export function mountOpsisQA(ROOT, cfg) {
   function brandTable(cur, prev, el, limit) {
     var rows = sortRows(brandRows(cur, prev), S.brandSort), shown = limit ? rows.slice(0, limit) : rows;
     var th = function (k, l, t) { var on = S.brandSort === k, asc = (k === 'name') === ((S.brandDir || 1) === 1); return '<th class="sortable" data-bsort="' + k + '" title="' + esc(t) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + l + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
-    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Performance by Brand</h2><p class="sub">Click a brand to see why it’s trending the way it is.</p></div>' + (limit ? '<button class="more" data-go="brands">All ' + rows.length + ' brands →</button>' : '') + '</div>' +
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Performance by ' + W_BRAND + '</h2><p class="sub">Click a brand to see why it’s trending the way it is.</p></div>' + (limit ? '<button class="more" data-go="brands">All ' + rows.length + ' brands →</button>' : '') + '</div>' +
       '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + th('name', 'Brand', 'Sort A–Z') + '' + th('calls', 'Inbound calls handled', 'Inbound customer conversations handled') + th('avg', 'Avg QA score', 'Average call-flow (QA) score, 0–100') + th('change', 'Change', 'Score change vs the previous period') + th('rate', 'Booking rate', 'Booked ÷ calls with a booking decision') + th('asknb', 'Ask rate · not booked', 'Not-booked opportunities where the CSR still asked for the booking') + '<th></th></tr></thead><tbody>';
     shown.forEach(function (r) {
-      h += '<tr class="click" data-brand="' + esc(r.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:10px">' + bbadge(r.name) + '<span style="font-weight:600">' + esc(short(r.name)) + '</span></div></td><td class="num">' + fmt(r.calls) + '</td><td class="num">' + (r.avg != null ? r.avg.toFixed(1) : '—') + '</td><td>' + delta(r.avg, r.pavg, '') + '</td>' +
+      h += '<tr class="click" data-brand="' + esc(r.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:10px">' + bbadge(r.name) + '<span style="font-weight:600">' + esc(short(r.name)) + '</span></div></td><td class="num">' + fmt(r.calls) + '</td><td class="num">' + (r.avg != null ? r.avg.toFixed(1) + '%' : '—') + '</td><td>' + delta(r.avg, r.pavg, '') + '</td>' +
         '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:44px">' + p1(r.rate) + '</span><div class="track" style="flex:1"><div style="background:' + ((r.rate || 0) >= 60 ? G : O) + ';width:' + (r.rate || 0) + '%"></div></div></div></td>' +
         '<td class="num">' + (r.asknb != null ? r.asknb.toFixed(0) + '%' : '<span class="mut">—</span>') + '</td><td class="mut" aria-hidden="true">›</td></tr>';
     });
@@ -310,6 +776,30 @@ export function mountOpsisQA(ROOT, cfg) {
     $('coachcard').innerHTML = h;
   }
 
+  // Coaching flag on the CSR scorecard (Rob + Marc 11/18, Becky 11/20: show it here instead of anywhere else).
+  // Same playbook as the credit-card push: low QA and/or low booking rate = a 15–20 minute coaching session, plus a few
+  // specific kudos. Thresholds are placeholders until Becky and Rob set the targets (COACH_T).
+  var COACH_T = { qa: 80, book: 60, minOpps: 5 };
+  function coachFlag(f, agent) {
+    var el = $('fcoach'); if (!el) return;
+    var c = (f.kpis || {}).cur || {}, qa = c.avg != null ? Number(c.avg) : null, br = pct(c.booked, c.decided);
+    var lowQa = qa != null && qa < COACH_T.qa, lowBk = br != null && (c.decided || 0) >= COACH_T.minOpps && br < COACH_T.book;
+    var steps = (f.steps || []).filter(function (s) { return s.applies >= 3; });
+    var best = steps.slice().sort(function (a, b) { return b.rate - a.rate; }).filter(function (s) { return s.rate >= 70; }).slice(0, 2);
+    var worst = steps.slice().sort(function (a, b) { return a.rate - b.rate; }).filter(function (s) { return s.rate < 70; }).slice(0, 2);
+    var nm = function (s) { return STEPNAMES[s.key] || s.label || s.key; };
+    var kudos = best.map(function (s) { return '<li><b>' + esc(nm(s)) + '</b> on ' + Math.round(s.rate) + '% of calls</li>'; }).join('');
+    if (!lowQa && !lowBk) {
+      el.innerHTML = kudos ? '<div class="oq-card" style="border-color:#B9D7C6;background:#F2F8F4"><h2 class="ttl" style="margin:0">On track · kudos to share</h2><p class="sub">QA ' + (qa != null ? Math.round(qa) : '—') + ' · booking ' + (br != null ? Math.round(br) + '%' : '—') + '. No coaching session needed. Call out what’s working:</p><ul style="margin:8px 0 0 18px;font-size:13.5px;line-height:1.6">' + kudos + '</ul></div>' : '';
+      return;
+    }
+    var why = [lowQa ? 'QA ' + Math.round(qa) + ' (target ' + COACH_T.qa + ')' : null, lowBk ? 'booking ' + Math.round(br) + '% (target ' + COACH_T.book + '%)' : null].filter(Boolean).join(' · ');
+    el.innerHTML = '<div class="oq-card" style="border-color:#F1C9A8;background:#FFF7EF"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl" style="margin:0">Coaching session: 15–20 minutes</h2><p class="sub">' + esc(agent) + ' · ' + esc(why) + ' · ' + esc(rangeLabel()) + '</p></div>' +
+      '<button class="sel btnd" data-ask="' + esc('Give me a 15–20 minute coaching plan for ' + agent + ': the 2 things to work on with call examples, and 2 specific kudos.') + '">Build the session</button></div>' +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:10px">' +
+      '<div><div class="cap">Work on</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (worst.length ? worst.map(function (s) { return '<li><button class="lnk" data-step="' + s.key + '" data-sagent="' + esc(agent) + '">' + esc(nm(s)) + '</button>: done on ' + Math.round(s.rate) + '% of calls · ' + fmt(s.missed) + ' missed</li>'; }).join('') : '<li>Review the low-scoring calls below</li>') + '</ul></div>' +
+      '<div><div class="cap">Kudos to give</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (kudos || '<li>Find one recent call they handled well</li>') + '</ul></div></div></div>';
+  }
   function stepCard(f, el, brand, agent) {
     var steps = (f.steps || []).filter(function (s) { return s.applies > 0; });
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Call Flow Performance</h2><p class="sub">How often each step is done when it applies · click a step to hear the calls that missed it. Calls before Oct 22, 2026 count through the matching step of the earlier call flow; Card on file, Overcome the objection and Tech is the expert are tracked from Oct 22 on.</p></div></div><div style="display:flex;flex-direction:column;gap:2px;margin-top:10px"><div class="cap" style="display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 44px 64px;gap:12px;padding:0 4px 4px;border-bottom:1px solid var(--line2)"><span>Step</span><span></span><span style="text-align:right">Done</span><span style="text-align:right">Change</span></div>';
@@ -320,9 +810,9 @@ export function mountOpsisQA(ROOT, cfg) {
     $(el).innerHTML = h + '</div>';
   }
 
-  var NEEDS_TIP = { upset: '<b>Upset customers</b><br>Customer conversations where the customer was upset, angry or complained.', low: '<b>Low scores</b><br>Real booking opportunities where the call scored 40 or under.', ctrl: '<b>Controllable misses</b><br>Booking opportunities that didn’t book for a reason the CSR could have fixed, such as not asking for the booking or not knowing the answer.', other: '<b>Other not booked</b><br>Booking opportunities that didn’t book where the customer said no after being asked, or another team owns the follow-up.' };
+  var NEEDS_TIP = { upset: '<b>Upset customers</b><br>Customer conversations where the customer was upset, angry or complained.', low: '<b>Low scores</b><br>Real booking opportunities where the call scored 40% or under.', ctrl: '<b>Controllable misses</b><br>Booking opportunities that didn’t book for a reason the CSR could have fixed, such as not asking for the booking or not knowing the answer.', other: '<b>Other not booked</b><br>Booking opportunities that didn’t book where the customer said no after being asked, or another team owns the follow-up.' };
   var NEEDS = [['upset', 'Upset customers', 'Upset, angry or complaint signs on the call', '#B42318', '#FDECEA'],
-    ['low', 'Low scores', 'Real opportunities scored 40 or under', '#C2551F', '#FFF4E8'],
+    ['low', 'Low scores', 'Real opportunities scored 40% or under', '#C2551F', '#FFF4E8'],
     ['ctrl', 'Controllable misses', 'Not booked for a reason the CSR could fix', '#8A5A00', '#FBF3DF'],
     ['other', 'Not booked: outside CSR control', 'Not booked for a reason the CSR couldn’t control', '#3B4541', '#F3F1EC']];
   function needsCard(tok) {
@@ -354,7 +844,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<span style="flex:1;min-width:0"><span style="display:flex;justify-content:space-between;gap:8px"><b style="font-weight:600">' + esc(r.agent || 'Unknown CSR') + '</b><span class="mut num" style="font-size:11.5px">' + fdate(r.date) + ' ' + fhour(r.hour) + ' · ' + fsecs(r.secs) + '</span></span>' +
       '<span class="mut" style="display:block;font-size:12px">' + esc(short(r.brand)) + (r.phone ? ' · ' + esc(r.phone) : '') + (r.topic ? ' · ' + esc(r.topic) : '') + '</span>' + xferPill(r) +
       '<span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541;white-space:normal">' + esc((r.summary || '').slice(0, 150)) + ((r.summary || '').length > 150 ? '…' : '') + '</span></span>' +
-      '<span class="pill num" style="' + chipScore(r.score) + ';font-size:13px">' + r.score + '</span></button>';
+      '<span class="pill num" style="' + chipScore(r.score) + ';font-size:13px"' + (r.score == null ? ' title="Not scored"' : '') + '>' + (r.score == null ? '—' : r.score + '%') + '</span></button>';
   }
 
   function xferPill(r) {
@@ -387,13 +877,13 @@ export function mountOpsisQA(ROOT, cfg) {
       pts.map(function (p) { return '<div style="position:absolute;left:calc(' + p.x + '% - 4px);top:' + (p.y - 4) + 'px;width:8px;height:8px;border-radius:99px;background:#fff;border:2px solid #14302A;pointer-events:none;box-sizing:border-box"></div>'; }).join('');
     var busiest = rows.reduce(function (m, r) { return r.per > m.per ? r : m; }), big = rows.filter(function (r) { return r.total >= 200; }), worst = (big.length ? big : rows).reduce(function (m, r) { return r.avg < m.avg ? r : m; }), best = (big.length ? big : rows).reduce(function (m, r) { return r.avg > m.avg ? r : m; });
     var bars = rows.map(function (r, i) {
-      var tip = '<b>' + esc(r.full) + '</b><br>' + fmt(Math.round(r.per)) + ' calls on average' + (mode === 'dow' ? ' (' + r.n + ' ' + DL[DN.indexOf(r.lab)] + (r.n === 1 ? '' : 's') + ')' : '') + '<br>Score ' + r.avg.toFixed(1) + (r.rate != null ? ' · booking ' + r.rate.toFixed(0) + '%' : '') + '<br>' + fmt(r.total) + ' calls total';
-      return '<div class="tcol" data-tip="' + esc(tip) + '" tabindex="0" aria-label="' + esc(r.full + ': ' + Math.round(r.per) + ' calls, score ' + r.avg.toFixed(1)) + '" style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:default;border-radius:6px"><div style="width:70%;max-width:44px;border-radius:5px 5px 1px 1px;background:' + (r === busiest ? '#8FC3B3' : '#CFE5DF') + ';height:' + (r.per / top * 100).toFixed(1) + '%"></div></div>';
+      var tip = '<b>' + esc(r.full) + '</b><br>' + fmt(Math.round(r.per)) + ' calls on average' + (mode === 'dow' ? ' (' + r.n + ' ' + DL[DN.indexOf(r.lab)] + (r.n === 1 ? '' : 's') + ')' : '') + '<br>Score ' + r.avg.toFixed(1) + '%' + (r.rate != null ? ' · booking ' + r.rate.toFixed(0) + '%' : '') + '<br>' + fmt(r.total) + ' calls total';
+      return '<div class="tcol" data-tip="' + esc(tip) + '" tabindex="0" aria-label="' + esc(r.full + ': ' + Math.round(r.per) + ' calls, score ' + r.avg.toFixed(1) + '%') + '" style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:default;border-radius:6px"><div style="width:70%;max-width:44px;border-radius:5px 5px 1px 1px;background:' + (r === busiest ? '#8FC3B3' : '#CFE5DF') + ';height:' + (r.per / top * 100).toFixed(1) + '%"></div></div>';
     }).join('');
     var labs = rows.map(function (r) { return '<div style="flex:1;text-align:center;font-size:11.5px;color:#3B4541;font-weight:500">' + r.lab + '</div>'; }).join('');
-    var nums = rows.map(function (r) { return '<div style="flex:1;text-align:center;font-size:11px;line-height:1.35"><div style="color:#3B4541">' + fmt(Math.round(r.per)) + '</div><div style="color:' + (r === worst ? '#B4461F' : '#14302A') + ';font-weight:600">' + r.avg.toFixed(1) + '</div></div>'; }).join('');
+    var nums = rows.map(function (r) { return '<div style="flex:1;text-align:center;font-size:11px;line-height:1.35"><div style="color:#3B4541">' + fmt(Math.round(r.per)) + '</div><div style="color:' + (r === worst ? '#B4461F' : '#14302A') + ';font-weight:600">' + r.avg.toFixed(1) + '%' + '</div></div>'; }).join('');
     el.innerHTML = head +
-      '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12.5px"><span><span class="mut">Busiest</span> <b>' + busiest.full + '</b> · ' + fmt(Math.round(busiest.per)) + ' calls</span><span><span class="mut">Best score</span> <b>' + best.full + '</b> · ' + best.avg.toFixed(1) + '</span><span><span class="mut">Lowest score</span> <b style="color:#B4461F">' + worst.full + '</b> · ' + worst.avg.toFixed(1) + '</span></div>' +
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12.5px"><span><span class="mut">Busiest</span> <b>' + busiest.full + '</b> · ' + fmt(Math.round(busiest.per)) + ' calls</span><span><span class="mut">Best score</span> <b>' + best.full + '</b> · ' + best.avg.toFixed(1) + '%' + '</span><span><span class="mut">Lowest score</span> <b style="color:#B4461F">' + worst.full + '</b> · ' + worst.avg.toFixed(1) + '%' + '</span></div>' +
       '<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:14px"><span class="mut">▮ Avg calls</span><span style="color:#14302A">● QA score</span></div>' +
       '<div style="position:relative;height:' + H + 'px;margin:8px 44px 0 50px">' + grid + '<div style="position:absolute;inset:0;display:flex">' + bars + '</div>' + line + '</div>' +
       '<div style="display:flex;margin:8px 44px 0 50px">' + labs + '</div>' +
@@ -406,7 +896,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!c) { if (tipEl) tipEl.style.display = 'none'; return; }
     if (!tipEl) { tipEl = document.createElement('div'); tipEl.style.cssText = 'position:fixed;z-index:80;pointer-events:none;background:#14302A;color:#fff;font-size:12px;line-height:1.5;padding:9px 12px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);max-width:320px'; ROOT.appendChild(tipEl); }
     tipEl.innerHTML = c.getAttribute('data-tip'); tipEl.style.display = 'block';
-    var r = c.getBoundingClientRect(); tipEl.style.left = Math.min(window.innerWidth - 330, Math.max(8, r.left + r.width / 2 - 160)) + 'px'; var tt = r.top - tipEl.offsetHeight - 8; tipEl.style.top = (tt < 8 ? r.bottom + 8 : tt) + 'px';
+    var r = c.getBoundingClientRect(); tipEl.style.left = Math.min(window.innerWidth - 330, Math.max(8, r.left + r.width / 2 - 160)) + 'px'; var tb = r.bottom + 8; tipEl.style.top = (tb + tipEl.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - tipEl.offsetHeight - 8) : tb) + 'px';
   });
   function insightCard(cur, prev) {
     var k = cur.kpis || {}, p = cur.prev || {}, items = [];
@@ -427,71 +917,161 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- Brands list ----------
   function vBrands(tok) {
     setMain(crumb([['Brands']]) + '<div class="oq-card" id="brandall">' + skel(30, 10) + '</div>');
-    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok === T) { noteKnown(r[0]); brandTable(r[0], r[1], 'brandall', 0); } }).catch(function (e) { if (tok === T) $('brandall').innerHTML = errBox(e); });
+    var BR = null;
+    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok === T) { noteKnown(r[0]); BR = r; brandTable(r[0], r[1], 'brandall', 0); } }).catch(function (e) { if (tok === T) $('brandall').innerHTML = errBox(e); });
+    // 11/19: the "Ask rate · not booked" column comes from qaextras. This page never loaded it, so the column was blank
+    // unless you'd opened the Overview first (and then it showed the Overview's date range). Load it here and redraw.
+    loadExtras().then(function () { if (tok === T && BR) brandTable(BR[0], BR[1], 'brandall', 0); }).catch(function () {});
   }
 
   // ---------- Brand / CSR drill-down ----------
-  function vFocus(tok, kind) {
+  function vFocus(tok, kind, asOverview) {
     var name = kind === 'brand' ? S.brand : S.agent;
     var title = kind === 'brand' ? short(name) : name;
-    setMain(crumb(kind === 'brand' ? [['Brands', 'brands'], [title]] : [['CSRs', 'csrs'], [title]]) +
+    setMain(crumb(asOverview ? [['Overview']] : MGR ? (kind === 'brand' ? [['Overview', 'overview'], [title]] : [['Overview', 'overview'], [title]]) : kind === 'brand' ? [[W_BRANDS, 'brands'], [title]] : [[W_CSRS, 'csrs'], [title]]) +
       '<div class="oq-card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:14px">' + (kind === 'brand' ? bbadge(name).replace('26px;height:26px', '44px;height:44px').replace('10.5px', '15px') : avatar(name, 44)) +
       '<div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em">' + esc(kind === 'brand' ? name : name) + '</h1><div class="mut" style="font-size:12.5px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' vs the ' + daysBetween(S.start, S.end) + ' days before</div></div></div>' +
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
-      '<div class="ai" id="why"><div style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b></div><div class="md" style="margin-top:10px"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
-      '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' + skel(90, 1).repeat(4) + '</div>' +
-      '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
-      (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
-      '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' +
+      (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div><div class="oq-card" id="fmood" style="display:none">' + skel(30, 4) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
+      '<div class="ai" id="why"><div class="click" data-whytog="1" role="button" tabindex="0" aria-expanded="false" style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b><span class="mut" style="margin-left:auto;font-size:12.5px">Show</span><svg id="whychev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="2" style="transition:transform .15s" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></div><div class="md" style="margin-top:10px;display:none"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
+      (kind === 'csr' ? '<div id="fcoach"></div>' : '') +
+      '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' + (kind === 'brand' && DASHON() ? ';display:none' : '') + '">' + skel(90, 1).repeat(4) + '</div>' +
+      (kind === 'brand' && DASHON() ? '<div class="oq-card" id="fweek">' + skel(200, 1) + '</div>' : '<div class="row" style="align-items:flex-start"><div style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:12px"><div class="oq-card" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" id="feff">' + skel(30, 5) + '</div></div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>') +
+      // 11/20 Becky: Call Center Efficiency sits under the week-by-week chart (left column) so it isn't pushed below Call Flow Performance
+      (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' + (DASHON() ? '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' : '') : (CFG.csrNotes ? '<div class="oq-card" id="fnotes">' + skel(30, 3) + '</div>' : '') + '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
       '<div class="row" style="align-items:flex-start" id="fmix">' + skel(20, 10) + '</div>' +
-      '<div class="oq-card" id="fmood">' + skel(30, 4) + '</div>');
+      (kind === 'brand' && DASHON() ? '' : '<div class="oq-card" id="fmood">' + skel(30, 4) + '</div>'));
     var brand = kind === 'brand' ? name : null, agent = kind === 'csr' ? name : null;
     focusEff(tok, kind, brand, agent); focusMood(tok, kind, brand, agent);
+    if (kind === 'brand' && DASHON()) { DASH.open = null; loadDash([brand]).then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
+      .catch(function () { ['dphone', 'dbook', 'dtrend', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); var k = $('fk'); if (k) k.style.display = ''; }); }
     loadFocus(brand, agent).then(function (f) {
       if (tok !== T) return;
-      focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
+      if (FOCUSWHY) FOCUSWHY(f); focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
       if (kind === 'brand') focusMovers(f);
+      if (kind === 'csr') coachFlag(f, agent);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
+    if (kind === 'csr' && CFG.csrNotes) CFG.csrNotes(agent).then(function (n) { if (tok === T) drawCsrNotes(n || [], agent); }).catch(function () { var x = $('fnotes'); if (x) x.remove(); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent Calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
-    var FMT = ' Format: short bullet points only, no paragraphs, no more than 12 words per bullet. Start with one bold headline sentence. Then a "**Call flow**" section listing only the steps that moved, in call-flow order (Step 1 Introduce, Step 2 Listen, Step 3 Collect info, Step 4 Sell the appointment: offer, ask, card, objection, expert, Step 5 Confirm and thank), each as "Step N Name: X% (was Y%)". Then a "**Why calls didn\u2019t book**" section with the top 2-3 customer reasons and counts in plain words (say "call dropped or cut off" instead of "call ended before booking"). Then "**Focus this week**" with one bullet. Use plain words, no jargon.';
-    var q = (kind === 'brand' ? 'Explain why ' + name + ' is trending the way it is in this period compared with the previous one: the steps, CSRs and reasons that moved, and the single most valuable fix.'
-      : 'Give a short coaching summary for CSR ' + name + ': how they are trending vs the previous period, their strongest and weakest steps, and one specific thing to coach this week.') + FMT;
-    var ckey = 'why2|' + kind + '|' + name + '|' + S.start + '|' + S.end;
-    (whyCache[ckey] || (whyCache[ckey] = api({ action: 'ask', question: q, start: S.start, end: S.end, brands: brand ? [brand] : null }))).then(function (r) {
-      if (tok !== T) return; var el = document.querySelector('#why .md'); if (el) el.innerHTML = md(r.answer);
-    }).catch(function (e) { delete whyCache[ckey]; if (tok !== T) return; var el = document.querySelector('#why .md'); if (el) el.innerHTML = '<span class="mut">' + esc(e.message) + '</span>'; });
+    var ckey = 'why7|' + kind + '|' + name + '|' + S.start + '|' + S.end;
+    // Executive summary (Becky 10/29): only what actually moved, cause -> effect, no noise. Numbers match the tiles.
+    var runWhy = function (f) {
+      var c = (f.kpis || {}).cur || {}, p = (f.kpis || {}).prev || {}, r1 = function (v) { return v == null ? 'n/a' : (Math.round(v * 10) / 10) + '%'; };
+      var facts = 'Use exactly these headline numbers (they match the page): avg QA score ' + (c.avg != null ? c.avg : 'n/a') + ' (was ' + (p.avg != null ? p.avg : 'n/a') + '); booking rate ' + r1(pct(c.booked, c.decided)) + ' (was ' + r1(pct(p.booked, p.decided)) + '); booking ask rate ' + r1(pct(c.asked, c.opps)) + ' (was ' + r1(pct(p.asked, p.opps)) + ').';
+      // Management summary layout (Becky 11/2): intro, numbered drivers, one priority coaching opportunity, key takeaway.
+      var rules = ' ' + 'Write a short management summary in EXACTLY this markdown layout (fill in the brackets, keep the headings):' + '\n' + '' + '\n' + '[Two sentences: how ' + (kind === 'brand' ? 'the brand' : 'this CSR') + ' is trending on QA score and booking, and the main behaviors behind it.]' + '\n' + '[One sentence on the result, e.g. bookings vs call volume.]' + '\n' + '' + '\n' + '## What\'s Driving the Change' + '\n' + '### 1. [Short title] ([key change, e.g. +8 percentage points])' + '\n' + '- [Fact with the before and after numbers]' + '\n' + '- [What it means or why it matters]' + '\n' + '- Individual improvements include:' + '\n' + '  - [CSR name]: [+x.x points in average QA score]' + '\n' + '### 2. [Short title]' + '\n' + '[Optional one-sentence description]' + '\n' + '- [Metric]: Increased from [x]% to [y]%.' + '\n' + '### 3. [Short title]' + '\n' + '[One or two short sentences]' + '\n' + '' + '\n' + '## Priority Coaching Opportunity' + '\n' + '### [CSR name] – [Skill to work on]' + '\n' + '[One sentence: why this is the clearest opportunity.]' + '\n' + '- Booking rate: [x]% across [n] decided opportunities.' + '\n' + '- Booking requests: Asked for the appointment on [a] of [b] opportunities.' + '\n' + '- Primary coaching focus: [Step and name]' + '\n' + '[One or two sentences describing a real example call from this period, with its [call:<id>] link if you have it.]' + '\n' + '**Recommended action this week:** [One or two sentences.]' + '\n' + '' + '\n' + '## Key Takeaway' + '\n' + '[Two sentences: what is working, and the next opportunity.]' + '\n' + '' + '\n' + 'RULES: Use 2 or 3 drivers, only changes big enough to matter (about 5 points or more on a rate, or 10 or more calls on a reason); if ' + (kind === 'brand' ? 'the brand' : 'this CSR') + ' declined, use the same layout but title the section "What\'s Behind the Change". Leave out "Individual improvements" if no CSR clearly drove it. In Priority Coaching Opportunity pick ONE CSR with enough calls to matter; if no single CSR stands out, use a team-wide skill as the title instead. Every number must come from the data; never invent one. Say "call dropped or cut off" instead of "call ended before booking". No intro line like "Here is", no arrows, emoji or symbols.' + '\n' + 'TONE: managers read this and CSRs may see it. Professional, supportive and specific. Describe behaviors and opportunities, never label a person. Never call anyone a drag, weak link, weakest, worst, poor, bad, struggling, failing, a problem, an underperformer or a liability.';
+      var q = (kind === 'brand' ? 'Explain why ' + name + ' is trending the way it is this period compared with the one before.' : 'Explain why CSR ' + name + ' is trending the way they are this period compared with the one before, and how to coach them.') + ' ' + facts + rules;
+      (whyCache[ckey] || (whyCache[ckey] = api({ action: 'ask', mode: 'summary', question: q, start: S.start, end: S.end, brands: brand ? [brand] : null }))).then(function (r) {
+        if (tok !== T) return; var el = document.querySelector('#why .md'); if (el) el.innerHTML = md(whyTidy(r.answer));
+      }).catch(function (e) { delete whyCache[ckey]; if (tok !== T) return; var el = document.querySelector('#why .md'); if (el) el.innerHTML = '<span class="mut">' + esc(e.message) + '</span>'; });
+    };
+    FOCUSWHY = runWhy;
   }
-  var whyCache = {};
-  function itip(t) { return '<span aria-hidden="true" data-tip="' + esc(t) + '" style="margin-left:5px;cursor:help;width:14px;height:14px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;text-transform:none">i</span>'; }
-  var KDEF = { 'Avg QA score': 'Average call-flow score (0-100) on scored customer calls.', 'Booking rate': 'Booked calls divided by revenue opportunities that ended booked or not booked. Follow-ups on existing work (warranty, status, billing, reschedules) are not counted.', 'Booking ask rate': 'Share of revenue opportunities where the CSR directly asked to book the appointment.', 'Card ask rate': 'Share of booked residential service calls where the CSR asked for a card to hold the appointment. Commercial, PDQ and Dan\u2019s Doors are left out.', 'Customer conversations': 'Answered calls with a real customer conversation. Voicemail, internal/staff calls, wrong numbers and calls with no conversation are left out.' };
+  var whyCache = {}, FOCUSWHY = null;
+  function whyTidy(t) {
+    var lines = String(t || '').replace(/\r/g, '').split('\n'), out = [], started = false;
+    lines.forEach(function (l) { var tr = l.trim();
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(tr)) return;
+      if (!started) { if (!tr) return; if (/^(here(’|')?s|here is|now i|let me|okay|sure|below is)\b/i.test(tr.replace(/\*/g, ''))) return; started = true; }
+      l = l.replace(/\b(collect_info|sell_offer|sell_ask|sell_card|sell_objection|sell_expert|confirm_thank|sell_appointment|capture_payment)\b( step)?/g, function (m0, k) { return (STEPNAMES[k] || k) + ' step'; });
+      out.push(l.replace(/\s*(?:→|->)\s*/g, ' to ').replace(/^(\s*[-•*]\s+)\*\*-\s*/, '$1**')); });
+    return out.join('\n').trim();
+  }
+  // Glanceable summary (Becky 11/2): every driver/action shows as a short bold headline with sub-bullets underneath,
+  // whatever shape the AI returned (long run-on bullets, text on the next line, "Next step:" lines).
+  function whyShape(t) {
+    var pieces = function (x) {
+      x = String(x || '').replace(/\s*(?:→|->)\s*/g, ' to ').replace(/\*\*/g, '').replace(/\b(vs|approx|e\.g|i\.e)\.\s/gi, '$1 ').trim();
+      var out = x.split(/(?<=[.!?])\s+(?=[A-Z0-9“"(])|;\s+|\s+[—–]\s+|,\s+(?=(?:then|which|so that|so)\s)/).map(function (y) { y = y.trim().replace(/^(then|which|so that|so)\s+/i, '').replace(/[.;,]$/, ''); return y.charAt(0).toUpperCase() + y.slice(1); }).filter(Boolean);
+      var res = [];
+      out.forEach(function (y) { perCsr(y).forEach(function (z) { res.push(z); }); });
+      return res.slice(0, 6);
+    };
+    // One CSR per line (Becky 11/2): "Ana (52), Bo (48) and Cy (40)" -> three lines, but only when every part names a CSR.
+    var names = ((typeof KNOWN !== 'undefined' && KNOWN.agents) || []).filter(function (a) { return a && a.length >= 3; });
+    var hasCsr = function (x) { var lx = x.toLowerCase(); return names.some(function (a) { return lx.indexOf(String(a).toLowerCase()) >= 0 || lx.indexOf(String(a).split(' ')[0].toLowerCase() + ' ') === 0; }); };
+    function perCsr(y) {
+      var m = y.match(/^([^:]{3,60}:\s+)(.*)$/), lead = m && !hasCsr(m[1]) ? m[1] : '', body = lead ? m[2] : y;
+      var parts = body.split(/,\s+(?:and\s+)?|\s+and\s+|;\s+/).map(function (q) { return q.trim(); }).filter(Boolean);
+      if (parts.length < 2 || !parts.every(hasCsr)) return [y];
+      return parts.map(function (q) { q = q.replace(/^(and|plus)\s+/i, ''); return q.charAt(0).toUpperCase() + q.slice(1); });
+    }
+    var lines = String(t || '').replace(/\r/g, '').split('\n'), out = [], last = null, started = false;
+    lines.forEach(function (raw) {
+      var l = raw.replace(/\s+$/, ''), tr = l.trim();
+      if (!tr || /^-{3,}$/.test(tr)) return;
+      if (!started && /^(here(’|')?s|here is|now i|let me|okay|sure)\b/i.test(tr.replace(/\*/g, ''))) return;
+      started = true;
+      var sub = l.match(/^\s{2,}[-•*]\s+(.*)$/);
+      if (sub && last) { out.push('  - ' + sub[1].replace(/\s*(?:→|->)\s*/g, ' to ')); return; }
+      var bl = tr.match(/^(?:[-•*]|\d+[.)])\s+(.*)$/);
+      if (bl) {
+        var body = bl[1].replace(/^\*\*\s*-\s*/, '**'), m = body.match(/^\*\*(.+?)\*\*\s*(?:[—–:-]\s*)?(.*)$/), title, rest;
+        if (m) { title = m[1].replace(/[:.]$/, ''); rest = m[2]; }
+        else { var k = body.search(/\s[—–]\s|:\s/); if (k > 0 && body.length > 70) { title = body.slice(0, k); rest = body.slice(k).replace(/^\s*[—–:]\s*/, ''); } else { title = null; rest = body; } }
+        if (title) { out.push('- **' + title.trim() + '**'); pieces(rest).forEach(function (q) { out.push('  - ' + q); }); }
+        else out.push('- ' + rest.replace(/\s*(?:→|->)\s*/g, ' to '));
+        last = 'b'; return;
+      }
+      var lab = tr.match(/^\*\*([^*]{2,40}?):?\*\*:?\s+(.+)$/);
+      if (lab) { out.push('**' + lab[1].replace(/:$/, '') + '**'); out.push('- **' + pieces(lab[2])[0] + '**'); pieces(lab[2]).slice(1).forEach(function (q) { out.push('  - ' + q); }); last = 'b'; return; }
+      if (last === 'b' && !/^\*\*.*\*\*$/.test(tr)) { pieces(tr).forEach(function (q) { out.push('  - ' + q); }); return; }
+      out.push(tr.replace(/\s*(?:→|->)\s*/g, ' to ')); last = null;
+    });
+    return out.join('\n');
+  }
+  function itip(t) { return '<span aria-hidden="true" data-tip="' + esc(t) + '" style="margin-left:6px;vertical-align:middle;cursor:help;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;text-transform:none;letter-spacing:0">i</span>'; }
+  function ctip(t) { return '<span aria-hidden="true" data-tip="' + esc(t) + '" style="margin-left:auto;cursor:help;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;text-transform:none;letter-spacing:0">i</span>'; }
+  function capRow(cap, tip) { return '<div style="display:flex;align-items:center;gap:8px"><span class="cap">' + cap + '</span>' + (tip ? ctip(tip) : '') + '</div>'; }
+  var KDEF = { 'Avg QA score': 'Average call-flow score (0-100) on sales and service opportunity calls. Calls that aren\u2019t a sales opportunity (billing, job follow-ups, status checks) aren\u2019t scored, but still count toward customer sentiment.', 'Booking rate': 'Booked calls divided by revenue opportunities that ended booked or not booked. Follow-ups on existing work (warranty, status, billing, reschedules) are not counted.', 'Booking ask rate': 'Share of revenue opportunities where the CSR directly asked to book the appointment.', 'Card ask rate': 'Share of booked residential service calls where the CSR asked for a card to hold the appointment. Commercial, PDQ and Dan\u2019s Doors are left out.', 'Customer conversations': 'Answered calls with a real customer conversation. Voicemail, internal/staff calls, wrong numbers and calls with no conversation are left out.' };
   function focusKpis(f, brand, agent) {
     var c = (f.kpis || {}).cur || {}, p = (f.kpis || {}).prev || {};
-    var defs = [['Avg QA score', c.avg, p.avg, function (v) { return v != null ? v.toFixed(1) : '—'; }, ''], ['Booking rate', pct(c.booked, c.decided), pct(p.booked, p.decided), p1, ' pts'], ['Booking ask rate', pct(c.asked, c.opps), pct(p.asked, p.opps), p1, ' pts'], ['Card ask rate', null, null, p1, 'card'], ['Customer conversations', c.calls, p.calls, fmt, null]];
+    var defs = [['Avg QA score', c.avg, p.avg, function (v) { return v != null ? v.toFixed(1) : '—'; }, ''], ['Booking rate', pct(c.booked, c.decided), pct(p.booked, p.decided), p1, ' pts'], ['Booking ask rate', pct(c.asked, c.opps), pct(p.asked, p.opps), p1, ' pts']].concat(OPSIS ? [] : [['Card ask rate', null, null, p1, 'card']]);
     var tk = T;
-    api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tk !== T) return; var e = $('fkcard'); if (!e) return; var b = 0, a = 0, bp = 0;
+    if (!OPSIS) api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tk !== T) return; var e = $('fkcard'); if (!e) return; var b = 0, a = 0, bp = 0;
       (cc && cc.by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; if (brand && x.brand !== brand) return; if (agent && String(x.agent || '').toLowerCase() !== String(agent).toLowerCase()) return; b += +x.booked || 0; a += +x.asked_cc || 0; });
       e.innerHTML = b ? (100 * a / b).toFixed(1) + '%' : '—'; var su = $('fkcardsub'); if (su) su.textContent = b ? fmt(a) + ' of ' + fmt(b) + ' booked residential service calls' : 'No booked residential service calls'; }).catch(function () { var e = $('fkcard'); if (e) e.innerHTML = '—'; });
     $('fk').innerHTML = defs.map(function (d) {
-      if (d[4] === 'card') return '<div class="oq-card" style="padding:14px 16px"><div class="cap">' + d[0] + itip(KDEF[d[0]]) + '</div><div style="margin-top:10px"><span class="num" id="fkcard" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">…</span></div><div class="mut num" id="fkcardsub" style="font-size:11.5px;margin-top:6px"></div></div>';
-      return '<div class="oq-card" style="padding:14px 16px"><div class="cap">' + d[0] + itip(KDEF[d[0]]) + '</div><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px"><span class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">' + d[3](d[1]) + '</span>' + (d[4] === null ? '<span class="mut num" style="font-size:12px">was ' + fmt(d[2]) + '</span>' : delta(d[1], d[2], d[4])) + '</div><div class="mut num" style="font-size:11.5px;margin-top:6px">before: ' + d[3](d[2]) + '</div></div>';
+      if (d[4] === 'card') return '<div class="oq-card" style="padding:14px 16px">' + capRow(d[0], KDEF[d[0]]) + '<div style="margin-top:10px"><span class="num" id="fkcard" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">…</span></div><div class="mut num" id="fkcardsub" style="font-size:11.5px;margin-top:6px"></div></div>';
+      return '<div class="oq-card" style="padding:14px 16px">' + capRow(d[0], KDEF[d[0]]) + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px"><span class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">' + d[3](d[1]) + '</span>' + (d[4] === null ? '' : delta(d[1], d[2], d[4])) + '</div><div class="mut num" style="font-size:11.5px;margin-top:6px">before: ' + d[3](d[2]) + '</div></div>';
     }).join('');
   }
+  // Rubric changes (Becky 11/20) shown in gray, so a score move can be read against the scoring change, not just the CSRs:
+  // 11-step Universal CSR Call Flow live 9/27 (migration garageco_11_step_rubric_and_hold_timing), Rob's 5-step talk path 10/20.
+  var PROGRAM_MARKS = [['2026-09-27', '11-step rubric', 'rubric'], ['2026-10-20', '5-step call flow', 'rubric'], ['2026-10-27', 'Training starts', 'program']];
+  // 4 / 6 / 12-week toggle (Becky 11/20), remembered per browser
+  var WKN = (function () { try { var v = +localStorage.getItem('oq_weeks'); return [4, 6, 12].indexOf(v) >= 0 ? v : 12; } catch (e) { return 12; } })();
+  var WKF = null;
   function focusWeekly(f) {
-    var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; });
-    if (w.length < 2) { $('fweek').innerHTML = '<h2 class="ttl">Week by Week</h2><p class="mut">Not enough weeks yet.</p>'; return; }
-    var n = w.length, avgs = w.map(function (x) { return x.avg; }), lo = Math.floor(Math.min.apply(null, avgs) - 2), hi = Math.ceil(Math.max.apply(null, avgs) + 2);
-    var rates = w.map(function (x) { return x.decided ? x.booked / x.decided * 100 : null; });
-    var px = function (i) { return ((i + .5) / n * 1000).toFixed(1); };
-    var line = w.map(function (x, i) { return (i ? 'L' : 'M') + px(i) + ' ' + (190 - (x.avg - lo) / (hi - lo) * 170 - 10).toFixed(1); }).join(' ');
-    var rl = rates.map(function (v, i) { return v == null ? '' : ((i ? 'L' : 'M') + px(i) + ' ' + (190 - v / 100 * 170 - 10).toFixed(1)); }).join(' ');
+    WKF = f;
+    var T1 = 'QA Score and Booking Rate, Week by Week';
+    var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; }).slice(-WKN);
+    if (w.length < 2) { $('fweek').innerHTML = '<h2 class="ttl">' + T1 + '</h2><p class="mut">Not enough weeks yet.</p>'; return; }
+    var n = w.length, rates = w.map(function (x) { return x.decided ? x.booked / x.decided * 100 : null; });
+    var all = w.map(function (x) { return +x.avg; }).concat(rates.filter(function (v) { return v != null; }));
+    var lo = Math.max(0, Math.floor((Math.min.apply(null, all) - 5) / 10) * 10), hi = Math.min(100, Math.ceil((Math.max.apply(null, all) + 5) / 10) * 10); if (hi - lo < 20) hi = Math.min(100, lo + 20);
+    var Wd = 1000, Hd = 200, L = 44, tp = 10, cw = Wd - L - 10;
+    var px = function (i) { return (L + (i + .5) / n * cw).toFixed(1); }, py = function (v) { return (tp + (Hd - tp) * (1 - (v - lo) / (hi - lo))).toFixed(1); };
+    var grid = '', gstep = (hi - lo) <= 40 ? 5 : 10;
+    for (var g = lo; g <= hi; g += gstep) grid += '<line x1="' + L + '" x2="' + Wd + '" y1="' + py(g) + '" y2="' + py(g) + '" stroke="#ECE8E0"/><text x="' + (L - 8) + '" y="' + (+py(g) + 4) + '" text-anchor="end" font-size="11" fill="#5F6763">' + g + '</text>';
+    var line = w.map(function (x, i) { return (i ? 'L' : 'M') + px(i) + ' ' + py(x.avg); }).join(' ');
+    var rl = rates.map(function (v, i) { return v == null ? '' : ((i ? 'L' : 'M') + px(i) + ' ' + py(v)); }).join(' ');
     var startIdx = w.findIndex(function (x) { return x.w >= S.start.slice(0, 10); });
-    var shade = startIdx > 0 ? '<rect x="' + (startIdx / n * 1000) + '" y="0" width="' + (1000 - startIdx / n * 1000) + '" height="190" fill="#E6F0EA" opacity=".55"/>' : '';
-    var dots = w.map(function (x, i) { return '<circle cx="' + px(i) + '" cy="' + (190 - (x.avg - lo) / (hi - lo) * 170 - 10).toFixed(1) + '" r="4" fill="#14302A"><title>Week of ' + fdate(x.w) + ': score ' + x.avg + ' · ' + (x.decided ? Math.round(x.booked / x.decided * 100) + '% booked' : '') + ' · ' + x.calls + ' calls</title></circle>'; }).join('');
-    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Week by Week</h2><p class="sub">Last 12 weeks · shaded = the period you’re viewing · hover a dot for details</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● score</span><span style="color:#E0662A">— booking %</span></div></div>' +
-      '<svg viewBox="0 0 1000 210" preserveAspectRatio="none" style="width:100%;height:220px;margin-top:12px;overflow:visible" role="img" aria-label="Weekly score and booking rate">' + shade + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4" vector-effect="non-scaling-stroke"/>' + dots + '</svg>' +
-      '<div style="display:flex;margin-top:4px">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (i % 2 === 0 ? fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
+    var shade = startIdx >= 0 ? '<rect x="' + (L + startIdx / n * cw) + '" y="0" width="' + (cw - startIdx / n * cw) + '" height="' + Hd + '" fill="#E6F0EA" opacity=".55"/>' : '';
+    var dots = w.map(function (x, i) { return '<circle cx="' + px(i) + '" cy="' + py(x.avg) + '" r="4" fill="#14302A"><title>Week of ' + fdate(x.w) + ': QA score ' + x.avg + (x.decided ? ' · ' + Math.round(x.booked / x.decided * 100) + '% booked' : '') + ' · ' + x.calls + ' calls</title></circle>'; }).join('');
+    // Markers: rubric changes (gray) + training start (green). Labels alternate rows so close dates don't overlap.
+    var marks = PROGRAM_MARKS.map(function (m, mj) { var dt = m[0], i = -1, col = m[2] === 'rubric' ? '#8A918D' : '#1F5A41', ly = tp + 10 + (mj % 2) * 14; for (var k = 0; k < n; k++) if (w[k].w <= dt) i = k; if (i < 0) return '';
+      var days = Math.round((new Date(dt + 'T12:00:00Z') - new Date(w[i].w + 'T12:00:00Z')) / 864e5), x = (L + (i + Math.min(days, 6) / 7) / n * cw).toFixed(1);
+      return '<line x1="' + x + '" x2="' + x + '" y1="' + tp + '" y2="' + Hd + '" stroke="' + col + '" stroke-width="1.5" stroke-dasharray="3 3"/><text x="' + (+x + 5) + '" y="' + ly + '" font-size="11" font-weight="700" fill="' + col + '"><title>' + (m[2] === 'rubric' ? 'QA scoring switched to the ' + m[1] + ' on this date. Scores before and after aren’t scored the same way.' : m[1]) + '</title>' + m[1] + ' · ' + fdate(dt) + '</text>'; }).join('');
+    var last = w[n - 1], lr = rates[n - 1];
+    var endl = '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(last.avg) - 9) + '" text-anchor="end" font-size="12" font-weight="700" fill="#14302A">' + (+last.avg).toFixed(1) + '</text>' + (lr != null ? '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(lr) + 16) + '" text-anchor="end" font-size="12" font-weight="700" fill="#E0662A">' + Math.round(lr) + '%</text>' : '');
+    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><div class="row" role="group" aria-label="Weeks shown" style="gap:6px;margin-top:6px">' + [4, 6, 12].map(function (k) { return '<button class="sel' + (k === WKN ? ' btnd' : '') + '" data-wkn="' + k + '" aria-pressed="' + (k === WKN) + '" style="padding:4px 10px;font-size:12px">' + k + ' weeks</button>'; }).join('') + '</div></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
+      '<svg viewBox="0 0 ' + Wd + ' ' + (Hd + 8) + '" style="width:100%;height:auto;margin-top:12px;overflow:visible" role="img" aria-label="Weekly QA score and booking rate">' + shade + grid + marks + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4"/>' + dots + endl + '</svg>' +
+      '<div style="display:flex;margin-top:4px;padding-left:4.4%">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (n <= 6 || i % 2 === 0 ? 'Wk of ' + fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
   }
+
   // Locations (Becky 10/29): group CSRs by their roster location (Richmond, Chesapeake, ...).
+  var LROSTER = null;
   function locOf(roster, name) { var r = (roster || []).filter(function (x) { return nmMatch(x.agent, name); })[0]; return r ? r.location : null; }
   function byLoc(roster, rows, nameOf) { var locs = {}, order = []; rows.forEach(function (r) { var l = locOf(roster, nameOf(r)) || 'Not on the roster'; if (!locs[l]) { locs[l] = []; order.push(l); } locs[l].push(r); });
     order.sort(function (a, b) { return a === 'Not on the roster' ? 1 : b === 'Not on the roster' ? -1 : a.localeCompare(b); }); return order.map(function (l) { return [l, locs[l]]; }); }
@@ -499,20 +1079,82 @@ export function mountOpsisQA(ROOT, cfg) {
   function focusMovers(f) {
     var rows = (f.agents || []).filter(function (a) { return a.n >= 1; }).map(function (a) { a.d = a.pavg != null && a.pn >= 15 ? a.avg - a.pavg : null; return a; });
     rows.sort(function (a, b) { return (b.n) - (a.n); });
-    var h = '<div><h2 class="ttl">Performance</h2><p class="sub">Every CSR this period, by location · QA score now vs before · click a CSR for their profile</p></div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:12.5px"><thead><tr><th>CSR</th><th>Scored calls' + itip('Scored customer calls this period.') + '</th><th>Avg QA score</th><th>Change</th><th>Booking rate' + itip(KDEF['Booking rate']) + '</th><th>Booking ask rate' + itip(KDEF['Booking ask rate']) + '</th><th><span style="display:inline-flex;align-items:center;gap:4px">Card ask rate<span aria-hidden="true" data-tip="Share of the CSR’s booked residential service calls where they asked for a card. Commercial customers, PDQ and Dan’s Doors are left out." style="cursor:help;width:14px;height:14px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">i</span></span></th><th></th></tr></thead><tbody>';
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h2 class="ttl">QA Score Change by CSR, by Location</h2><p class="sub">Each CSR’s QA score this period vs the period before, with booking rate, booking ask rate and card ask rate, grouped by location · click a CSR for their profile</p></div><div class="row" style="gap:6px" aria-label="Export the performance table"><button class="sel" data-mvx="pdf" title="A landscape scoreboard sized for a TV or bulletin board" style="min-height:34px;padding:6px 12px;font-size:12.5px">PDF</button><button class="sel" data-mvx="xlsx" style="min-height:34px;padding:6px 12px;font-size:12.5px">Excel</button><button class="sel" data-mvx="csv" style="min-height:34px;padding:6px 12px;font-size:12.5px">CSV</button></div></div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:12.5px"><thead><tr><th>CSR</th><th>Scored calls' + itip('Sales and service opportunity calls scored this period. Billing, job follow-up and other non-sales calls aren\u2019t scored.') + '</th><th>Avg QA score</th><th>Change</th><th>Booking rate' + itip(KDEF['Booking rate']) + '</th><th>Booking ask rate' + itip(KDEF['Booking ask rate']) + '</th><th><span style="display:inline-flex;align-items:center;gap:4px">Card ask rate' + itip('Share of the CSR’s booked residential service calls where they asked for a card. Commercial customers, PDQ and Dan’s Doors are left out.') + '</span></th><th></th></tr></thead><tbody>';
     var groups = byLoc(f.roster, rows, function (a) { return a.name; }), multi = groups.length > 1;
     var tot = function (L) { var n = 0, sc = 0, sn = 0, bk = 0, dc = 0, as = 0, op = 0; L.forEach(function (a) { n += a.n; if (a.avg != null) { sc += a.avg * a.n; sn += a.n; } bk += a.booked || 0; dc += a.decided || 0; as += a.asked || 0; op += a.opps || 0; }); return { n: n, avg: sn ? sc / sn : null, rate: pct(bk, dc), ask: pct(as, op) }; };
-    groups.forEach(function (g) { if (multi) { var t0 = tot(g[1]); h += '<tr style="background:#F1EEE8"><td style="font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="font-weight:700">' + fmt(t0.n) + '</td><td class="num" style="font-weight:700">' + (t0.avg != null ? t0.avg.toFixed(1) : '—') + '</td><td></td><td class="num" style="font-weight:700">' + p1(t0.rate) + '</td><td class="num" style="font-weight:700">' + p1(t0.ask) + '</td><td class="num" style="font-weight:700" data-mvloc="' + esc(g[1].map(function (a) { return String(a.name || '').toLowerCase(); }).join('|')) + '"><span class="mut">…</span></td><td></td></tr>'; }
+    groups.forEach(function (g) { if (multi) { var t0 = tot(g[1]); h += '<tr style="background:#F1EEE8"><td style="font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="font-weight:700">' + fmt(t0.n) + '</td><td class="num" style="font-weight:700">' + (t0.avg != null ? t0.avg.toFixed(1) + '%' : '—') + '</td><td></td><td class="num" style="font-weight:700">' + p1(t0.rate) + '</td><td class="num" style="font-weight:700">' + p1(t0.ask) + '</td><td class="num" style="font-weight:700" data-mvloc="' + esc(g[1].map(function (a) { return String(a.name || '').toLowerCase(); }).join('|')) + '"><span class="mut">…</span></td><td></td></tr>'; }
     g[1].forEach(function (a) {
-      h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:8px' + (multi ? ';padding-left:10px' : '') + '">' + avatar(a.name, 22) + '<b style="font-weight:600;white-space:nowrap">' + esc(a.name) + '</b></div></td><td class="num">' + fmt(a.n) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + (a.d == null ? '<span class="mut" style="font-size:11.5px">new</span>' : delta(a.avg, a.pavg, '')) + '</td><td class="num">' + p1(pct(a.booked, a.decided)) + '</td><td class="num">' + p1(pct(a.asked, a.opps)) + '</td><td class="num" data-mvcard="' + esc(String(a.name || '').toLowerCase()) + '"><span class="mut">…</span></td><td class="mut" aria-hidden="true">›</td></tr>';
+      h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:8px' + (multi ? ';padding-left:10px' : '') + '">' + avatar(a.name, 22) + '<b style="font-weight:600;white-space:nowrap">' + esc(a.name) + '</b></div></td><td class="num">' + fmt(a.n) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) + '%' : '—') + '</td><td>' + (a.d == null ? '<span class="mut" style="font-size:11.5px">new</span>' : delta(a.avg, a.pavg, '')) + '</td><td class="num">' + p1(pct(a.booked, a.decided)) + '</td><td class="num">' + p1(pct(a.asked, a.opps)) + '</td><td class="num" data-mvcard="' + esc(String(a.name || '').toLowerCase()) + '"><span class="mut">…</span></td><td class="mut" aria-hidden="true">›</td></tr>';
     }); });
     $('fmovers').innerHTML = h + '</tbody></table></div>';
+    MV = { brand: S.brand, start: S.start, end: S.end, card: null, groups: groups.map(function (g) { var t0 = tot(g[1]); return { loc: multi ? g[0] : null, tot: t0, rows: g[1] }; }) };
+    [].forEach.call($('fmovers').querySelectorAll('[data-mvx]'), function (b) { b.onclick = function () { mvExport(b.getAttribute('data-mvx')); }; });
     var tk = T;
     api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tk !== T || !$('fmovers')) return; var m = {};
       (cc && cc.by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; var k = String(x.agent || '').toLowerCase(); m[k] = m[k] || { b: 0, a: 0 }; m[k].b += +x.booked || 0; m[k].a += +x.asked_cc || 0; });
+      if (MV) MV.card = m;
       [].forEach.call($('fmovers').querySelectorAll('[data-mvloc]'), function (td) { var b = 0, a = 0; td.getAttribute('data-mvloc').split('|').forEach(function (k) { var v = m[k]; if (v) { b += v.b; a += v.a; } }); td.innerHTML = b ? (100 * a / b).toFixed(1) + '%' : '<span class="mut">—</span>'; });
       [].forEach.call($('fmovers').querySelectorAll('[data-mvcard]'), function (td) { var v = m[td.getAttribute('data-mvcard')]; td.innerHTML = v && v.b ? '<span title="' + fmt(v.a) + ' of ' + fmt(v.b) + ' booked service calls">' + (100 * v.a / v.b).toFixed(1) + '%</span>' : '<span class="mut">—</span>'; });
     }).catch(function () { [].forEach.call(($('fmovers') || document).querySelectorAll('[data-mvcard]'), function (td) { td.innerHTML = '<span class="mut">—</span>'; }); });
+  }
+  // Performance export (Becky 11/2): CSV, Excel, and a landscape "scoreboard" PDF sized for a TV or bulletin board.
+  var MV = null;
+  function mvCard(names) { var m = MV && MV.card; if (!m) return null; var b = 0, a = 0; names.forEach(function (n) { var v = m[String(n || '').toLowerCase()]; if (v) { b += v.b; a += v.a; } }); return b ? 100 * a / b : null; }
+  function mvRows() {
+    var out = [], r1 = function (v) { return v == null ? '' : Math.round(v * 10) / 10; };
+    MV.groups.forEach(function (g) {
+      g.rows.forEach(function (a) { out.push([g.loc || '', a.name, a.n, r1(a.avg), a.d == null ? 'new' : r1(a.d), r1(pct(a.booked, a.decided)), r1(pct(a.asked, a.opps)), r1(mvCard([a.name]))]); });
+      if (g.loc) out.push([g.loc + ' total', '', g.tot.n, r1(g.tot.avg), '', r1(g.tot.rate), r1(g.tot.ask), r1(mvCard(g.rows.map(function (a) { return a.name; })))]);
+    });
+    return out;
+  }
+  var MV_COLS = ['Location', 'CSR', 'Scored calls', 'Avg QA score', 'Change vs before', 'Booking rate %', 'Booking ask rate %', 'Card ask rate %'];
+  function mvExport(kind) {
+    if (!MV) return;
+    var name = 'performance-' + String(MV.brand || 'all').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + MV.start + '-to-' + MV.end;
+    if (kind === 'csv') { sheetsCsv(name, [{ title: (MV.brand || 'All brands') + ' · Performance · ' + fdate(MV.start) + ' – ' + fdate(MV.end), cols: MV_COLS, rows: mvRows() }]); return; }
+    if (kind === 'xlsx') { sheetsXlsx(name, [{ sheet: 'Performance', cols: MV_COLS, rows: mvRows() }]).catch(function (e) { toast(e.message); }); return; }
+    mvBoard();
+  }
+  function mvBoard() {
+    var all = []; MV.groups.forEach(function (g) { g.rows.forEach(function (a) { all.push(a); }); });
+    var n = all.length + MV.groups.filter(function (g) { return g.loc; }).length;
+    var fs = n <= 10 ? 17 : n <= 16 ? 14 : n <= 22 ? 12 : 11;
+    var scol = function (v) { return v == null ? '#8A918D' : v >= 80 ? '#1F7A4D' : v >= 60 ? '#B9741C' : '#B3261E'; };
+    var sbg = function (v) { return v == null ? '#F1EEE8' : v >= 80 ? '#E3F2E9' : v >= 60 ? '#FBF0DC' : '#FBE3E1'; };
+    var rcol = function (v) { return v == null ? '#8A918D' : v >= 60 ? '#1F7A4D' : '#B3261E'; };
+    var pc = function (v) { return v == null ? '—' : Math.round(v) + '%'; };
+    var chg = function (a) { if (a.d == null) return '<span style="color:#8A918D;font-size:.8em">new</span>'; var d = Math.round(a.d * 10) / 10; if (Math.abs(d) < 0.5) return '<span style="color:#8A918D">–</span>'; return '<span style="color:' + (d > 0 ? '#1F7A4D' : '#B3261E') + ';font-weight:700">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + '</span>'; };
+    var elig = all.filter(function (a) { return a.n >= 10 && a.avg != null; }).sort(function (a, b) { return b.avg - a.avg; });
+    var top = elig.slice(0, 3), most = all.filter(function (a) { return a.d != null && a.d > 0 && a.n >= 10; }).sort(function (a, b) { return b.d - a.d; })[0];
+    var medal = ['#C9A227', '#9AA3A8', '#B87333'];
+    var tops = top.map(function (a, i) { return '<div class="card"><div class="rk" style="background:' + medal[i] + '">' + (i + 1) + '</div><div><div class="nm">' + esc(a.name) + '</div><div class="mt">' + a.avg.toFixed(1) + '%' + ' QA score · ' + pc(pct(a.booked, a.decided)) + ' booked</div></div></div>'; }).join('') +
+      (most ? '<div class="card"><div class="rk" style="background:#2F7D5B">▲</div><div><div class="nm">' + esc(most.name) + '</div><div class="mt">Most improved · up ' + most.d.toFixed(1) + ' points</div></div></div>' : '');
+    var body = '';
+    MV.groups.forEach(function (g) {
+      if (g.loc) body += '<tr class="loc"><td colspan="2">' + esc(g.loc) + '</td><td>' + fmt(g.tot.n) + '</td><td>' + (g.tot.avg != null ? g.tot.avg.toFixed(1) + '%' : '—') + '</td><td></td><td>' + pc(g.tot.rate) + '</td><td>' + pc(g.tot.ask) + '</td><td>' + pc(mvCard(g.rows.map(function (a) { return a.name; }))) + '</td></tr>';
+      g.rows.slice().sort(function (x, y) { return (y.avg == null ? -1 : y.avg) - (x.avg == null ? -1 : x.avg); }).forEach(function (a, i) { var rt = pct(a.booked, a.decided), ak = pct(a.asked, a.opps), cd = mvCard([a.name]);
+        body += '<tr><td class="ix">' + (i + 1) + '</td><td class="who">' + esc(a.name) + '</td><td>' + fmt(a.n) + '</td><td><span class="pill" style="color:' + scol(a.avg) + ';background:' + sbg(a.avg) + '">' + (a.avg != null ? a.avg.toFixed(1) + '%' : '—') + '</span></td><td>' + chg(a) + '</td><td style="color:' + rcol(rt) + ';font-weight:700">' + pc(rt) + '</td><td>' + pc(ak) + '</td><td>' + pc(cd) + '</td></tr>'; });
+    });
+    var logo = (document.querySelector('#oqa .logo img') || {}).src || '';
+    var gen = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    var title = (MV.brand || 'All brands') + ' · CSR Scoreboard';
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>@page{size:landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      'body{margin:0;font-family:Montserrat,"Segoe UI",Arial,sans-serif;color:#1C2421;background:#fff;font-size:' + fs + 'px}' +
+      '.hd{display:flex;align-items:center;justify-content:space-between;background:#14302A;color:#fff;border-radius:14px;padding:.9em 1.2em}.hd h1{margin:0;font-size:2em;letter-spacing:-.02em}.hd .p{opacity:.8;font-size:.95em;margin-top:.2em}.hd img{max-height:3em;max-width:12em;background:#fff;border-radius:8px;padding:.3em .6em}' +
+      '.tops{display:flex;gap:.7em;margin:.8em 0}.card{flex:1;display:flex;align-items:center;gap:.7em;border:1px solid #E8E4DC;border-radius:12px;padding:.6em .8em;background:#FAF8F4}.rk{width:2.2em;height:2.2em;border-radius:99px;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}.nm{font-weight:700;font-size:1.05em}.mt{color:#5F6763;font-size:.8em}' +
+      'table{width:100%;border-collapse:separate;border-spacing:0}th{background:#F1EEE8;color:#3B4541;font-size:.7em;text-transform:uppercase;letter-spacing:.06em;padding:.6em .5em;text-align:center}th:nth-child(2){text-align:left}' +
+      'td{padding:.42em .5em;text-align:center;border-bottom:1px solid #EEEAE2;font-variant-numeric:tabular-nums}td.who{text-align:left;font-weight:600}td.ix{color:#8A918D;width:2em;font-size:.85em}tr{page-break-inside:avoid}' +
+      'tr.loc td{background:#E6F0EA;color:#14302A;font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.8em;text-align:center}tr.loc td:first-child{text-align:left}' +
+      '.pill{display:inline-block;min-width:3.4em;padding:.15em .5em;border-radius:8px;font-weight:800}' +
+      '#bd{width:1000px;margin:0 auto}.key{display:flex;justify-content:space-between;color:#5F6763;font-size:.72em;margin-top:.7em}.key span b{display:inline-block;width:.8em;height:.8em;border-radius:3px;margin:0 .3em -.05em 0}</style></head><body><div id="bd">' +
+      '<div class="hd"><div><h1>' + esc(MV.brand || 'All brands') + ' Scoreboard</h1><div class="p">' + esc(fdate(MV.start) + ' – ' + fdate(MV.end)) + ' · ' + fmt(all.length) + ' CSRs · change is vs the ' + daysBetween(MV.start, MV.end) + ' days before</div></div>' + (logo ? '<img src="' + esc(logo) + '" alt="">' : '') + '</div>' +
+      (tops ? '<div class="tops">' + tops + '</div>' : '') +
+      '<table><thead><tr><th></th><th>CSR</th><th>Scored calls</th><th>QA score</th><th>Change</th><th>Booking rate</th><th>Asked to book</th><th>Card ask</th></tr></thead><tbody>' + body + '</tbody></table>' +
+      '<div class="key"><span><b style="background:#E3F2E9"></b>80+ &nbsp; <b style="background:#FBF0DC"></b>60–79 &nbsp; <b style="background:#FBE3E1"></b>under 60 · Top 3 need 10+ scored calls · Card ask = booked residential service calls</span><span>Opsis QA · ' + esc(gen) + '</span></div></div>' +
+      // Fit everything on one landscape page: shrink the whole board if it runs taller than a page.
+      '<scr' + 'ipt>(function(){function fit(){var b=document.getElementById("bd");b.style.zoom=1;var z=Math.min(1,700/b.scrollHeight);b.style.zoom=z;}window.addEventListener("load",fit);fit();})();</scr' + 'ipt></body></html>';
+    var w = pdfWin(); w.document.open(); w.document.write(html); w.document.close();
   }
   // Brand / CSR page (Rob 10/29): three tiles instead of tabs. Customer reasons (reasons + objections grouped),
   // what the CSR missed (call-flow steps), and what callers wanted. Time of day removed.
@@ -521,6 +1163,9 @@ export function mountOpsisQA(ROOT, cfg) {
     ['Scheduling / timing', ['Scheduling/timing conflict']],
     ['Follow-up by another team', ['Sent to another team', 'We’ll call them back (no appt set)', "We'll call them back (no appt set)", 'Quote Request', 'Sales Team', 'Gates Team', 'Follow up is needed by different department']],
     ['Call dropped or cut off', ['Call ended before booking (hold / cut off)']]];
+  // Softer, skill-style labels for coaching tiles (Becky 11/2): "Active listening" instead of "Didn't listen".
+  var SKILL = { introduce: 'Introduction', listen: 'Active listening', collect_info: 'Customer information', sell_offer: 'Offering the booking', sell_ask: 'Asking for the booking', sell_card: 'Card on file', sell_objection: 'Overcoming objections', sell_expert: 'Tech as the expert', confirm_thank: 'Confirm and thank you', sell_appointment: 'Selling the appointment', greeting: 'Greeting', empathy: 'Empathy', verify_approver: 'Verifying the approver', discovery: 'Discovery questions', set_expectations: 'Setting expectations', explain_fee: 'Explaining the fee', capture_payment: 'Card on file', confirm_details: 'Confirming details', thank_close: 'Thank-you close' };
+  var SKILL_REASON = { 'Knowledge Gap': 'Product and policy knowledge', 'CSR didn’t offer an appointment': 'Offering an appointment', "CSR didn't offer an appointment": 'Offering an appointment' };
   var CSR_REASONS = ['CSR didn’t offer an appointment', "CSR didn't offer an appointment", 'Knowledge Gap'];
   function focusMix(f, brand, agent) {
     var tile = function (title, sub, body) { return '<div class="oq-card" style="flex:1 1 300px;min-width:0"><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p><div style="margin-top:8px">' + body + '</div></div>'; };
@@ -536,55 +1181,152 @@ export function mountOpsisQA(ROOT, cfg) {
     // 2. what the CSR missed
     var st = (f.steps || []).filter(function (s0) { return s0.applies > 0 && s0.missed > 0; }).sort(function (a, b) { return b.missed - a.missed; });
     var sm = Math.max.apply(null, st.map(function (s0) { return s0.missed; }).concat([1]));
-    var csrR = (f.reasons || []).filter(function (r) { return CSR_REASONS.indexOf(r.k) >= 0; });
-    var miss = st.map(function (s0) { return '<button class="click" data-step="' + s0.key + '"' + (brand ? ' data-sbrand="' + esc(brand) + '"' : '') + (agent ? ' data-sagent="' + esc(agent) + '"' : '') + ' title="Hear the calls that missed this step" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>Didn’t ' + esc((STEPNAMES[s0.key] || s0.key).replace(/^./, function (c) { return c.toLowerCase(); })) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(s0.missed) + ' of ' + fmt(s0.applies) + '</span></div>' + bar(s0.missed, sm, '#C2562A') + '</button>'; }).join('') +
-      csrR.map(function (r) { return '<button class="click" data-ffk="reason" data-ffv="' + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k === 'Knowledge Gap' ? 'Didn’t know the answer' : r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' calls</span></div></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">Nothing missed in this period.</p>';
+    var csrR = (f.reasons || []).filter(function (r) { return CSR_REASONS.indexOf(r.k) >= 0 && +r.n > 0; });
+    var miss = st.map(function (s0) { return '<button class="click" data-step="' + s0.key + '"' + (brand ? ' data-sbrand="' + esc(brand) + '"' : '') + (agent ? ' data-sagent="' + esc(agent) + '"' : '') + ' title="Hear the calls that missed this step" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(SKILL[s0.key] || STEPNAMES[s0.key] || s0.key) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(s0.missed) + ' of ' + fmt(s0.applies) + ' missed</span></div>' + bar(s0.missed, sm, '#C2562A') + '</button>'; }).join('') +
+      csrR.map(function (r) { return '<button class="click" data-ffk="reason" data-ffv="' + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(SKILL_REASON[r.k] || r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' call' + (+r.n === 1 ? '' : 's') + ' lost</span></div></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">Nothing missed in this period.</p>';
     // 3. what callers wanted
     var tp = f.topics || [], tm = Math.max.apply(null, tp.map(function (r) { return r.n; }).concat([1]));
-    var want = tp.map(function (r) { return '<button class="click" data-ffk="category" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + dd(r.n, r.pn) + '</span></div>' + bar(r.n, tm, G) + '</button>'; }).join('') || '<p class="mut" style="font-size:12.5px">No calls in this period.</p>';
+    // Share of calls (Rob & Eric 11/2): "of 1,000 calls, 20% were job follow-ups".
+    var tTot = tp.reduce(function (t, r) { return t + (+r.n || 0); }, 0), tPrev = tp.reduce(function (t, r) { return t + (+r.pn || 0); }, 0);
+    var want = tp.map(function (r) { var sh = tTot ? 100 * r.n / tTot : 0, psh = tPrev ? 100 * (r.pn || 0) / tPrev : null, d = psh == null ? '' : (Math.abs(sh - psh) < 0.5 ? '' : ' <span style="font-size:11px;color:' + (sh > psh ? '#2F5E4E' : '#A8441A') + '">(' + (sh > psh ? '+' : '') + (sh - psh).toFixed(0) + ' pts)</span>');
+      return '<button class="click" data-ffk="category" data-ffv="' + esc(r.k) + '" title="Hear these ' + fmt(r.n) + ' calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num"><b style="font-weight:600">' + Math.round(sh) + '%</b><span class="mut"> · ' + fmt(r.n) + d + '</span></span></div>' + bar(r.n, tm, G) + '</button>'; }).join('') || '<p class="mut" style="font-size:12.5px">No calls in this period.</p>';
     $('fmix').innerHTML = tile('Why Customers Didn’t Book', 'Unbooked revenue opportunities by the customer’s reason · (% vs the period before) · click a reason to hear the calls', why) +
-      tile('What the CSR Missed', 'Call-flow steps the CSR skipped when the step applied · click to hear the calls', miss) +
-      tile('What Callers Wanted', 'Why customers called · (% vs the period before) · click to hear the calls', want);
+      tile('Coaching Opportunities', 'Call-flow skills to work on · missed out of the calls where the step applied · click to hear the calls', miss) +
+      tile('What Callers Wanted', 'Why customers called, as a share of all calls · number of calls · (change vs the period before) · click to hear the calls', want);
     $('fmix').dataset.fb = brand || ''; $('fmix').dataset.fa = agent || '';
     lastFocus = f;
+  }
+  // Coaching Notes (Becky 11/19): every Opsis CX coaching session logged for this CSR, all dates, newest first.
+  // Data: RPC qa_csr_coaching_notes via CFG.csrNotes (same access + brand lock as the login; CSR logins get none).
+  function drawCsrNotes(notes, agent) {
+    var el = $('fnotes'); if (!el) return;
+    var canAdd = !!(CFG.csrNoteSave && CFG.supervisor);
+    var att = notes.filter(function (n) { return !n.no_show; }).length, ns = notes.length - att;
+    var md = function (t) { return esc(String(t || '')).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); };
+    var head = '<h2 class="ttl">Coaching Notes</h2><p class="sub">Every Opsis CX coaching session for this CSR (coach notes and recorded sessions), newest first · ' +
+      notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions for this CSR across all dates (not limited to the date range above): notes written by the coach, plus the AI summary of recorded sessions the CSR joined (1:1s and group trainings). A note and a recording on the same day count once.') + ' · ' +
+      att + ' attended' + itip('Sessions the CSR showed up for.') + ' · ' + ns + ' no-show' + (ns === 1 ? '' : 's') + itip('Sessions where the note says the CSR did not attend.') + '</p>';
+    head = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>' + head + '</div>' + (canAdd ? '<button class="sel btnd" data-noteadd="1" style="flex:none">+ Add note</button>' : '') + '</div><div id="fnoteform"></div>';
+    if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; wireNoteForm(el, notes, agent); if (S.noteOpen) { S.noteOpen = false; var nab0 = el.querySelector('[data-noteadd]'); if (nab0) nab0.click(); } return; }
+    var SHOW = 3;
+    el.innerHTML = head + notes.map(function (n, i) {
+      var pill = n.kind === 'session' ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF0F8;color:#3A4380">Recorded session</span>' : n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
+      var body = String(n.body || ''), long = body.length > 320;
+      return '<div' + (i >= SHOW ? ' data-noteextra="1"' : '') + ' style="border-top:1px solid var(--line2);padding:12px 0' + (i ? '' : ';margin-top:8px') + (i >= SHOW ? ';display:none' : '') + '"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="num" style="font-size:13px">' + esc(fdate(String(n.date || '').slice(0, 10))) + '</b>' + pill +
+        (n.title ? '<b style="font-size:13px">' + esc(n.title) + '</b>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">' + esc(n.coach || 'Opsis CX coach') + (n.can_edit && canAdd ? ' · <button class="lnk" data-noteedit="' + i + '" style="font-size:12px;background:none;border:0;border-bottom:1px dashed #9CC6B2;padding:0">Edit</button> · <button class="lnk" data-notedel="' + i + '" style="font-size:12px;background:none;border:0;border-bottom:1px dashed #E3A9A0;padding:0;color:#B4432F">Delete</button>' : '') + '</span></div>' +
+        '<div style="font-size:13px;line-height:1.5;margin-top:6px">' + (long ? '<span>' + md(body.slice(0, 320)) + '… </span><button class="more" data-notemore="1" style="font-size:12px">Show more</button><span style="display:none">' + md(body) + '</span>' : md(body)) + '</div></div>';
+    }).join('') + (notes.length > SHOW ? '<button class="more" data-notesall="1" style="margin-top:6px;font-size:12.5px">More + (' + (notes.length - SHOW) + ')</button>' : '');
+    var allBtn = el.querySelector('[data-notesall]');
+    if (allBtn) allBtn.addEventListener('click', function () { [].forEach.call(el.querySelectorAll('[data-noteextra]'), function (x) { x.style.display = ''; }); allBtn.remove(); });
+    wireNoteForm(el, notes, agent);
+    if (S.noteOpen) { S.noteOpen = false; var nab = el.querySelector('[data-noteadd]'); if (nab) { nab.click(); el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }
+    [].forEach.call(el.querySelectorAll('[data-notemore]'), function (b) { b.addEventListener('click', function () { var full = b.nextElementSibling, short0 = b.previousElementSibling; if (full) full.style.display = ''; if (short0) short0.style.display = 'none'; b.remove(); }); });
+  }
+  // "+ Add note" / Edit / Delete on the Coaching Notes card (Becky 11/19). Opsis staff only; RPCs qa_csr_note_save / qa_csr_note_delete.
+  function wireNoteForm(el, notes, agent) {
+    if (!(CFG.csrNoteSave && CFG.supervisor)) return;
+    var reload = function () { CFG.csrNotes(agent).then(function (n) { drawCsrNotes(n || [], agent); }).catch(function (e) { toast(e.message || 'Could not reload notes.'); }); };
+    var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+    var open = function (n) {
+      var box = el.querySelector('#fnoteform'); if (!box) return;
+      n = n || {};
+      var lab = function (t, inner) { return '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">' + t + inner + '</label>'; };
+      box.innerHTML = '<div style="margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#FAF8F4;display:flex;flex-direction:column;gap:10px">' +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+        lab('Session date', '<input type="date" id="nf_d" class="oq-field" style="width:160px" value="' + esc(String(n.date || today).slice(0, 10)) + '">') +
+        lab('Attendance', '<select id="nf_a" class="oq-field" style="width:140px"><option value="1"' + (n.attended === false ? '' : ' selected') + '>Attended</option><option value="0"' + (n.attended === false ? ' selected' : '') + '>No-show</option></select>') +
+        lab('Credit card ask rate, last 7 days (%)' + itip('Optional. The CSR’s credit card ask rate going into the session, 0 to 100.'), '<input type="number" id="nf_r" class="oq-field" min="0" max="100" step="0.1" style="width:120px" value="' + (n.ask_rate == null ? '' : esc(n.ask_rate)) + '">') +
+        lab('Title (optional)', '<input id="nf_t" class="oq-field" style="width:260px" value="' + esc(n.title || 'Credit card capture') + '">') + '</div>' +
+        lab('Coaching note', '<textarea id="nf_n" class="oq-field" rows="4" style="width:100%;font:inherit" placeholder="What you covered, what went well, what to work on">' + esc(n.note || '') + '</textarea>') +
+        '<div style="display:flex;gap:8px"><button class="sel btnd" id="nf_save">' + (n.id ? 'Save changes' : 'Save note') + '</button><button class="sel" id="nf_cancel">Cancel</button></div></div>';
+      box.querySelector('#nf_cancel').addEventListener('click', function () { box.innerHTML = ''; });
+      box.querySelector('#nf_save').addEventListener('click', function () {
+        var b = this, r = box.querySelector('#nf_r').value;
+        b.disabled = true; b.textContent = 'Saving…';
+        CFG.csrNoteSave({ agent: agent, id: n.id || null, date: box.querySelector('#nf_d').value, attended: box.querySelector('#nf_a').value === '1',
+          ask_rate: r === '' ? null : Number(r), title: box.querySelector('#nf_t').value, note: box.querySelector('#nf_n').value })
+          .then(function () { toast('Coaching note saved.'); reload(); })
+          .catch(function (e) { b.disabled = false; b.textContent = n.id ? 'Save changes' : 'Save note'; toast(e.message || 'Could not save the note.'); });
+      });
+    };
+    var add = el.querySelector('[data-noteadd]'); if (add) add.addEventListener('click', function () { open(null); });
+    [].forEach.call(el.querySelectorAll('[data-noteedit]'), function (b) { b.addEventListener('click', function () { open(notes[+b.getAttribute('data-noteedit')]); el.querySelector('#fnoteform').scrollIntoView({ block: 'nearest' }); }); });
+    [].forEach.call(el.querySelectorAll('[data-notedel]'), function (b) { b.addEventListener('click', function () {
+      var n = notes[+b.getAttribute('data-notedel')]; if (!n || !n.id || !window.confirm('Delete this coaching note?')) return;
+      CFG.csrNoteDelete(n.id).then(function () { toast('Note deleted.'); reload(); }).catch(function (e) { toast(e.message || 'Could not delete the note.'); });
+    }); });
   }
   // Call Center Efficiency (Rob 10/29): raw LightSpeed phone numbers per CSR, separate from QA.
   var EFFS = { k: 'in', dir: -1 };
   function nmMatch(a, b) { a = String(a || '').toLowerCase().trim(); b = String(b || '').toLowerCase().trim(); if (!a || !b) return false; if (a === b) return true; var x = a.split(/\s+/), y = b.split(/\s+/); if (x[0] !== y[0]) return false; if (x.length < 2 || y.length < 2) return x.length === 1 || y.length === 1; return x[1][0] === y[1][0]; }
   function focusEff(tok, kind, brand, agent) {
-    Promise.all([api({ action: 'phone', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null) }), loadFocus(brand, null).catch(function () { return {}; })]).then(function (rr) { var ph = rr[0], roster = (rr[1] || {}).roster; if (tok !== T) return; var el = $('feff'); if (!el) return;
+    Promise.all([api({ action: 'phone', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null) }), loadFocus(brand, null).catch(function () { return {}; })]).then(function (rr) { var ph = rr[0], roster = (rr[1] || {}).roster; if (tok !== T) return; if (roster && roster.length && !agent) { var had = !!LROSTER; LROSTER = roster; if (!had && DASH.d && $('dcsr')) drawDashTable(); } var el = $('feff'); if (!el) return;
       var rows = (ph.agents || []).filter(function (a) { return !agent || nmMatch(a.agent, agent); }).map(function (a) { var talk = (+a.in_talk || 0) + (+a.out_talk || 0), calls = (+a.in_calls || 0) + (+a.out_calls || 0), days = +a.days || 0;
         return { name: a.agent, brand: a.brand, inc: +a.in_calls || 0, out: +a.out_calls || 0, talk: talk, avg: calls ? talk / calls : null, tta: a.tta == null ? null : +a.tta, days: days, util: days ? talk / (days * 8 * 3600) * 100 : null }; });
       var hm = function (sec) { sec = Math.round(sec || 0); var h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60); return h ? h + 'h ' + m + 'm' : m + 'm'; }, ms = function (sec) { if (sec == null) return '—'; sec = Math.round(sec); return Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); };
-      var head = '<h2 class="ttl">Call Center Efficiency</h2><p class="sub">Straight from LightSpeed, separate from QA' + ((ph.kpis || {}).data_last ? ' · data runs through ' + esc(fdate(ph.kpis.data_last)) : '') + '. On the phone = talk time as a share of an 8-hour day for each day they took calls.</p>';
+      var head = '<h2 class="ttl">Call Center Efficiency</h2><p class="sub">Straight from LightSpeed, separate from QA' + ((ph.kpis || {}).data_last && !ph.agents_fallback ? ' · data runs through ' + esc(fdate(ph.kpis.data_last)) : '') + '. Utilization = talk time as a share of an 8-hour day for each day they took calls.</p>' +
+        '<div style="margin-top:8px;font-size:12.5px;line-height:1.6;background:#F3F1EC;border-radius:10px;padding:10px 12px"><b>Why fewer calls are QA-scored than answered here:</b> A call is scored when it is inbound, answered by a CSR on your CSR list for that ' + esc(W_BRAND.toLowerCase()) + ', and a real conversation long enough to judge. Calls left out: voicemail, phone-menu hang-ups, after-hours and AI CSR calls, internal or line-to-line calls, calls answered by anyone not on the CSR list, and known vendor or solicitor numbers. ' + esc(W_BRANDS) + ' with more after-hours, AI CSR or off-list answering have a lower share of calls scored.</div>';
+      var dl = (ph.kpis || {}).data_last, e0 = String(S.end || '').slice(0, 10);
+      var fb = ph.agents_fallback;
+      if (fb && fb.from) head += '<div class="banner" style="margin-top:10px;background:#F1F6F3;border-color:#CFE3D8;color:#1F5A41">Switchboard’s phone file stops at ' + esc(fdate(dl)) + '. Calls and talk time from ' + esc(fdate(fb.from)) + ' on come from Opsis’ own LightSpeed connection, which counts every answered call (including direct-dial calls), so it can run a little higher than Switchboard. Answer times for those days fill in once Switchboard’s file catches up.</div>';
+      else if (dl && e0 && String(dl).slice(0, 10) < e0) { var miss = daysBetween(String(dl).slice(0, 10), e0) - 1; head += '<div class="banner" style="margin-top:10px"><b>Phone data is behind.</b> LightSpeed numbers stop at ' + esc(fdate(dl)) + ', so the last ' + miss + ' day' + (miss === 1 ? '' : 's') + ' of this period ' + (miss === 1 ? 'is' : 'are') + ' missing. QA numbers on this page are current.</div>'; }
       if (!rows.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px">' + (agent ? 'No LightSpeed phone activity matched to ' + esc(agent) + ' in this period.' : 'No phone activity in this period.') + '</p>'; return; }
       if (agent) { var r = rows.reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.days = Math.max(a.days, x.days); if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, days: 0, ts: 0, tn: 0 });
         var tl = function (cap, v, sub) { return '<div style="min-width:120px"><div class="cap">' + cap + '</div><div class="num" style="font-size:22px;font-weight:600;margin-top:4px">' + v + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div></div>'; };
-        el.innerHTML = head + '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:10px">' + tl('Inbound calls', fmt(r.inc), r.days + ' days') + tl('Outbound calls', fmt(r.out), '') + tl('Total talk time', hm(r.talk), '') + tl('Avg talk time', ms((r.inc + r.out) ? r.talk / (r.inc + r.out) : null), 'per call') + tl('Avg answer time', r.tn ? (r.ts / r.tn).toFixed(1) + 's' : '—', 'ring to answer') + tl('On the phone', r.days ? Math.round(r.talk / (r.days * 8 * 3600) * 100) + '%' : '—', 'of an 8-hour day') + '</div>'; return; }
+        el.innerHTML = head + '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:10px">' + tl('Inbound calls', fmt(r.inc), EPC(r.inc, r.out) + ' of calls · ' + r.days + ' days') + tl('Outbound calls', fmt(r.out), EPC(r.out, r.inc) + ' of calls') + tl('Total talk time', hm(r.talk), '') + tl('Avg talk time', ms((r.inc + r.out) ? r.talk / (r.inc + r.out) : null), 'per call') + tl('Avg answer time', r.tn ? (r.ts / r.tn).toFixed(1) + 's' : '—', 'ring to answer') + tl('Utilization', r.days ? Math.round(r.talk / (r.days * 8 * 3600) * 100) + '%' : '—', 'of an 8-hour day') + '</div>'; return; }
       var v = function (x) { var k = EFFS.k; return k === 'name' ? String(x.name).toLowerCase() : k === 'out' ? x.out : k === 'talk' ? x.talk : k === 'avg' ? (x.avg || 0) : k === 'tta' ? (x.tta == null ? 999 : x.tta) : k === 'util' ? (x.util || 0) : x.inc; };
       rows.sort(function (a, b) { var x = v(a), y = v(b); return (x < y ? -1 : x > y ? 1 : 0) * EFFS.dir; });
       var th = function (k, l, t) { var on = EFFS.k === k; return '<th data-effk="' + k + '" role="button" tabindex="0" style="cursor:pointer;white-space:nowrap' + (k === 'name' ? '' : ';text-align:right') + (on ? ';color:var(--ink)' : '') + '">' + l + (t ? itip(t) : '') + ' <span style="font-size:9px;opacity:' + (on ? 1 : .35) + '">' + (on && EFFS.dir > 0 ? '▲' : '▼') + '</span></th>'; };
-      el.innerHTML = head + '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:8px"><table class="tbl" style="font-size:12.5px"><thead><tr>' + th('name', 'CSR') + th('in', 'Inbound') + th('out', 'Outbound') + th('talk', 'Total talk') + th('avg', 'Avg talk', 'Average talk time per call, inbound and outbound.') + th('tta', 'Avg answer', 'Average seconds from the call ringing to the CSR answering.') + th('util', 'On the phone', 'Total talk time as a share of an 8-hour day, for each day the CSR took calls. Breaks and meetings are not subtracted.') + '</tr></thead><tbody>' +
-        byLoc(roster, rows, function (x) { return x.name; }).map(function (g, gi, G0) { var t = g[1].reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.dt += x.days; if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, dt: 0, ts: 0, tn: 0 });
-          return (G0.length > 1 ? '<tr style="background:#F1EEE8;font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="text-align:right">' + fmt(t.inc) + '</td><td class="num" style="text-align:right">' + fmt(t.out) + '</td><td class="num" style="text-align:right">' + hm(t.talk) + '</td><td class="num" style="text-align:right">' + ms((t.inc + t.out) ? t.talk / (t.inc + t.out) : null) + '</td><td class="num" style="text-align:right">' + (t.tn ? (t.ts / t.tn).toFixed(1) + 's' : '—') + '</td><td class="num" style="text-align:right">' + (t.dt ? Math.round(t.talk / (t.dt * 8 * 3600) * 100) + '%' : '—') + '</td></tr>' : '') +
-          g[1].map(function (x) { return '<tr><td><b style="font-weight:600' + (G0.length > 1 ? ';padding-left:10px;display:inline-block' : '') + '">' + esc(x.name) + '</b> <span class="mut" style="font-size:11.5px">· ' + x.days + 'd</span></td><td class="num" style="text-align:right">' + fmt(x.inc) + '</td><td class="num" style="text-align:right">' + fmt(x.out) + '</td><td class="num" style="text-align:right">' + hm(x.talk) + '</td><td class="num" style="text-align:right">' + ms(x.avg) + '</td><td class="num" style="text-align:right">' + (x.tta == null ? '—' : x.tta.toFixed(1) + 's') + '</td><td class="num" style="text-align:right">' + (x.util == null ? '—' : Math.round(x.util) + '%') + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></div>';
+      el.innerHTML = head + '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:8px"><table class="tbl efftbl" style="font-size:12.5px"><thead><tr>' + th('name', 'CSR') + th('in', 'Inbound', 'Every inbound call the LightSpeed phone system routed to this CSR and they picked up, including internal/staff calls, short calls and calls with no recording. That is why it is higher than Customer conversations in CSR Results.') + '<th style="text-align:right;white-space:nowrap">% In' + itip('Who is doing the heavy lifting: this CSR’s share of their location’s inbound calls (e.g. 291 of 409 = 71%). On a location row, that location’s share of the brand’s inbound calls.') + '</th>' + th('out', 'Outbound', 'Every outbound call this CSR placed from LightSpeed, answered or not: callbacks, follow-ups, confirmations and calls to techs or other locations.') + '<th style="text-align:right;white-space:nowrap">% Out' + itip('This CSR’s share of their location’s outbound calls. On a location row, that location’s share of the brand’s outbound calls.') + '</th>' + th('talk', 'Total talk', 'All talk time on this CSR’s inbound and outbound calls added together,, shown in hours and minutes.') + th('avg', 'Avg talk', 'Average talk time per call, inbound and outbound.') + th('tta', 'Avg answer', 'Average seconds from the call ringing to the CSR answering.') + th('util', 'Utilization', 'Total talk time as a share of an 8-hour day, for each day the CSR took calls. Breaks and meetings are not subtracted.') + '</tr></thead><tbody>' +
+        (function () { var B = rows.reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.dt += x.days; if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, dt: 0, ts: 0, tn: 0 }); EFFB = B;
+          return rows.length > 1 ? '<tr style="background:#E6F0EA;font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc((function () { var bn = (brand && brand !== 'null' ? brand : '') || (S.brands.length === 1 ? S.brands[0] : '') || S.brand || LOCK || ''; var sh = bn ? short(bn) : ''; return sh && sh !== 'null' ? sh + ' total' : 'All ' + W_BRANDS.toLowerCase(); })()) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + rows.length + ' CSRs</span></td><td class="num" style="text-align:right">' + fmt(B.inc) + '</td><td class="num" style="text-align:right">100%</td><td class="num" style="text-align:right">' + fmt(B.out) + '</td><td class="num" style="text-align:right">100%</td><td class="num" style="text-align:right">' + hm(B.talk) + '</td><td class="num" style="text-align:right">' + ms((B.inc + B.out) ? B.talk / (B.inc + B.out) : null) + '</td><td class="num" style="text-align:right">' + (B.tn ? (B.ts / B.tn).toFixed(1) + 's' : '—') + '</td><td class="num" style="text-align:right">' + (B.dt ? Math.round(B.talk / (B.dt * 8 * 3600) * 100) + '%' : '—') + '</td></tr>' : ''; })() +
+        byLoc(roster, rows, function (x) { return x.name; }).map(function (g, gi, G0) { var sumIO = function (L) { return L.reduce(function (a, x) { a[0] += x.inc; a[1] += x.out; return a; }, [0, 0]); }, GT = G0.map(function (gg) { return sumIO(gg[1]); }), LIN = SHR100(GT.map(function (q) { return q[0]; })), LOUT = SHR100(GT.map(function (q) { return q[1]; })), CIN = SHR100(g[1].map(function (x) { return x.inc; })), COUT = SHR100(g[1].map(function (x) { return x.out; })); var t = g[1].reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.dt += x.days; if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, dt: 0, ts: 0, tn: 0 });
+          return (G0.length > 1 ? '<tr style="background:#F1EEE8;font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="text-align:right">' + fmt(t.inc) + '</td><td class="num" style="text-align:right">' + LIN[gi] + '</td><td class="num" style="text-align:right">' + fmt(t.out) + '</td><td class="num" style="text-align:right">' + LOUT[gi] + '</td><td class="num" style="text-align:right">' + hm(t.talk) + '</td><td class="num" style="text-align:right">' + ms((t.inc + t.out) ? t.talk / (t.inc + t.out) : null) + '</td><td class="num" style="text-align:right">' + (t.tn ? (t.ts / t.tn).toFixed(1) + 's' : '—') + '</td><td class="num" style="text-align:right">' + (t.dt ? Math.round(t.talk / (t.dt * 8 * 3600) * 100) + '%' : '—') + '</td></tr>' : '') +
+          g[1].map(function (x, xi) { return '<tr><td><b style="font-weight:600' + (G0.length > 1 ? ';padding-left:10px;display:inline-block' : '') + '">' + esc(x.name) + '</b> <span class="mut" style="font-size:11.5px">· ' + x.days + 'd</span></td><td class="num" style="text-align:right">' + fmt(x.inc) + '</td><td class="num mut" style="text-align:right">' + CIN[xi] + '</td><td class="num" style="text-align:right">' + fmt(x.out) + '</td><td class="num mut" style="text-align:right">' + COUT[xi] + '</td><td class="num" style="text-align:right">' + hm(x.talk) + '</td><td class="num" style="text-align:right">' + ms(x.avg) + '</td><td class="num" style="text-align:right">' + (x.tta == null ? '—' : x.tta.toFixed(1) + 's') + '</td><td class="num" style="text-align:right">' + (x.util == null ? '—' : Math.round(x.util) + '%') + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></div>';
       el.dataset.k = '1'; FEFF = function () { focusEff(T, kind, brand, agent); };
     }).catch(function () { var el = $('feff'); if (el) el.innerHTML = '<h2 class="ttl">Call Center Efficiency</h2><p class="mut" style="font-size:12.5px">Phone stats couldn’t load.</p>'; });
   }
   var FEFF = null;
+  var EFFB = { inc: 0, out: 0 };
+  function SHR(a, tot) { return +tot ? Math.round(100 * (+a || 0) / +tot) + '%' : '—'; }
+  // Whole-number shares that always add to exactly 100% (largest remainder). PORT-09, 11/19.
+  function SHR100(ns) { var tot = ns.reduce(function (a, n) { return a + (+n || 0); }, 0); if (!tot) return ns.map(function () { return '—'; });
+    var raw = ns.map(function (n) { return 100 * (+n || 0) / tot; }), fl = raw.map(Math.floor), left = 100 - fl.reduce(function (a, b) { return a + b; }, 0);
+    raw.map(function (r, i) { return [r - fl[i], i]; }).sort(function (a, b) { return b[0] - a[0]; }).slice(0, left).forEach(function (x) { fl[x[1]] += 1; });
+    return fl.map(function (v) { return v + '%'; }); }
+  function EPC(a, b) { var n = (+a || 0) + (+b || 0); return n ? Math.round(100 * (+a || 0) / n) + '%' : '—'; }
   // Customer sentiment + temper shift in one card (Rob 10/29).
   function focusMood(tok, kind, brand, agent) {
     api({ action: 'qaextras', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null) }).then(function (x) { if (tok !== T) return; var el = $('fmood'); if (!el) return;
       var s = (x || {}).sentiment || {}, tp = (x || {}).temper || {}, so = s.overall || {}, to = tp.overall || {};
       if (agent) { so = (s.by_agent || []).filter(function (r) { return nmMatch(r.agent, agent); })[0] || {}; to = (tp.by_agent || []).filter(function (r) { return nmMatch(r.agent, agent); })[0] || {}; }
-      var head = '<h2 class="ttl">Customer Sentiment</h2><p class="sub">How the call felt to the customer (1 angry to 5 delighted) and how their mood changed from the first 30 seconds to the end. Never changes a score. Tracked from Oct 22, 2026.</p>';
+      // Rob & Eric 11/2: percentages instead of a 1-5 average, and the mood shift told as a story
+      // (came in upset -> turned around -> still upset, worth a follow-up).
+      var head = '<h2 class="ttl">Customer Sentiment</h2><p class="sub">How customers felt at the end of the call, and what happened to the ones who called in upset. Never changes a score. Tracked from Oct 22, 2026 · click a number to hear the calls.</p>';
       if (!so.n && !to.n) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px">No calls with sentiment in this period yet.</p>'; return; }
-      var t = so.n ? tempOf(so.avg) : null, ag = agent ? ' data-ffagent="' + esc(agent) + '"' : '', bd = brand ? ' data-ffbrand="' + esc(brand) + '"' : '';
-      var tl = function (cap, v, sub, col, k, val, tip) { return '<button class="click" data-ffk="' + k + '" data-ffv="' + val + '"' + ag + bd + ' title="Hear these calls" style="all:unset;cursor:pointer;min-width:110px"><div class="cap">' + cap + (tip ? itip(tip) : '') + '</div><div class="num" style="font-size:22px;font-weight:600;color:' + col + ';text-decoration:underline dotted;margin-top:4px">' + v + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div></button>'; };
-      el.innerHTML = head + '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:10px;align-items:flex-start">' +
-        (so.n ? '<div style="min-width:120px"><div class="cap">Average</div><div class="num" style="font-size:22px;font-weight:600;color:' + t.col + ';margin-top:4px">' + (+so.avg).toFixed(1) + ' <span style="font-size:13px">' + t.label + '</span></div><div class="mut" style="font-size:11.5px">' + fmt(so.n) + ' calls</div></div>' +
-          tl('Left happy', Math.round(100 * (so.pos || 0) / so.n) + '%', fmt(so.pos || 0) + ' calls', '#1F5A41', 'sentiment', 'pos') + tl('Left upset', Math.round(100 * (so.neg || 0) / so.n) + '%', fmt(so.neg || 0) + ' calls · worth a follow-up', '#A8441A', 'sentiment', 'neg') : '') +
-        (to.n ? tl('Came in upset', fmt(to.upset_in || 0), 'of ' + fmt(to.n) + ' calls', '#A8441A', 'temper', 'upset_in', 'Upset (1-2) in the first 30 seconds.') + tl('Calmed down', fmt(to.calmed || 0), 'came in upset, left happy · kudos', '#1F5A41', 'temper', 'calmed', 'Came in upset (1-2) and left happy (4-5).') + tl('Escalated', fmt(to.escalated || 0), 'came in calm, left upset', '#A61B1B', 'temper', 'escalated', 'Came in calm or happy (3-5) and left upset (1-2).') : '') + '</div>';
+      var ag = agent ? ' data-ffagent="' + esc(agent) + '"' : '', bd = brand ? ' data-ffbrand="' + esc(brand) + '"' : '';
+      var pc = function (a, b) { return b ? Math.round(100 * (a || 0) / b) + '%' : '—'; };
+      var tl = function (cap, v, sub, col, k, val, tip) { var inner = capRow(cap, tip) + '<div class="num" style="font-size:24px;font-weight:600;color:' + col + ';margin-top:4px' + (k ? ';text-decoration:underline dotted' : '') + '">' + v + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div>';
+        return k ? '<button class="click" data-ffk="' + k + '" data-ffv="' + val + '"' + ag + bd + ' title="Hear these calls" style="all:unset;cursor:pointer;min-width:140px;flex:1 1 140px">' + inner + '</button>' : '<div style="min-width:140px;flex:1 1 140px">' + inner + '</div>'; };
+      var neu = so.n ? Math.max(0, so.n - (so.pos || 0) - (so.neg || 0)) : 0;
+      var h = head;
+      if (so.n) h += '<div class="cap" style="margin-top:14px">How calls ended · ' + fmt(so.n) + ' calls</div><div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px">' +
+        tl('Positive', pc(so.pos, so.n), fmt(so.pos || 0) + ' calls ended happy', '#1F5A41', 'sentiment', 'pos', 'Customer sounded happy or satisfied at the end (4-5 on a 5-point scale).') +
+        tl('Neutral', pc(neu, so.n), fmt(neu) + ' calls ended businesslike', '#5F6763', null, null, 'Customer sounded neutral at the end (3 on a 5-point scale).') +
+        tl('Negative', pc(so.neg, so.n), fmt(so.neg || 0) + ' calls ended frustrated or angry', '#A8441A', 'sentiment', 'neg', 'Customer sounded frustrated or angry at the end (1-2 on a 5-point scale).') + '</div>';
+      if (to.n) {
+        var up = +to.upset_in || 0, fixed = (+to.calmed || 0) + (+to.settled || 0), still = +to.stayed || 0;
+        var step = function (cap, v, sub, col, k) { return '<button class="click" data-ffk="temper" data-ffv="' + k + '"' + ag + bd + ' title="Hear these calls" style="all:unset;cursor:pointer;flex:1 1 150px;min-width:140px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#FCFBF8"><div class="cap">' + cap + '</div><div class="num" style="font-size:24px;font-weight:600;color:' + col + ';margin-top:2px">' + fmt(v) + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div></button>'; };
+        var arrow = '<div aria-hidden="true" style="align-self:center;color:#B9B2A6;font-size:18px">›</div>';
+        h += '<div class="cap" style="margin-top:18px">Customers who called in frustrated or angry</div>' +
+          (up ? '<p style="margin:6px 0 0;font-size:13px;line-height:1.5"><b>' + fmt(up) + '</b> customers called in upset. CSRs turned <b>' + fmt(fixed) + '</b> of them around (' + pc(fixed, up) + '). <b>' + fmt(still) + '</b> were still upset at the end and are worth a follow-up from the GM.</p>' : '<p class="mut" style="margin:6px 0 0;font-size:12.5px">No customers called in upset in this period.</p>') +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:stretch">' +
+          step('Called in unhappy', up, 'of ' + fmt(to.n) + ' calls', '#A8441A', 'upset_in') + arrow +
+          step('Turned around', fixed, pc(fixed, up) + ' · left happy or calm', '#1F5A41', 'calmed') + arrow +
+          step('Still unhappy', still, pc(still, up) + ' · worth a follow-up', '#A61B1B', 'stayed') + '</div>' +
+          ((+to.escalated || 0) ? '<p class="mut" style="font-size:12px;margin:10px 0 0">Also: <button class="click lnk" data-ffk="temper" data-ffv="escalated"' + ag + bd + ' style="all:unset;cursor:pointer;color:var(--gd);font-weight:600;border-bottom:1px dashed #9CC6B2">' + fmt(to.escalated) + ' calls</button> started calm and ended upset.</p>' : '');
+      }
+      el.innerHTML = h;
     }).catch(function () { var el = $('fmood'); if (el) el.innerHTML = '<h2 class="ttl">Customer Sentiment</h2><p class="mut" style="font-size:12.5px">Sentiment couldn’t load.</p>'; });
   }
   var lastFocus = null;
@@ -605,19 +1347,20 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- CSRs ----------
   function vCsrs(tok) {
     setMain(crumb([['CSRs']]) + '<div class="oq-card" id="csrall">' + skel(30, 12) + '</div>');
-    Promise.all([loadReport(), loadPrevReport(), loadExtras().catch(function () { return {}; })]).then(function (r) {
+    Promise.all([loadReport(), loadPrevReport(), loadExtras().catch(function () { return {}; }), api(Object.assign({ action: 'cardcap' }, win())).catch(function () { return null; })]).then(function (r) {
       if (tok !== T) return; noteKnown(r[0]);
-      var rows = agentRows(r[0], r[1], S.csrMin || 30), key = S.csrSort, AN = ((r[2] || {}).asknb || {}).by_agent;
-      rows.forEach(function (a) { var x = askNb(AN, a.brand, a.name); a.ask = x ? x.pct : null; a.nb = x ? x.nb : 0; });
-      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? -99 : -(a.avg - a.pavg); }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, cc: function (a) { return -(a.cc || 0); }, name: function (a) { return 0; }, brand: function (a) { return 0; } }[key];
+      var rows = agentRows(r[0], r[1], S.csrQ ? 1 : (S.csrMin || 30)), key = S.csrSort, AN = ((r[2] || {}).asknb || {}).by_agent, CM = {};
+      ((r[3] || {}).by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; var k = String(x.agent || '').toLowerCase(); CM[k] = CM[k] || { b: 0, a: 0 }; CM[k].b += +x.booked || 0; CM[k].a += +x.asked_cc || 0; });
+      rows.forEach(function (a) { var x = askNb(AN, a.brand, a.name); a.ask = x ? x.pct : null; a.nb = x ? x.nb : 0; var v = CM[String(a.name || '').toLowerCase()]; a.ccb = v ? v.b : 0; a.cca = v ? v.a : 0; a.cc = v && v.b ? 100 * v.a / v.b : null; });
+      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? -99 : -(a.avg - a.pavg); }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, cc: function (a) { return a.cc == null ? 999 : a.cc; }, name: function (a) { return 0; }, brand: function (a) { return 0; } }[key];
       var dir = S.csrDir || 1; rows.sort(key === 'name' ? function (a, b) { return dir * a.name.localeCompare(b.name); } : key === 'brand' ? function (a, b) { return dir * (short(a.brand || '').localeCompare(short(b.brand || '')) || a.name.localeCompare(b.name)); } : function (a, b) { return dir * (f(a) - f(b)); });
       var q = (S.csrQ || '').toLowerCase(); if (q) rows = rows.filter(function (a) { return a.name.toLowerCase().indexOf(q) >= 0 || (a.brand || '').toLowerCase().indexOf(q) >= 0; });
       var th = function (k, l, t) { var on = key === k, asc = (k === 'name' || k === 'brand' || k === 'ask') === (dir === 1); return '<th class="sortable" data-csort="' + k + '" title="' + esc(t) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + l + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
-      var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">CSR Scorecards</h2><p class="sub">' + rows.length + ' CSRs with ' + (S.csrMin || 30) + '+ calls · click a header to sort, a row to open the CSR</p></div><div class="row" style="gap:8px"><label class="sr" for="csrq">Find a CSR</label><input id="csrq" class="oq-field" style="width:220px" placeholder="Find a CSR or brand…" value="' + esc(S.csrQ || '') + '"><select id="csrmin" class="oq-field" style="width:auto" aria-label="Minimum calls"><option value="10"' + (S.csrMin == 10 ? ' selected' : '') + '>10+ calls</option><option value="30"' + (!S.csrMin || S.csrMin == 30 ? ' selected' : '') + '>30+ calls</option><option value="100"' + (S.csrMin == 100 ? ' selected' : '') + '>100+ calls</option></select></div></div>' +
-        '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + th('brand', 'Brand', 'Sort by brand') + th('calls', 'Inbound calls handled', 'Inbound customer conversations this CSR handled') + th('avg', 'Avg QA score', 'Average call-flow (QA) score, 0–100') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking rate', 'Booked ÷ decided calls') + th('ask', 'Ask rate · not booked', 'Not-booked opportunities where the CSR still asked for the booking · lowest first') + th('xo', 'Transfers out', 'Calls this CSR transferred to someone else') + th('xi', 'Transfers in', 'Calls this CSR received from a colleague') + th('cc', 'Cards', 'Cards collected on booked calls') + '<th></th></tr></thead><tbody>';
+      var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + W_CSR + ' Scorecards</h2><p class="sub">' + rows.length + ' CSRs ' + (S.csrQ ? 'matching your search (any number of calls)' : 'with ' + (S.csrMin || 30) + '+ calls') + ' · click a header to sort, a row to open the CSR</p></div><div class="row" style="gap:8px"><label class="sr" for="csrq">Find a CSR</label><input id="csrq" class="oq-field" style="width:220px" placeholder="Find a CSR or brand…" value="' + esc(S.csrQ || '') + '"><select id="csrmin" class="oq-field" style="width:auto" aria-label="Minimum calls"><option value="10"' + (S.csrMin == 10 ? ' selected' : '') + '>10+ calls</option><option value="30"' + (!S.csrMin || S.csrMin == 30 ? ' selected' : '') + '>30+ calls</option><option value="100"' + (S.csrMin == 100 ? ' selected' : '') + '>100+ calls</option></select></div></div>' +
+        '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + th('brand', 'Brand', 'Sort by brand') + th('calls', 'Inbound calls handled', 'Inbound customer conversations this CSR handled') + th('avg', 'Avg QA score', 'Average call-flow (QA) score, 0–100') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking rate', 'Booked ÷ decided calls') + th('ask', 'Ask rate · not booked', 'Not-booked opportunities where the CSR still asked for the booking · lowest first') + th('xo', 'Transfers out', 'Calls this CSR transferred to someone else') + th('xi', 'Transfers in', 'Calls this CSR received from a colleague') + th('cc', 'Card ask rate', 'Share of booked residential service calls where the CSR asked for a card · lowest first. Commercial, PDQ and Dan\u2019s Doors are left out.') + '<th></th></tr></thead><tbody>';
       rows.slice(0, 150).forEach(function (a) {
-        h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:12px">' + avatar(a.name, 32) + '<b style="font-weight:600">' + esc(a.name) + '</b></div></td><td class="mut">' + esc(short(a.brand)) + '</td><td class="num">' + fmt(a.calls) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + delta(a.avg, a.pavg, '') + '</td>' +
-          '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:40px">' + (a.rate != null ? a.rate.toFixed(0) + '%' : '—') + '</span><div class="track" style="flex:1"><div style="background:' + ((a.rate || 0) >= 60 ? G : O) + ';width:' + (a.rate || 0) + '%"></div></div></div></td><td class="num" title="' + (a.nb ? a.nb + ' not-booked opportunities' : '') + '">' + (a.ask != null ? a.ask.toFixed(0) + '%' : '—') + '</td><td class="num">' + fmt(a.xo) + ' <span class="mut" style="font-size:11px">' + (a.calls ? Math.round(a.xo / a.calls * 100) + '%' : '') + '</span></td><td class="num">' + fmt(a.xi) + '</td><td class="num mut">' + fmt(a.cc) + '</td><td class="mut" aria-hidden="true">›</td></tr>';
+        h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:12px">' + avatar(a.name, 32) + '<b style="font-weight:600">' + esc(a.name) + '</b></div></td><td class="mut">' + esc(short(a.brand)) + '</td><td class="num">' + fmt(a.calls) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) + '%' : '—') + '</td><td>' + delta(a.avg, a.pavg, '') + '</td>' +
+          '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:40px">' + (a.rate != null ? a.rate.toFixed(0) + '%' : '—') + '</span><div class="track" style="flex:1"><div style="background:' + ((a.rate || 0) >= 60 ? G : O) + ';width:' + (a.rate || 0) + '%"></div></div></div></td><td class="num" title="' + (a.nb ? a.nb + ' not-booked opportunities' : '') + '">' + (a.ask != null ? a.ask.toFixed(0) + '%' : '—') + '</td><td class="num">' + fmt(a.xo) + ' <span class="mut" style="font-size:11px">' + (a.calls ? Math.round(a.xo / a.calls * 100) + '%' : '') + '</span></td><td class="num">' + fmt(a.xi) + '</td><td class="num">' + (a.cc == null ? '<span class="mut">—</span>' : '<span title="' + fmt(a.cca) + ' of ' + fmt(a.ccb) + ' booked service calls">' + a.cc.toFixed(0) + '%</span>') + '</td><td class="mut" aria-hidden="true">›</td></tr>';
       });
       $('csrall').innerHTML = h + '</tbody></table></div>';
       var qi = $('csrq'); if (qi) { qi.addEventListener('input', function () { S.csrQ = qi.value; S.csrFocus = true; clearTimeout(qi.t); qi.t = setTimeout(render, 250); }); if (S.csrFocus) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); } }
@@ -625,12 +1368,369 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function (e) { if (tok === T) $('csrall').innerHTML = errBox(e); });
   }
 
+
+  // ---------- Coach view (Becky + Rob, 11/19 "CSR Training – The Next Steps") ----------
+  // A coach's landing page: who needs a 1:1 (lowest card ask / QA / booking rate), who has been coached enough that
+  // their GM or RM should step in, and who deserves a thank-you. Same numbers as the CSR Scorecards page; coaching
+  // history comes from RPC qa_coach_history (the same feed as each CSR's Coaching Notes card).
+  var CARD_GOAL = 75, AI_NAMES = ['Dane', 'Sophia', 'Jason'], RECEP_BRANDS = ['PDQ', 'Dan’s Doors', "Dan's Doors"];
+  var COACH = { m: 'card' };
+  function vCoach(tok) {
+    setMain(crumb([['Coach view']]) + '<div id="coachtop"></div><div class="oq-card" id="coachneed">' + skel(30, 10) + '</div>' +
+      '<div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px"><div class="oq-card" id="coachesc">' + skel(30, 4) + '</div><div class="oq-card" id="coachkudo">' + skel(30, 4) + '</div></div>');
+    Promise.all([loadReport(), loadPrevReport(), api(Object.assign({ action: 'cardcap' }, win())).catch(function () { return null; }), CFG.coachHistory().catch(function () { return []; })]).then(function (r) {
+      if (tok !== T) return; noteKnown(r[0]);
+      var HI = {}; (r[3] || []).forEach(function (x) { HI[String(x.name || '').toLowerCase()] = x; });
+      var CM = {}; ((r[2] || {}).by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; var k = String(x.agent || '').toLowerCase(); CM[k] = CM[k] || { b: 0, a: 0 }; CM[k].b += +x.booked || 0; CM[k].a += +x.asked_cc || 0; });
+      var rows = agentRows(r[0], r[1], 1).filter(function (a) { return AI_NAMES.indexOf(a.name) < 0; });
+      rows.forEach(function (a) { var k = String(a.name || '').toLowerCase(), v = CM[k]; a.ccb = v ? v.b : 0; a.cc = v && v.b ? 100 * v.a / v.b : null; a.h = HI[k] || null; });
+      var pc = function (v) { return v == null ? '—' : v.toFixed(0) + '%'; };
+      var hist = function (a) { var h = a.h; if (!h || (!h.sessions && !h.no_shows)) return '<span class="mut">Not coached yet</span>';
+        return '<span title="From the Coaching Notes on this CSR’s page">' + h.sessions + ' session' + (h.sessions === 1 ? '' : 's') + (h.no_shows ? ' · <span style="color:#B4432F">' + h.no_shows + ' no-show' + (h.no_shows === 1 ? '' : 's') + '</span>' : '') + (h.last ? '<br><span class="mut" style="font-size:11.5px">last ' + fdate(h.last) + '</span>' : '') + '</span>'; };
+      var noteBtn = function (a) { return '<button class="sel" data-coachnote="' + esc(a.name) + '" style="min-height:30px;padding:4px 10px;font-size:12px">+ Note</button>'; };
+      var who = function (a) { return '<div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 28) + '<div><b style="font-weight:600">' + esc(a.name) + '</b><div class="mut" style="font-size:11.5px">' + esc(short(a.brand || '')) + (RECEP_BRANDS.indexOf(a.brand) >= 0 ? ' · <span title="Rob 11/19: these brands still use receptionists. Check the call type before coaching.">receptionist brand</span>' : '') + '</div></div></div>'; };
+      var wire = function (el) { [].forEach.call(el.querySelectorAll('[data-coachnote]'), function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); S.agent = b.getAttribute('data-coachnote'); S.noteOpen = true; go('csr'); }); }); };
+
+      // 1) Who needs coaching — pick a metric, lowest first
+      var M = {
+        card: { l: 'Card ask rate', t: 'Booked service calls where the CSR asked for a card (goal ' + CARD_GOAL + '%)', ok: function (a) { return a.cc != null && a.ccb >= 4; }, v: function (a) { return a.cc; } },
+        qa: { l: 'QA score', t: 'Average call-flow (QA) score, 0–100', ok: function (a) { return a.avg != null && a.calls >= 10; }, v: function (a) { return a.avg; } },
+        book: { l: 'Booking rate', t: 'Booked ÷ booking opportunities', ok: function (a) { return a.rate != null && a.calls >= 10; }, v: function (a) { return a.rate; } }
+      };
+      var draw = function () {
+        var m = M[COACH.m], list = rows.filter(m.ok).sort(function (a, b) { return m.v(a) - m.v(b); }).slice(0, 15);
+        var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Who needs coaching</h2><p class="sub">Lowest ' + esc(m.l.toLowerCase()) + ' · ' + esc(rangeLabel()) + ' · pick the CSRs for this week’s 1:1s (15–20 minutes). Check the calls before the session.</p></div>' +
+          '<div class="row" style="gap:6px">' + Object.keys(M).map(function (k) { return '<button class="chip' + (COACH.m === k ? ' on' : '') + '" data-coachm="' + k + '" title="' + esc(M[k].t) + '">' + M[k].l + '</button>'; }).join('') + '</div></div>';
+        if (!list.length) h += '<p class="mut" style="margin-top:10px">Not enough calls in this date range. Try Last 30 days.</p>';
+        else h += '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr><th>CSR</th><th class="num" title="' + esc(M.card.t) + '">Card ask</th><th class="num" title="' + esc(M.qa.t) + '">QA score</th><th class="num" title="' + esc(M.book.t) + '">Booking rate</th><th class="num">Calls</th><th>Coaching so far</th><th></th></tr></thead><tbody>' +
+          list.map(function (a) { var b = function (k, s) { return COACH.m === k ? '<b>' + s + '</b>' : '<span class="mut">' + s + '</span>'; };
+            return '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td>' + who(a) + '</td><td class="num">' + b('card', '<span style="color:' + (a.cc != null && a.cc < CARD_GOAL ? O : 'inherit') + '">' + pc(a.cc) + '</span>') + '</td><td class="num">' + b('qa', a.avg != null ? a.avg.toFixed(1) + '%' : '—') + '</td><td class="num">' + b('book', pc(a.rate)) + '</td><td class="num">' + fmt(a.calls) + '</td><td style="font-size:12.5px">' + hist(a) + '</td><td>' + noteBtn(a) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+        var el = $('coachneed'); el.innerHTML = h; wire(el);
+        [].forEach.call(el.querySelectorAll('[data-coachm]'), function (b) { b.addEventListener('click', function () { COACH.m = b.getAttribute('data-coachm'); draw(); }); });
+      };
+      draw();
+
+      // 2) Escalate — coached (or scheduled) 5+ times, or 3+ no-shows, and still under the card ask goal
+      var esc5 = rows.filter(function (a) { var h = a.h; if (!h) return false; var tries = (h.sessions || 0) + (h.no_shows || 0); return (tries >= 5 || (h.no_shows || 0) >= 3) && (a.cc == null || a.cc < CARD_GOAL); })
+        .sort(function (a, b) { return ((b.h.sessions + b.h.no_shows) - (a.h.sessions + a.h.no_shows)) || ((a.cc == null ? 999 : a.cc) - (b.cc == null ? 999 : b.cc)); });
+      var mail = function (subj, body) { return 'mailto:?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body); };
+      var eh = '<h2 class="ttl">Bring in their GM or RM</h2><p class="sub">Coached or scheduled 5+ times, or missed 3+ sessions, and still under the ' + CARD_GOAL + '% card ask goal. Rob 11/19: at this point it’s a will issue, not a skill issue.</p>';
+      eh += esc5.length ? esc5.slice(0, 8).map(function (a) { var h = a.h, first = a.name.split(' ')[0];
+        var body = 'Hi,\n\nWe wanted to flag ' + a.name + ' (' + short(a.brand || '') + '). Since we started coaching, ' + first + ' has been scheduled for ' + (h.sessions + h.no_shows) + ' coaching sessions: attended ' + h.sessions + ', missed ' + h.no_shows + '.' + (a.cc != null ? ' Credit card ask rate, ' + rangeLabel().toLowerCase() + ': ' + a.cc.toFixed(0) + '% (goal ' + CARD_GOAL + '%).' : '') + '\n\nWe think more direct coaching from you is the next step. The session notes are on ' + first + '’s page in the portal.\n\nThanks,\n' + (CFG.userName || '');
+        return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)">' + '<div data-agent="' + esc(a.name) + '" class="click" style="flex:1;min-width:0">' + who(a) + '<div style="font-size:12.5px;margin:4px 0 0 38px">' + hist(a).replace('<br>', ' · ') + ' · card ask <b>' + pc(a.cc) + '</b></div></div>' +
+          '<a class="sel" href="' + esc(mail('Coaching follow-up: ' + a.name, body)) + '" style="min-height:30px;padding:4px 10px;font-size:12px;text-decoration:none;flex:none">Draft email</a></div>'; }).join('')
+        : '<p class="mut" style="margin-top:10px">Nobody meets this yet.</p>';
+      var ee = $('coachesc'); ee.innerHTML = eh;
+
+      // 3) Kudos — at or over the card goal, and most improved QA
+      var top = rows.filter(function (a) { return a.cc != null && a.ccb >= 5 && a.cc >= CARD_GOAL; }).sort(function (a, b) { return b.cc - a.cc || (b.avg || 0) - (a.avg || 0); }).slice(0, 6);
+      var up = rows.filter(function (a) { return a.calls >= 20 && a.avg != null && a.pavg != null && a.avg - a.pavg >= 5; }).sort(function (a, b) { return (b.avg - b.pavg) - (a.avg - a.pavg); }).slice(0, 5);
+      var kudo = function (a, why) { var first = a.name.split(' ')[0];
+        var body = 'Hi ' + first + ',\n\nWe’ve been watching your calls and wanted to say great job. ' + why + '\n\nKeep it up!\n\n' + (CFG.userName || '');
+        return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)"><div data-agent="' + esc(a.name) + '" class="click" style="flex:1;min-width:0">' + who(a) + '<div style="font-size:12.5px;margin:4px 0 0 38px">' + esc(why) + '</div></div>' +
+          '<a class="sel" href="' + esc(mail('Great work, ' + first + '!', body)) + '" title="Add the CSR, their GM and Rob before you send" style="min-height:30px;padding:4px 10px;font-size:12px;text-decoration:none;flex:none">Thank-you email</a></div>'; };
+      var kh = '<h2 class="ttl">Kudos</h2><p class="sub">Worth a thank-you email. Copy their GM and Rob.</p>';
+      kh += top.length ? '<div class="cap" style="margin-top:8px">At or over the ' + CARD_GOAL + '% card ask goal</div>' + top.map(function (a) { return kudo(a, 'Card ask rate ' + a.cc.toFixed(0) + '%' + (a.avg != null ? ', QA score ' + a.avg.toFixed(1) + '%' : '') + (a.rate != null ? ', booking rate ' + a.rate.toFixed(0) + '%' : '') + '.'); }).join('') : '';
+      kh += up.length ? '<div class="cap" style="margin-top:12px">Most improved QA score</div>' + up.map(function (a) { return kudo(a, 'QA score up ' + (a.avg - a.pavg).toFixed(1) + ' points, to ' + a.avg.toFixed(1) + '%' + '.'); }).join('') : '';
+      if (!top.length && !up.length) kh += '<p class="mut" style="margin-top:10px">Nobody yet for this date range.</p>';
+      $('coachkudo').innerHTML = kh;
+
+      // top tiles
+      var under = rows.filter(function (a) { return a.cc != null && a.ccb >= 4 && a.cc < CARD_GOAL; }).length;
+      var tb = 0, ta = 0; rows.forEach(function (a) { var v = CM[String(a.name || '').toLowerCase()]; if (v) { tb += v.b; ta += v.a; } });
+      $('coachtop').innerHTML = '<div class="oq-card"><h2 class="ttl">Coach view</h2><p class="sub">' + esc(rangeLabel()) + (LOCK ? ' · ' + esc(short(LOCK)) : S.brands.length ? ' · ' + S.brands.map(short).map(esc).join(', ') : ' · all brands') + '. Click a CSR to open their page, calls and coaching notes.</p>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px">' +
+        tile('Card ask rate', tb ? (100 * ta / tb).toFixed(1) + '%' : '—', 'Goal ' + CARD_GOAL + '%') + tile('Under the card goal', fmt(under), 'CSRs with 4+ card-eligible bookings') + tile('For their GM or RM', fmt(esc5.length), 'Coached 5+ times or 3+ no-shows') + tile('Kudos', fmt(top.length + up.length), 'At goal or most improved') + '</div></div>';
+    }).catch(function (e) { if (tok === T) $('coachneed').innerHTML = errBox(e); });
+  }
+
+  // ---------- Business reviews (Becky 11/19): WBR · MBR · QBR · Annual + Scorecard · Booking rate · Containment ----------
+  // Admins + Opsis staff only. Data: RPC qa_biz_review (every metric by day × brand × location, from the same sources as the
+  // portal pages; card capture from the qa_card_call cache so it matches the Card capture page) and qa_biz_detail (unbooked
+  // reasons, transfers, repeat callers). Comparisons are skipped when the earlier period starts before that data existed.
+  var BZ = { tab: 'wbr', pick: {}, cache: {}, metric: 'revenue', sort: { k: 'answered', dir: -1 }, q: '', open: {}, view: 'location' };
+  var BZ_TABS = [['wbr', 'WBR'], ['mbr', 'MBR'], ['qbr', 'QBR'], ['annual', 'Annual'], ['scorecard', 'Scorecard'], ['booking', 'Booking rate'], ['contain', 'Containment rate']];
+  var BZ_REV_TABS = ['wbr', 'mbr', 'qbr', 'annual'];
+  var BZ_MIN_MIN = 4; // minutes a manual QA review takes (estimate shown on the page)
+  function bzToday() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date()); }
+  function bzAdd(ds, n) { var d = new Date(ds + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function bzDays(a, b) { return Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 864e5); }
+  function bzMonAdd(ds, n) { var d = new Date(ds.slice(0, 7) + '-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10); }
+  function bzLong(ds) { var p = ds.split('-'); return MONTHS[+p[1] - 1] + ' ' + (+p[2]) + ', ' + p[0]; }
+  function bzPeriods(kind) {
+    var t = bzToday(), out = [], DATA0 = '2026-07-13';
+    var mk = function (k, label, s, e, ps, pe, grain, trend, cmp, partial) { out.push({ k: k, label: label, start: s, end: e, ps: ps, pe: pe, grain: grain, trend: trend, cmp: cmp, partial: partial }); };
+    if (kind === 'wbr') {
+      var dow = (new Date(t + 'T12:00:00Z').getUTCDay() + 6) % 7, mon = bzAdd(t, -dow);
+      for (var i = 0; i < 16; i++) { var m = bzAdd(mon, -7 * i), e = i === 0 ? t : bzAdd(m, 6); if (m < DATA0) break; var len = bzDays(m, e);
+        mk(m, i === 0 ? 'This week (so far)' : 'Week of ' + fdate(m), m, e, bzAdd(m, -7), bzAdd(m, -7 + len), 'week', bzAdd(m, -77), i === 0 ? 'the same days last week' : 'the week before', i === 0); }
+    } else if (kind === 'mbr') {
+      var m0 = t.slice(0, 7) + '-01';
+      for (var j = 0; j < 12; j++) { var ms = bzMonAdd(m0, -j), me = j === 0 ? t : bzAdd(bzMonAdd(ms, 1), -1); if (me < DATA0) break; var pm = bzMonAdd(ms, -1), pme = j === 0 ? bzAdd(pm, Math.min(bzDays(ms, me), bzDays(pm, bzAdd(ms, -1)))) : bzAdd(ms, -1);
+        mk(ms, MONTHS[+ms.slice(5, 7) - 1] + ' ' + ms.slice(0, 4) + (j === 0 ? ' (so far)' : ''), ms, me, pm, pme, 'month', bzMonAdd(ms, -11), j === 0 ? 'the same point last month' : MONTHS[+pm.slice(5, 7) - 1], j === 0); }
+    } else if (kind === 'qbr') {
+      var q0 = t.slice(0, 5) + ('0' + (Math.floor((+t.slice(5, 7) - 1) / 3) * 3 + 1)).slice(-2) + '-01';
+      for (var q = 0; q < 6; q++) { var qs = bzMonAdd(q0, -3 * q), qe = q === 0 ? t : bzAdd(bzMonAdd(qs, 3), -1); if (qe < DATA0) break; var pq = bzMonAdd(qs, -3), pqe = q === 0 ? bzAdd(pq, bzDays(qs, qe)) : bzAdd(qs, -1), qn = Math.floor((+qs.slice(5, 7) - 1) / 3) + 1;
+        mk(qs, 'Q' + qn + ' ' + qs.slice(0, 4) + (q === 0 ? ' (so far)' : ''), qs, qe, pq, pqe, 'month', bzMonAdd(qs, -9), q === 0 ? 'the same point last quarter' : 'Q' + (qn === 1 ? 4 : qn - 1), q === 0); }
+    } else {
+      var y = +t.slice(0, 4);
+      for (var yy = y; yy >= 2026; yy--) { var ys = yy + '-01-01', ye = yy === y ? t : yy + '-12-31';
+        mk(ys, yy + (yy === y ? ' (so far)' : ''), ys, ye, (yy - 1) + '-01-01', (yy - 1) + ye.slice(4), 'month', ys, 'the year before', yy === y); }
+    }
+    return out;
+  }
+  function bzDefault(kind, list) { if (kind === 'wbr' || kind === 'mbr') return list[1] || list[0]; if (kind === 'qbr') return bzDays(list[0].start, list[0].end) >= 29 || !list[1] ? list[0] : list[1]; return list[0]; }
+  function bzPeriod() {
+    var kind = BZ_REV_TABS.indexOf(BZ.tab) >= 0 ? BZ.tab : null;
+    if (!kind) { var len = bzDays(S.start, S.end) + 1; return { k: 'range', label: rangeLabel(), start: S.start, end: S.end, ps: bzAdd(S.start, -len), pe: bzAdd(S.start, -1), grain: len > 120 ? 'month' : 'week', trend: bzAdd(S.end, -83), cmp: 'the ' + len + ' days before' }; }
+    var list = bzPeriods(kind), p = list.filter(function (x) { return x.k === BZ.pick[kind]; })[0] || bzDefault(kind, list); BZ.pick[kind] = p.k; return p;
+  }
+  function bzLoad(p, detail) {
+    var brands = LOCK ? [LOCK] : S.brands, key = [p.start, p.end, p.ps, p.pe, p.grain, p.trend, brands.join('|'), detail ? 'd' : ''].join(',');
+    if (!BZ.cache[key]) BZ.cache[key] = Promise.all([CFG.bizReview({ start: p.start, end: p.end, grain: p.grain, trend: p.trend, brands: brands, prevStart: p.ps, prevEnd: p.pe }),
+      detail ? CFG.bizDetail({ start: p.start, end: p.end, trend: p.trend, brands: brands }) : Promise.resolve(null)]).catch(function (e) { delete BZ.cache[key]; throw e; });
+    return BZ.cache[key];
+  }
+  // a comparison is only fair if the earlier period starts after that kind of data began
+  function bzFair(d, grp) { var s = (d.data_since || {})[grp]; return !!s && d.range.prev_start >= s && !!d.prev; }
+  var BZ_GRP = { answered: 'calls', booked: 'calls', conv: 'calls', ask_bk: 'calls', qa: 'calls', scored: 'calls', xfer_pct: 'calls', card_rate: 'card', card_cap: 'card', revenue: 'revenue', rev_jobs: 'revenue', abandon_pct: 'phone', tta: 'phone', offered: 'phone', ai_calls: 'ai', ai_capture: 'ai', ai_contain: 'ai', ai_requests: 'ai' };
+  var BZ_LOWER = { abandon_pct: 1, tta: 1, xfer_pct: 1 };
+  function bzMoney(v) { if (v == null) return '—'; v = +v; return v >= 1e6 ? '$' + (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + 'M' : v >= 1e4 ? '$' + Math.round(v / 1e3) + 'K' : '$' + fmt(Math.round(v)); }
+  function bzVal(k, v) { if (v == null || v === '') return '—'; if (k === 'revenue') return bzMoney(v); if (k === 'tta') return (+v).toFixed(0) + 's'; if (/conv|ask_bk|card_rate|abandon_pct|xfer_pct|ai_capture|ai_contain|pct/.test(k)) return (+v).toFixed(1) + '%'; if (k === 'qa') return (+v).toFixed(1); return fmt(v); }
+  function bzDelta(d, k, cur, prev) {
+    if (!bzFair(d, BZ_GRP[k] || 'calls') || cur == null || prev == null || prev === '') return '<span class="mut" style="font-size:11.5px">' + (bzFair(d, BZ_GRP[k] || 'calls') ? 'no earlier data' : 'no comparison yet') + '</span>';
+    cur = +cur; prev = +prev; var pts = /conv|ask_bk|card_rate|abandon_pct|xfer_pct|ai_capture|ai_contain/.test(k), dd = pts ? cur - prev : (prev ? 100 * (cur - prev) / prev : null);
+    if (dd == null) return '<span class="mut" style="font-size:11.5px">new</span>';
+    if (Math.abs(dd) < (pts ? 0.05 : 0.5)) return '<span class="mut" style="font-size:11.5px">flat</span>';
+    var up = dd > 0, good = BZ_LOWER[k] ? !up : up;
+    return '<span style="font-size:11.5px;font-weight:600;color:' + (good ? '#1F8A5B' : '#B4432F') + '">' + (up ? '▲ ' : '▼ ') + (pts ? Math.abs(dd).toFixed(1) + ' pts' : k === 'qa' ? Math.abs(cur - prev).toFixed(1) + ' pts' : Math.abs(dd).toFixed(0) + '%') + '</span>';
+  }
+  function vReviews(tok) {
+    if (!(CFG.bizReview && (IS_ADMIN || CFG.staff))) { S.view = 'overview'; return vOverview(tok); }
+    var p = bzPeriod(), rev = BZ_REV_TABS.indexOf(BZ.tab) >= 0;
+    var tabs = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px"><div class="row" style="gap:4px;background:#EFECE6;padding:4px;border-radius:12px">' + BZ_TABS.map(function (t) { return '<button class="sel' + (BZ.tab === t[0] ? ' btnd' : '') + '" data-bztab="' + t[0] + '" style="min-height:34px;padding:6px 14px;border:none' + (BZ.tab === t[0] ? '' : ';background:transparent') + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      (rev ? '<label class="mut" style="font-size:12px;display:flex;align-items:center;gap:8px">Period<select id="bzper" class="oq-field" style="width:auto;min-width:200px">' + bzPeriods(BZ.tab).map(function (x) { return '<option value="' + x.k + '"' + (x.k === p.k ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') + '</select></label>' : '<span class="row" style="gap:10px;align-items:center"><span class="mut" style="font-size:12.5px">Uses the date range and brands at the top · ' + esc(rangeLabel()) + '</span><button class="sel" data-bzprint="1" data-noprint="1">Print / PDF</button></span>') + '</div>';
+    setMain(crumb([['Business reviews']]) + tabs + '<div id="bzbody"><div class="oq-card">' + skel(120, 1) + '</div><div class="oq-card">' + skel(30, 8) + '</div></div>');
+    var ps = $('bzper'); if (ps) ps.addEventListener('change', function () { BZ.pick[BZ.tab] = ps.value; render(); });
+    [].forEach.call(document.querySelectorAll('[data-bztab]'), function (b) { b.addEventListener('click', function () { BZ.tab = b.getAttribute('data-bztab'); BZ.q = ''; render(); }); });
+    bzLoad(p, !rev).then(function (r) { if (tok !== T) return; var el = $('bzbody'); if (!el) return;
+      el.innerHTML = rev ? bzReview(r[0], p) : BZ.tab === 'scorecard' ? bzScorecard(r[0], p) : BZ.tab === 'booking' ? bzBooking(r[0], r[1], p) : bzContain(r[0], r[1], p); bzWire(el, r, p); })
+      .catch(function (e) { if (tok === T && $('bzbody')) $('bzbody').innerHTML = errBox(e); });
+  }
+  function bzSec(n, t, h) { return '<div style="display:flex;align-items:center;gap:12px;margin:26px 0 4px"><span style="font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#1F5A41">' + n + ' ' + esc(t.toUpperCase()) + '</span><span style="flex:1;height:1px;background:var(--line)"></span></div><h2 style="font-size:21px;font-weight:650;margin:4px 0 12px;color:#14302A;letter-spacing:-.01em">' + h + '</h2>'; }
+  function bzBar(lbl, v, mx, txt, col) { return '<div style="display:grid;grid-template-columns:110px minmax(0,1fr) 78px;gap:10px;align-items:center;font-size:12.5px;padding:5px 0"><span class="mut">' + esc(lbl) + '</span><span style="height:6px;background:#F1EEE8;border-radius:3px"><span style="display:block;height:6px;border-radius:3px;background:' + (col || '#2F7D5B') + ';width:' + (mx ? Math.max(v ? 2 : 0, 100 * v / mx) : 0).toFixed(1) + '%"></span></span><span class="num" style="text-align:right;font-weight:600">' + txt + '</span></div>'; }
+  function bzHero(icon, cap, big, sub, rows, foot) { return '<div class="oq-card" style="margin:0;display:flex;flex-direction:column"><div style="display:flex;align-items:center;gap:10px"><span style="width:34px;height:34px;border-radius:10px;background:#E6F0EA;display:inline-flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F5A41" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + icon + '"/></svg></span><span class="cap" style="font-size:11.5px">' + cap + '</span></div><div class="num" style="font-size:44px;font-weight:700;color:#14302A;margin:10px 0 2px;letter-spacing:-.02em">' + big + '</div><div style="margin-bottom:10px">' + sub + '</div><div style="border-top:1px solid var(--line2);padding-top:8px;flex:1">' + rows + '</div>' + (foot ? '<div style="margin-top:8px">' + foot + '</div>' : '') + '</div>'; }
+  function bzReview(d, p) {
+    var c = d.cur || {}, pv = d.prev || {}, ds = d.data_since || {}, B = (d.by_brand || []).filter(function (b) { return b.cur; }), isAdminView = CFG.staff;
+    var periodName = { wbr: 'week', mbr: 'month', qbr: 'quarter', annual: 'year' }[BZ.tab], DELT = function (k) { return bzDelta(d, k, c[k], pv[k]); };
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12.5px;font-weight:600;letter-spacing:.06em">' + ({ wbr: 'WEEKLY', mbr: 'MONTHLY', qbr: 'QUARTERLY', annual: 'ANNUAL' }[BZ.tab]) + ' BUSINESS REVIEW</div><h1 style="font-size:30px;margin:2px 0 6px;color:#14302A;letter-spacing:-.02em">' + esc(CLIENT) + ' · ' + esc(p.label) + '</h1><span class="pill" style="background:#F3F1EC;color:#5F6763">' + bzLong(p.start) + ' – ' + bzLong(p.end) + '</span> <span class="pill" style="background:#F3F1EC;color:#5F6763">' + B.length + ' brands · compared with ' + esc(p.cmp) + '</span></div>' +
+      '<button class="sel" data-bzprint="1" data-noprint="1" title="Print or save this review as a PDF">Print / PDF</button></div>';
+    // 01 headline
+    var hrsQa = (c.scored || 0) * BZ_MIN_MIN / 60, hrsAi = (c.ai_min || 0) / 60, weeks = Math.max(1, (bzDays(p.start, p.end) + 1) / 7), fte = (hrsQa + hrsAi) / (40 * weeks);
+    var topB = B.slice().sort(function (a, b) { return (b.cur.revenue || 0) - (a.cur.revenue || 0); }).slice(0, 4), revMx = topB.length ? topB[0].cur.revenue : 0;
+    h += bzSec('01', 'Headline metrics', 'Here’s what your call center delivered this ' + periodName);
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">' +
+      bzHero('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', 'Jobs booked', fmt(c.booked), DELT('booked') + ' <span class="mut" style="font-size:11.5px">vs ' + esc(p.cmp) + '</span>',
+        bzBar('By your CSRs', c.booked || 0, Math.max(c.booked || 0, c.ai_requests || 0), fmt(c.booked)) + bzBar('AI CSR requests', c.ai_requests || 0, Math.max(c.booked || 0, c.ai_requests || 0), fmt(c.ai_requests || 0), '#3474C9') + bzBar('Cards on file', c.card_cap || 0, Math.max(c.booked || 0, 1), fmt(c.card_cap || 0), '#9B59C9'),
+        '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + bzVal('conv', c.conv) + ' booking rate</span> ' + DELT('conv')) +
+      bzHero('M4 20V10M10 20V4M16 20v-7M22 20H2', 'Revenue from booked calls', bzMoney(c.revenue), DELT('revenue') + ' <span class="mut" style="font-size:11.5px">' + (ds.revenue ? 'Switchboard invoices since ' + fdate(ds.revenue) : '') + '</span>',
+        topB.map(function (b) { return bzBar(short(b.brand), b.cur.revenue || 0, revMx, bzMoney(b.cur.revenue)); }).join('') || '<p class="mut" style="font-size:12.5px">No invoices matched to calls yet.</p>',
+        '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + fmt(c.rev_jobs) + ' invoiced jobs · ' + bzMoney(c.rev_jobs ? c.revenue / c.rev_jobs : null) + ' average</span>') +
+      bzHero('M12 3a9 9 0 1 0 9 9M12 7v5l3 3', 'Hours of work done for you', fmt(Math.round(hrsQa + hrsAi)), '<span class="mut" style="font-size:11.5px">Estimate · ' + BZ_MIN_MIN + ' minutes per manual call review</span>',
+        bzBar('Calls QA’d', hrsQa, Math.max(hrsQa, hrsAi), fmt(c.scored) + ' calls') + bzBar('QA review time', hrsQa, Math.max(hrsQa, hrsAi), fmt(Math.round(hrsQa)) + ' hrs') + bzBar('AI CSR talk time', hrsAi, Math.max(hrsQa, hrsAi), fmt(Math.round(hrsAi)) + ' hrs', '#3474C9'),
+        '<span class="pill" style="background:#E6F0EA;color:#1F5A41">≈ ' + fte.toFixed(1) + ' full-time staff equivalent</span>') + '</div>';
+    var kp = [['conv', 'Booking rate', KDEF['Booking rate']], ['ask_bk', 'Asked for the booking', KDEF['Booking ask rate']], ['card_rate', 'Card ask rate', KDEF['Card ask rate'] + ' Goal 75%.'], ['qa', 'QA score', KDEF['Avg QA score']], ['abandon_pct', 'Abandon rate', 'Calls to the brand lines that hung up before anyone answered (LightSpeed phone system).'], ['tta', 'Avg time to answer', 'Seconds from ring to a person answering (LightSpeed phone system).']];
+    h += '<div class="oq-card" style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px 14px">' + kp.map(function (k) { return '<div style="padding:4px 0"><div class="cap" style="display:flex;align-items:center">' + k[1] + itip(k[2]) + '</div><div class="num" style="font-size:22px;font-weight:700;margin:2px 0">' + bzVal(k[0], c[k[0]]) + (k[0] === 'card_rate' && c.card_rate != null ? '<span class="mut" style="font-size:12px;font-weight:500"> / 75%</span>' : '') + '</div>' + DELT(k[0]) + '</div>'; }).join('') + '</div>';
+    // 02 what changed
+    var notes = [], fair = function (g) { return bzFair(d, g); };
+    var mv = B.filter(function (b) { return b.prev && b.cur.decided >= 20 && b.prev.decided >= 20 && b.cur.conv != null && b.prev.conv != null; }).map(function (b) { return [b, b.cur.conv - b.prev.conv]; }).sort(function (a, b) { return b[1] - a[1]; });
+    if (fair('calls') && mv.length && mv[0][1] >= 2) notes.push(['good', '<b>' + esc(short(mv[0][0].brand)) + '</b> booking rate up ' + mv[0][1].toFixed(1) + ' pts to ' + mv[0][0].cur.conv.toFixed(1) + '%.']);
+    if (fair('calls') && mv.length > 1 && mv[mv.length - 1][1] <= -2) notes.push(['bad', '<b>' + esc(short(mv[mv.length - 1][0].brand)) + '</b> booking rate down ' + Math.abs(mv[mv.length - 1][1]).toFixed(1) + ' pts to ' + mv[mv.length - 1][0].cur.conv.toFixed(1) + '%.']);
+    var cg = B.filter(function (b) { return b.cur.card_bk >= 15 && b.cur.card_rate != null; });
+    if (cg.length) { var at = cg.filter(function (b) { return b.cur.card_rate >= 75; }); notes.push([at.length ? 'good' : 'watch', at.length ? '<b>' + at.map(function (b) { return esc(short(b.brand)); }).join(', ') + '</b> at or above the 75% card ask goal; ' + (cg.length - at.length) + ' of ' + cg.length + ' brands still below.' : 'No brand at the 75% card ask goal yet; company-wide <b>' + bzVal('card_rate', c.card_rate) + '</b>.']); }
+    if (fair('revenue') && pv.revenue) { var rd = 100 * (c.revenue - pv.revenue) / pv.revenue; if (Math.abs(rd) >= 3) notes.push([rd > 0 ? 'good' : 'bad', 'Revenue from booked calls <b>' + (rd > 0 ? 'up ' : 'down ') + Math.abs(rd).toFixed(0) + '%</b> to ' + bzMoney(c.revenue) + '.']); }
+    var ab = B.filter(function (b) { return b.cur.offered >= 100 && b.cur.abandon_pct != null; }).sort(function (a, b) { return b.cur.abandon_pct - a.cur.abandon_pct; });
+    if (ab.length && ab[0].cur.abandon_pct >= 8) notes.push(['watch', '<b>' + esc(short(ab[0].brand)) + '</b> had the highest abandon rate: ' + ab[0].cur.abandon_pct.toFixed(1) + '% of ' + fmt(ab[0].cur.offered) + ' calls.']);
+    var qq = B.filter(function (b) { return b.cur.scored >= 50 && b.cur.qa != null; }).sort(function (a, b) { return b.cur.qa - a.cur.qa; });
+    if (qq.length > 1) notes.push(['good', 'Highest QA score: <b>' + esc(short(qq[0].brand)) + '</b> at ' + qq[0].cur.qa.toFixed(1) + '. Lowest: ' + esc(short(qq[qq.length - 1].brand)) + ' at ' + qq[qq.length - 1].cur.qa.toFixed(1) + '.']);
+    if (c.ai_calls) notes.push(['good', 'The AI CSR answered <b>' + fmt(c.ai_calls) + '</b> calls and captured <b>' + bzVal('ai_capture', c.ai_capture) + '</b> of the leads it talked to.']);
+    var IC = { good: ['#1F8A5B', '▲'], bad: ['#B4432F', '▼'], watch: ['#B7791F', '!'] };
+    h += bzSec('02', 'What changed', notes.length ? 'The ' + Math.min(notes.length, 6) + ' things worth knowing' : 'Nothing unusual this ' + periodName);
+    if (notes.length) h += '<div class="oq-card" style="margin:0"><ul style="list-style:none;margin:0;padding:0">' + notes.slice(0, 6).map(function (n) { return '<li style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line2);font-size:14px;line-height:1.5"><span style="flex:none;width:20px;height:20px;border-radius:10px;background:' + IC[n[0]][0] + '1F;color:' + IC[n[0]][0] + ';font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;margin-top:1px">' + IC[n[0]][1] + '</span><span>' + n[1] + '</span></li>'; }).join('') + '</ul></div>';
+    // 03 by brand
+    var L = d.by_location || [];
+    h += bzSec('03', 'Brand & location breakdown', 'How each brand did · click a brand for its locations');
+    h += '<div class="oq-card" style="margin:0;padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="tbl" style="font-size:13px"><thead><tr><th>Brand</th><th>Calls handled</th><th>Booking rate</th><th>Card ask rate</th><th>QA score</th><th>Abandon rate</th><th>Revenue</th><th>AI CSR calls</th></tr></thead><tbody>' +
+      B.slice().sort(function (a, b) { return (b.cur.revenue || 0) - (a.cur.revenue || 0) || (b.cur.answered || 0) - (a.cur.answered || 0); }).map(function (b) {
+        var cell = function (k) { return '<td><div class="num" style="font-weight:600">' + bzVal(k, b.cur[k]) + '</div><div>' + (b.prev ? bzDelta(d, k, b.cur[k], b.prev[k]) : '') + '</div></td>'; }, op = BZ.open[b.brand];
+        var locs = L.filter(function (x) { return x.brand === b.brand && x.cur && x.location; });
+        return '<tr class="click" data-bzbrand="' + esc(b.brand) + '"><td style="text-align:left!important"><span style="display:inline-flex;align-items:center;gap:8px">' + (locs.length ? '<span class="mut" style="width:10px">' + (op ? '▾' : '▸') + '</span>' : '<span style="width:10px"></span>') + bbadge(b.brand) + '<b style="font-weight:600">' + esc(short(b.brand)) + '</b></span></td>' + cell('answered') + cell('conv') + cell('card_rate') + cell('qa') + cell('abandon_pct') + cell('revenue') + '<td class="num">' + (b.cur.ai_calls ? fmt(b.cur.ai_calls) : '—') + '</td></tr>' +
+          (op ? locs.map(function (x) { var lc = function (k) { return '<td class="num" style="font-size:12.5px">' + bzVal(k, x.cur[k]) + '</td>'; }; return '<tr style="background:#FAF9F6"><td style="text-align:left!important;padding-left:58px" class="mut">' + esc(x.location) + '</td>' + lc('answered') + lc('conv') + lc('card_rate') + lc('qa') + lc('abandon_pct') + lc('revenue') + '<td class="num">' + (x.cur.ai_calls ? fmt(x.cur.ai_calls) : '—') + '</td></tr>'; }).join('') : '');
+      }).join('') + '</tbody></table></div></div>';
+    // 04 trend
+    var MET = [['revenue', 'Revenue'], ['booked', 'Jobs booked'], ['conv', 'Booking rate'], ['card_rate', 'Card ask rate'], ['qa', 'QA score'], ['answered', 'Calls handled'], ['abandon_pct', 'Abandon rate']];
+    var mk = BZ.metric, since = ds[BZ_GRP[mk] || 'calls'], bk = (d.buckets || []).filter(function (b) { return since && bzAdd(b.k, { week: 6, month: 31, quarter: 92 }[d.range.grain] || 31) >= since; });
+    var today = bzToday(), full = bk.filter(function (b) { return bzAdd(b.k, d.range.grain === 'week' ? 6 : 0) < today && (d.range.grain === 'week' || bzMonAdd(b.k, d.range.grain === 'quarter' ? 3 : 1) <= today); }), vals = full.map(function (b) { return bzBv(b, mk); }), first = vals.filter(function (v) { return v != null; })[0], last = vals.filter(function (v) { return v != null; }).slice(-1)[0], nFull = vals.filter(function (v) { return v != null; }).length;
+    var unitName = d.range.grain === 'week' ? 'week' : 'month', mName = (MET.filter(function (m) { return m[0] === mk; })[0] || [])[1];
+    var head = first == null || nFull < 2 ? mName + ' over time' : mName + (last > first ? (BZ_LOWER[mk] ? ' rose' : ' grew') : last < first ? (BZ_LOWER[mk] ? ' fell' : ' dropped') : ' held') + ' from ' + bzVal(mk, first) + ' to ' + bzVal(mk, last) + ' per ' + unitName + ' over ' + nFull + ' full ' + unitName + 's';
+    h += bzSec('04', 'Performance over time', esc(head));
+    h += '<div class="oq-card" style="margin:0"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><b>' + esc(mName) + ' by ' + unitName + '</b><div class="mut" style="font-size:12px">' + (d.range.grain === 'week' ? 'Weeks start Monday' : 'Calendar months') + ' · the current ' + unitName + ' is partial</div></div><div class="row" data-noprint="1" style="gap:4px;background:#EFECE6;padding:3px;border-radius:10px">' + MET.map(function (m) { return '<button class="sel' + (mk === m[0] ? ' btnd' : '') + '" data-bzmet="' + m[0] + '" style="min-height:30px;padding:4px 10px;font-size:12px;border:none' + (mk === m[0] ? '' : ';background:transparent') + '">' + m[1] + '</button>'; }).join('') + '</div></div>' + bzChart(bk, mk, d.range.grain, p) + '</div>';
+    // 05 services
+    var svc = [
+      ['Call QA & coaching', c.scored > 0, fmt(c.scored) + ' calls scored · QA ' + bzVal('qa', c.qa), 'Every customer call scored on the 5-step call flow, with CSR coaching.'],
+      ['Card capture program', c.card_bk > 0, bzVal('card_rate', c.card_rate) + ' card ask rate · ' + fmt(c.card_cap) + ' cards on file', 'CSRs ask for a card to hold service appointments (goal 75%).'],
+      ['Revenue matching', c.rev_jobs > 0, fmt(c.rev_jobs) + ' invoices matched to calls', 'Switchboard invoices tied back to the call that booked the job.'],
+      ['Phone system reporting', c.offered > 0, fmt(c.offered) + ' calls · ' + bzVal('abandon_pct', c.abandon_pct) + ' abandoned', 'Answer times and abandons from the LightSpeed phone system.'],
+      ['AI CSR', c.ai_calls > 0, c.ai_calls ? fmt(c.ai_calls) + ' calls · ' + bzVal('ai_capture', c.ai_capture) + ' of leads captured' : 'Ready to launch', 'Answers overflow and after-hours calls and sends the team a ready-to-book request.'],
+      ['AI Speed to Lead', false, 'Ready to launch', 'Calls new web leads within a minute, any hour.']];
+    var live = svc.filter(function (s) { return s[1]; }).length, off = svc.filter(function (s) { return !s[1]; }).map(function (s) { return s[0]; });
+    h += bzSec('05', 'Opsis services in use', live + ' of ' + svc.length + ' services live' + (off.length ? ', room to add ' + off.join(' and ') : ''));
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">' + svc.map(function (s) { return '<div class="oq-card" style="margin:0;' + (s[1] ? '' : 'background:#FAF9F6;border-style:dashed') + '"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>' + esc(s[0]) + '</b><span class="pill" style="background:' + (s[1] ? '#E6F0EA;color:#1F5A41' : '#F3F1EC;color:#5F6763') + '">' + (s[1] ? 'Live' : 'Not live yet') + '</span></div><div class="num" style="font-size:14px;font-weight:600;margin:8px 0 4px">' + s[2] + '</div><div class="mut" style="font-size:12.5px;line-height:1.5">' + esc(s[3]) + '</div></div>'; }).join('') + '</div>';
+    // 06 AI vs CSR — plain language (Becky 11/20: "I have no idea what any of this means")
+    var cmp = L.filter(function (x) { return x.cur && x.cur.ai_leads >= 5; });
+    h += bzSec('06', 'AI CSR vs CSRs', cmp.length ? 'What happened when someone called needing service' : 'The AI CSR isn’t live at enough locations to compare yet');
+    if (cmp.length) h += '<p class="mut" style="font-size:13px;margin:-4px 0 12px;line-height:1.5">The two numbers aren’t the same step yet: the AI CSR takes down the caller’s details and hands them to your team, while a CSR books the appointment on the call.</p>' + cmp.map(function (x) {
+      var csr = x.cur.decided >= 20 ? x.cur : ((B.filter(function (b) { return b.brand === x.brand; })[0] || {}).cur || {}), where = esc(short(x.brand)) + (x.location ? ' · ' + esc(x.location) : '');
+      var box = function (who, n, of, pctv, what, note, col) { return '<div style="flex:1;min-width:240px;padding:14px 16px;border-radius:12px;background:#FAF9F6;border:1px solid #EEEBE4"><div class="cap" style="color:' + col + '">' + who + '</div>' +
+        '<div style="font-size:15px;margin:6px 0 2px;line-height:1.45">Out of <b>' + fmt(of) + '</b> callers who needed service, ' + what + ' <b class="num" style="font-size:20px;color:' + col + '">' + fmt(n) + '</b></div>' +
+        '<div style="height:8px;background:#EDEAE3;border-radius:4px;margin:8px 0 6px"><span style="display:block;height:8px;border-radius:4px;background:' + col + ';width:' + (pctv || 0) + '%"></span></div><div class="mut" style="font-size:12.5px">' + (pctv == null ? '—' : Math.round(pctv) + ' out of every 100') + ' · ' + note + '</div></div>'; };
+      return '<div class="oq-card" style="margin:0 0 12px"><b style="font-size:15px">' + where + '</b><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px">' +
+        box('AI CSR', x.cur.ai_captured, x.cur.ai_leads, x.cur.ai_capture, 'the AI CSR took down the request for', 'your team still calls them back to book', '#3474C9') +
+        box('Your CSRs', csr.booked, csr.decided, csr.conv, 'your CSRs booked the job for', 'booked on the call', '#1F5A41') + '</div></div>'; }).join('');
+    h += '<p class="mut" style="font-size:11.5px;margin:18px 0 0;line-height:1.6">Data starts: calls ' + (ds.calls ? fdate(ds.calls) : '—') + ' · card capture ' + (ds.card ? fdate(ds.card) : '—') + ' · revenue ' + (ds.revenue ? fdate(ds.revenue) : '—') + ' · phone system ' + (ds.phone ? fdate(ds.phone) : '—') + ' · AI CSR ' + (ds.ai ? fdate(ds.ai) : '—') + '. Changes are only shown when the earlier period has full data. Phone system data runs through ' + (ds.phone_thru ? fdate(ds.phone_thru) : '—') + '.</p>';
+    return h;
+  }
+  var BZ_BASE = { card_rate: ['card_bk', 30], conv: ['decided', 30], qa: ['scored', 30], abandon_pct: ['offered', 100] };
+  function bzBv(b, mk) { var r = BZ_BASE[mk]; if (b[mk] == null) return null; if (r && (+b[r[0]] || 0) < r[1]) return null; return +b[mk]; }
+  function bzChart(bk, mk, grain, p) {
+    if (!bk.length) return '<p class="mut" style="margin-top:14px">No data for this measure yet.</p>';
+    var W = 900, H = 250, pl = 48, pb = 28, n = bk.length, step = (W - pl) / n, bw = Math.min(64, step * 0.62), vals = bk.map(function (b) { return bzBv(b, mk); });
+    var mx = Math.max.apply(null, vals.filter(function (v) { return v != null; }).concat([0])), pctm = /conv|card_rate|abandon_pct/.test(mk), top = pctm ? Math.min(100, Math.ceil(mx / 10) * 10 || 10) : mk === 'qa' ? 100 : (function () { var m = mx || 1, e = Math.pow(10, Math.floor(Math.log10(m))), f = m / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; })();
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:12px" role="img" aria-label="Trend">';
+    [0, .25, .5, .75, 1].forEach(function (f) { var y = H - pb - f * (H - pb - 22); s += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="#EEEBE4"' + (f ? ' stroke-dasharray="3 4"' : '') + '/><text x="' + (pl - 8) + '" y="' + y + '" font-size="10.5" fill="#8A918D" text-anchor="end" dominant-baseline="middle">' + bzVal(mk, top * f).replace(/\.0(?=%|$)/, '') + '</text>'; });
+    bk.forEach(function (b, i) { var v = vals[i], x = pl + i * step + (step - bw) / 2, hh = v == null ? 0 : Math.max(1, v / top * (H - pb - 22)), y = H - pb - hh, cur = b.k <= p.end && bzAdd(b.k, grain === 'week' ? 6 : grain === 'quarter' ? 91 : 30) >= p.start && b.k >= p.start.slice(0, grain === 'week' ? 10 : 7);
+      var lab = grain === 'week' ? fdate(b.k) : MONTHS[+b.k.slice(5, 7) - 1] + ' ’' + b.k.slice(2, 4);
+      s += '<g><title>' + esc(lab + ': ' + bzVal(mk, v)) + '</title>' + (v != null ? '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + hh + '" rx="4" fill="' + (cur ? '#1F5A41' : '#7FB59B') + '"/><text x="' + (x + bw / 2) + '" y="' + (y - 6) + '" font-size="11" font-weight="600" fill="#1C2421" text-anchor="middle">' + bzVal(mk, v) + '</text>' : '') +
+        '<text x="' + (x + bw / 2) + '" y="' + (H - 9) + '" font-size="10.5" fill="#8A918D" text-anchor="middle">' + lab + '</text></g>'; });
+    return s + '</svg>';
+  }
+  // ---- shared table for Scorecard / Booking / Containment ----
+  function bzRowsOf(d) {
+    var rows = BZ.view === 'brand' ? (d.by_brand || []).map(function (b) { return { brand: b.brand, location: '', cur: b.cur, prev: b.prev }; }) : (d.by_location || []).map(function (x) { return { brand: x.brand, location: x.location || '(no location)', cur: x.cur, prev: x.prev }; });
+    var q = (BZ.q || '').toLowerCase();
+    return rows.filter(function (r) { return r.cur && (r.cur.answered || r.cur.offered || r.cur.ai_calls || r.cur.card_bk) && (!q || (r.brand + ' ' + r.location).toLowerCase().indexOf(q) >= 0); });
+  }
+  function bzHeat(cols, rows) {
+    var st = {}; cols.forEach(function (c) { if (!c.heat) return; var v = rows.map(function (r) { return c.v(r); }).filter(function (x) { return x != null; }).sort(function (a, b) { return a - b; }); st[c.k] = v; });
+    return function (c, v) { var a = st[c.k]; if (!c.heat || v == null || !a || a.length < 3) return ''; var i = 0; while (i < a.length && a[i] < v) i++; var pr = i / (a.length - 1); if (c.heat < 0) pr = 1 - pr;
+      var col = pr >= 0.67 ? '#D5EBDD' : pr >= 0.4 ? '#F1F0E6' : pr >= 0.2 ? '#FBE6D3' : '#F6D3CC'; return 'background:' + col + ';'; };
+  }
+  function bzTable(id, cols, rows, title, sub) {
+    var srt = BZ.sort, cc = cols.filter(function (c) { return c.k === srt.k; })[0] || cols[1];
+    rows = rows.slice().sort(function (a, b) { var x = cc.v ? cc.v(a) : null, y = cc.v ? cc.v(b) : null; if (cc.k === 'name') { x = a.brand + a.location; y = b.brand + b.location; return srt.dir * (x < y ? -1 : x > y ? 1 : 0); } return srt.dir * (((x == null ? -1e12 : x)) - ((y == null ? -1e12 : y))); });
+    var heat = bzHeat(cols, rows);
+    var h = '<div class="oq-card" style="margin:0"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + ' · ' + rows.length + ' rows · click a column to sort</p></div><div class="row" data-noprint="1" style="gap:8px"><div class="row" style="gap:4px;background:#EFECE6;padding:3px;border-radius:10px">' + [['location', 'By location'], ['brand', 'By brand']].map(function (v) { return '<button class="sel' + (BZ.view === v[0] ? ' btnd' : '') + '" data-bzview="' + v[0] + '" style="min-height:30px;padding:4px 10px;font-size:12px;border:none' + (BZ.view === v[0] ? '' : ';background:transparent') + '">' + v[1] + '</button>'; }).join('') + '</div><input id="bzq" class="oq-field" style="width:200px" placeholder="Search locations…" value="' + esc(BZ.q) + '"><button class="sel" data-bzexp="' + id + '" style="min-height:34px">⤓ Excel</button></div></div>' +
+      '<div style="overflow:auto;max-height:620px;margin-top:10px"><table class="tbl" style="font-size:12.5px"><thead style="position:sticky;top:0;background:#fff;z-index:1"><tr>' + cols.map(function (c) { var on = c.k === srt.k; return '<th class="sortable" data-bzsort="' + c.k + '" title="' + esc(c.tip || '') + '" style="white-space:normal;min-width:' + (c.k === 'name' ? 200 : 80) + 'px">' + c.l + (on ? (srt.dir > 0 ? ' ↑' : ' ↓') : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r) { return '<tr>' + cols.map(function (c) { if (c.k === 'name') return '<td style="text-align:left!important;white-space:normal"><b style="font-weight:600">' + esc(short(r.brand)) + '</b>' + (r.location ? '<span class="mut"> · ' + esc(r.location) + '</span>' : '') + '</td>'; var v = c.v(r); return '<td class="num" style="' + heat(c, v) + (c.k === 'tag' ? '' : '') + '">' + (c.f ? c.f(r, v) : bzVal(c.fmt || c.k, v)) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div></div>';
+    BZ.lastTable = BZ.lastTable || {}; BZ.lastTable[id] = { cols: cols, rows: rows };
+    return h;
+  }
+  function bzTiles(list) { return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px">' + list.map(function (t) { return '<div class="oq-card" style="margin:0"><div class="cap" style="display:flex;align-items:center">' + t[0] + (t[3] ? itip(t[3]) : '') + '</div><div class="num" style="font-size:30px;font-weight:700;color:#14302A;margin:4px 0">' + t[1] + '</div><div style="font-size:12px">' + t[2] + '</div></div>'; }).join('') + '</div>'; }
+  function bzScorecard(d, p) {
+    var V = function (k) { return function (r) { return r.cur[k] == null ? null : +r.cur[k]; }; };
+    var cols = [{ k: 'name', l: 'Location' }, { k: 'offered', l: 'Calls offered', v: V('offered'), tip: 'Calls to the brand lines (LightSpeed)' }, { k: 'abandon_pct', l: 'Abandon %', v: V('abandon_pct'), heat: -1 }, { k: 'tta', l: 'Time to answer', v: V('tta'), heat: -1 },
+      { k: 'answered', l: 'Calls handled', v: V('answered'), tip: KDEF['Customer conversations'] }, { k: 'qa', l: 'QA score', v: V('qa'), heat: 1 }, { k: 'conv', l: 'Booking rate', v: V('conv'), heat: 1, tip: KDEF['Booking rate'] }, { k: 'ask_bk', l: 'Asked for booking', v: V('ask_bk'), heat: 1 },
+      { k: 'card_rate', l: 'Card ask rate', v: V('card_rate'), heat: 1, tip: KDEF['Card ask rate'] }, { k: 'revenue', l: 'Revenue', v: V('revenue') }, { k: 'ai_calls', l: 'AI CSR calls', v: V('ai_calls') }, { k: 'ai_capture', l: 'AI leads captured', v: V('ai_capture'), heat: 1 }, { k: 'ai_contain', l: 'AI handled alone', v: V('ai_contain'), heat: 1 },
+      { k: 'vs', l: 'Booking vs prior', v: function (r) { return r.prev && r.cur.conv != null && r.prev.conv != null && bzFair(d, 'calls') ? r.cur.conv - r.prev.conv : null; }, f: function (r, v) { return v == null ? '<span class="mut">—</span>' : '<span class="pill" style="background:' + (v >= 2 ? '#E6F0EA;color:#1F5A41' : v <= -2 ? '#FBE3DF;color:#A8341F' : '#F3F1EC;color:#5F6763') + '">' + (v >= 2 ? 'Leading ' : v <= -2 ? 'Lagging ' : 'Steady ') + (v > 0 ? '+' : '') + v.toFixed(1) + '</span>'; } }];
+    var c = d.cur || {};
+    return bzTiles([['Calls handled', fmt(c.answered), bzDelta(d, 'answered', c.answered, (d.prev || {}).answered)], ['Booking rate', bzVal('conv', c.conv), bzDelta(d, 'conv', c.conv, (d.prev || {}).conv), KDEF['Booking rate']], ['Card ask rate', bzVal('card_rate', c.card_rate), bzDelta(d, 'card_rate', c.card_rate, (d.prev || {}).card_rate), KDEF['Card ask rate']], ['Abandon rate', bzVal('abandon_pct', c.abandon_pct), bzDelta(d, 'abandon_pct', c.abandon_pct, (d.prev || {}).abandon_pct)]]) +
+      bzTable('score', cols, bzRowsOf(d), esc(CLIENT) + ' KPI scorecard', 'Phone, QA, booking, card and AI CSR results side by side · greener is better within each column');
+  }
+  function bzReasonShare(det, filt) {
+    var nb = {}, dec = 0; (det.leads || []).forEach(function (x) { if (filt(x)) dec += x.decided; }); (det.nbr || []).forEach(function (x) { if (filt(x)) nb[x.reason] = (nb[x.reason] || 0) + x.n; });
+    return { dec: dec, rows: Object.keys(nb).map(function (k) { return { k: k, n: nb[k], pct: dec ? 100 * nb[k] / dec : null }; }).sort(function (a, b) { return b.n - a.n; }) };
+  }
+  // Plain-language "everyone vs your best 2 locations" (Becky 11/20: the legend-and-bars version wasn't easy to read)
+  function bzLocName(x) { var b = short(x.brand), l = x.location || ''; return l && l.toLowerCase() !== b.toLowerCase() ? b + ' ' + l : b; }
+  function bzBest(names) { return names.length === 2 ? '<b>' + esc(names[0]) + '</b> and <b>' + esc(names[1]) + '</b>' : '<b>' + esc(names[0]) + '</b>'; }
+  function bzCompareTable(head, rows, lowerBetter) {
+    var mx = Math.max.apply(null, rows.map(function (r) { return Math.max(r.a || 0, r.t || 0); }).concat([1]));
+    return '<table class="tbl" style="font-size:13px;margin-top:6px"><thead><tr><th style="text-align:left!important">' + head + '</th><th>All locations</th><th>Your best 2</th></tr></thead><tbody>' +
+      rows.map(function (r) { var better = r.t != null && (lowerBetter ? r.t < r.a - 0.5 : r.t > r.a + 0.5), worse = r.t != null && (lowerBetter ? r.t > r.a + 0.5 : r.t < r.a - 0.5);
+        return '<tr><td style="text-align:left!important;white-space:normal">' + esc(r.k) + '</td><td><div style="display:flex;align-items:center;gap:8px;justify-content:center"><span style="width:90px;height:6px;background:#F1EEE8;border-radius:3px;display:inline-block"><span style="display:block;height:6px;border-radius:3px;background:#A9A398;width:' + (100 * (r.a || 0) / mx).toFixed(0) + '%"></span></span><b class="num">' + (r.a || 0).toFixed(0) + '</b></div></td>' +
+          '<td><b class="num" style="color:' + (better ? '#1F8A5B' : worse ? '#B4432F' : 'inherit') + '">' + (r.t == null ? '—' : r.t.toFixed(0)) + '</b></td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function bzBooking(d, det, p) {
+    var c = d.cur || {}, pv = d.prev || {}, locs = (d.by_location || []).filter(function (x) { return x.cur && x.cur.decided >= 30 && x.location; });
+    var top2 = locs.slice().sort(function (a, b) { return b.cur.conv - a.cur.conv; }).slice(0, 2), avg = c.conv, t2 = top2.length ? 100 * top2.reduce(function (s, x) { return s + x.cur.booked; }, 0) / top2.reduce(function (s, x) { return s + x.cur.decided; }, 0) : null;
+    var isTop = function (x) { return top2.some(function (t) { return t.brand === x.brand && t.location === x.location; }); };
+    var all = bzReasonShare(det, function () { return true; }), tp = bzReasonShare(det, isTop), tpm = {}; tp.rows.forEach(function (r) { tpm[r.k] = r; });
+    var h = bzTiles([['Booking rate', bzVal('conv', c.conv), bzDelta(d, 'conv', c.conv, pv.conv), KDEF['Booking rate']], ['Asked for the booking', bzVal('ask_bk', c.ask_bk), bzDelta(d, 'ask_bk', c.ask_bk, pv.ask_bk), KDEF['Booking ask rate']], ['Jobs booked', fmt(c.booked), bzDelta(d, 'booked', c.booked, pv.booked)], ['Leads', fmt(c.decided), '<span class="mut">opportunities that booked or didn’t</span>']]);
+    h += bzSec('01', 'Top performers', top2.length ? 'Your top locations book at ' + bzVal('conv', t2) + (avg != null ? ', ' + Math.abs(t2 - avg).toFixed(1) + ' pts ' + (t2 - avg >= 0 ? 'above' : 'below') + ' the company' : '') : 'Not enough leads per location yet');
+    if (top2.length) {
+      var bn = top2.map(bzLocName);
+      h += '<div class="oq-card" style="margin:0"><p style="font-size:15px;line-height:1.6;margin:0 0 4px">Out of every 100 callers who could book, your CSRs book <b class="num" style="font-size:18px">' + Math.round(avg) + '</b>. At your two best locations, ' + bzBest(bn) + ', they book <b class="num" style="font-size:18px;color:#1F8A5B">' + Math.round(t2) + '</b>.</p>' +
+        '<p class="mut" style="font-size:13px;margin:0 0 10px">Here’s why the rest didn’t book, counted out of every 100 callers who could have. A smaller number at your best two locations shows where the others can catch up.</p>' +
+        bzCompareTable('Why the caller didn’t book', all.rows.slice(0, 8).map(function (r) { var t = tpm[r.k]; return { k: r.k, a: r.pct, t: tp.dec ? ((t || {}).pct || 0) : null }; }), true) + '</div>';
+    }
+    var V = function (k) { return function (r) { return r.cur[k] == null ? null : +r.cur[k]; }; };
+    h += bzSec('02', 'By location', 'Booking rate by location');
+    h += bzTable('book', [{ k: 'name', l: 'Location' }, { k: 'answered', l: 'Calls handled', v: V('answered') }, { k: 'decided', l: 'Leads', v: V('decided') }, { k: 'booked', l: 'Booked', v: V('booked') }, { k: 'conv', l: 'Booking rate', v: V('conv'), heat: 1 }, { k: 'ask_bk', l: 'Asked for booking', v: V('ask_bk'), heat: 1 }, { k: 'card_rate', l: 'Card ask rate', v: V('card_rate'), heat: 1 }, { k: 'raw', l: 'Booked ÷ all calls', v: function (r) { return r.cur.answered ? 100 * r.cur.booked / r.cur.answered : null; }, fmt: 'pct', heat: 1 }], bzRowsOf(d).filter(function (r) { return r.cur.decided; }), 'By-location detail', esc(rangeLabel()));
+    h += bzSec('03', 'Unbooked reasons', 'Why ' + fmt(all.rows.reduce(function (s, r) { return s + r.n; }, 0)) + ' leads didn’t book');
+    h += '<div class="oq-card" style="margin:0">' + all.rows.slice(0, 14).map(function (r) { return '<div style="display:grid;grid-template-columns:260px minmax(0,1fr) 110px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><span>' + esc(r.k) + '</span><span style="height:8px;background:#F1EEE8;border-radius:4px"><span style="display:block;height:8px;border-radius:4px;background:#E0662A;width:' + (100 * r.n / all.rows[0].n).toFixed(1) + '%"></span></span><span class="num" style="text-align:right"><b>' + fmt(r.n) + '</b> <span class="mut">' + (r.pct || 0).toFixed(1) + '% of leads</span></span></div>'; }).join('') + '</div>';
+    return h;
+  }
+  function bzContain(d, det, p) {
+    var c = d.cur || {}, pv = d.prev || {}, rp = det.repeat_period || {}, rw = det.repeat_weeks || [];
+    var keep = c.answered ? 100 - c.xfer_pct : null, keepP = pv.answered && pv.xfer_pct != null ? 100 - pv.xfer_pct : null;
+    var h = bzTiles([['Handled without a transfer', bzVal('pct', keep), keepP != null && bzFair(d, 'calls') ? bzDelta(d, 'conv', keep, keepP) : '<span class="mut">CSR calls</span>', 'Customer conversations your CSRs finished without transferring the caller to someone else.'],
+      ['AI CSR handled alone', bzVal('ai_contain', c.ai_contain), c.ai_real ? '<span class="mut">' + fmt(c.ai_real) + ' AI conversations</span>' : '<span class="mut">AI CSR not live here</span>', 'AI CSR conversations that finished without a transfer.'],
+      ['Repeat callers', rp.callers ? (100 * rp.rep3 / rp.callers).toFixed(1) + '%' : '—', '<span class="mut">' + fmt(rp.rep3) + ' of ' + fmt(rp.callers) + ' callers called 3+ times in a day</span>', 'Callers who called the same brand 3 or more times in one day. Internal lines and spam are left out.']]);
+    // transfer reasons: company vs top 2 locations (by handled-without-transfer, 100+ calls)
+    var locs = (d.by_location || []).filter(function (x) { return x.cur && x.cur.answered >= 100 && x.location; }), top2 = locs.slice().sort(function (a, b) { return a.cur.xfer_pct - b.cur.xfer_pct; }).slice(0, 2);
+    var isTop = function (x) { return top2.some(function (t) { return t.brand === x.brand && t.location === x.location; }); };
+    var agg = function (f) { var m = {}, tot = 0; (det.xfer || []).forEach(function (x) { if (!f(x)) return; m[x.category] = (m[x.category] || 0) + x.n; }); (d.by_location || []).forEach(function (x) { if (x.cur && f(x)) tot += x.cur.answered || 0; }); return { m: m, tot: tot }; };
+    var A = agg(function () { return true; }), Tp = agg(isTop), cats = Object.keys(A.m).sort(function (a, b) { return A.m[b] - A.m[a]; }).slice(0, 9);
+    var t2keep = top2.length ? 100 - 100 * top2.reduce(function (s, x) { return s + x.cur.xfer; }, 0) / top2.reduce(function (s, x) { return s + x.cur.answered; }, 0) : null;
+    h += bzSec('01', 'Top performers', top2.length ? 'Your top locations finish ' + bzVal('pct', t2keep) + ' of calls without a transfer' + (keep != null ? ', ' + Math.abs(t2keep - keep).toFixed(1) + ' pts ' + (t2keep - keep >= 0 ? 'above' : 'below') + ' the company' : '') : 'Not enough calls per location yet');
+    if (cats.length) { var cn = top2.map(bzLocName), xa = A.tot ? 100 * Object.keys(A.m).reduce(function (s2, k) { return s2 + A.m[k]; }, 0) / A.tot : null, xt = Tp.tot ? 100 * Object.keys(Tp.m).reduce(function (s2, k) { return s2 + Tp.m[k]; }, 0) / Tp.tot : null;
+      h += '<div class="oq-card" style="margin:0"><p style="font-size:15px;line-height:1.6;margin:0 0 4px">Out of every 100 calls, your CSRs transfer <b class="num" style="font-size:18px">' + (xa == null ? '—' : Math.round(xa)) + '</b> to someone else.' + (cn.length && xt != null ? ' At your two best locations, ' + bzBest(cn) + ', they transfer <b class="num" style="font-size:18px;color:#1F8A5B">' + Math.round(xt) + '</b>.' : '') + '</p>' +
+        '<p class="mut" style="font-size:13px;margin:0 0 10px">What those transferred calls were about, counted out of every 100 calls. A smaller number at your best two locations means they handle more of that kind of call themselves.</p>' +
+        bzCompareTable('What the call was about', cats.map(function (k) { return { k: k, a: A.tot ? 100 * A.m[k] / A.tot : 0, t: cn.length && Tp.tot ? 100 * (Tp.m[k] || 0) / Tp.tot : null }; }), true) + '</div>'; }
+    var V = function (k) { return function (r) { return r.cur[k] == null ? null : +r.cur[k]; }; };
+    h += bzSec('02', 'By location', 'Transfers by location');
+    h += bzTable('contain', [{ k: 'name', l: 'Location' }, { k: 'answered', l: 'Calls handled', v: V('answered') }, { k: 'xfer', l: 'Transferred', v: V('xfer') }, { k: 'keep', l: 'Handled without a transfer', v: function (r) { return r.cur.answered ? 100 - r.cur.xfer_pct : null; }, fmt: 'pct', heat: 1 }, { k: 'ai_calls', l: 'AI CSR calls', v: V('ai_calls') }, { k: 'ai_contain', l: 'AI handled alone', v: V('ai_contain'), heat: 1 }, { k: 'abandon_pct', l: 'Abandon %', v: V('abandon_pct'), heat: -1 }], bzRowsOf(d).filter(function (r) { return r.cur.answered || r.cur.ai_calls; }), 'By-location detail', esc(rangeLabel()));
+    // repeat callers
+    var last = rw.slice(-1)[0], prevW = rw.slice(-2)[0];
+    h += bzSec('03', 'Repeat callers', fmt(rp.rep3) + ' of ' + fmt(rp.callers) + ' callers (' + (rp.callers ? (100 * rp.rep3 / rp.callers).toFixed(1) : '0') + '%) called 3+ times in a single day');
+    if (rw.length) { var mx = Math.max.apply(null, rw.map(function (w) { return +w.pct || 0; }).concat([1])), W = 900, H = 180, st = W / rw.length, bw = Math.min(56, st * .7);
+      h += '<div class="oq-card" style="margin:0"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div class="cap">Repeat-caller rate by week</div><div class="mut" style="font-size:12px">% of callers with 3+ calls in one day to the same brand</div></div>' + (last && prevW && last !== prevW ? '<div style="font-size:12.5px">This week <b>' + last.pct + '%</b> · vs last week <b style="color:' + (last.pct > prevW.pct ? '#B4432F' : '#1F8A5B') + '">' + (last.pct - prevW.pct >= 0 ? '+' : '') + (last.pct - prevW.pct).toFixed(1) + ' pts</b></div>' : '') + '</div><svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:8px">' +
+        rw.map(function (w, i) { var hh = (w.pct || 0) / mx * (H - 46), x = i * st + (st - bw) / 2; return '<g><title>Week of ' + fdate(w.wk) + ': ' + w.rep3 + ' of ' + w.callers + ' callers</title><rect x="' + x + '" y="' + (H - 24 - hh) + '" width="' + bw + '" height="' + Math.max(1, hh) + '" rx="4" fill="#3474C9"/><text x="' + (x + bw / 2) + '" y="' + (H - 30 - hh) + '" font-size="11" text-anchor="middle" fill="#1C2421" font-weight="600">' + w.pct + '%</text><text x="' + (x + bw / 2) + '" y="' + (H - 7) + '" font-size="10.5" text-anchor="middle" fill="#8A918D">' + fdate(w.wk) + '</text></g>'; }).join('') + '</svg>';
+      var top = det.repeat_top || [];
+      h += '<div class="cap" style="margin-top:14px">Top repeat callers · ' + esc(rangeLabel()) + '</div>' + (top.length ? '<table class="tbl" style="font-size:12.5px;margin-top:6px"><thead><tr><th>Calls</th><th>Most in a day</th><th>Brand</th><th>Number</th><th>Last call</th><th>Last outcome</th></tr></thead><tbody>' + top.slice(0, BZ.repAll ? 40 : 10).map(function (r) { return '<tr class="click" data-bzrep="' + esc(r.phone) + '" data-bzrepb="' + esc(r.brand) + '"><td class="num"><b>' + r.calls + '</b></td><td class="num">' + r.maxday + '</td><td>' + esc(short(r.brand)) + '</td><td>' + esc(fphone(r.phone)) + '</td><td>' + fdate(r.last) + '</td><td>' + esc(r.last_outcome || '—') + '</td></tr>'; }).join('') + '</tbody></table>' + (top.length > 10 && !BZ.repAll ? '<button class="more" data-noprint="1" data-bzrepall="1" style="margin-top:8px">Show all ' + top.length + ' ↓</button>' : '') : '<p class="mut" style="font-size:12.5px">None in this range.</p>') + '</div>'; }
+    return h;
+  }
+  function bzWire(el, r, p) {
+    var re = function () { var x = $('bzbody'); if (!x) return; var rev = BZ_REV_TABS.indexOf(BZ.tab) >= 0; x.innerHTML = rev ? bzReview(r[0], p) : BZ.tab === 'scorecard' ? bzScorecard(r[0], p) : BZ.tab === 'booking' ? bzBooking(r[0], r[1], p) : bzContain(r[0], r[1], p); bzWire(x, r, p); };
+    [].forEach.call(el.querySelectorAll('[data-bzmet]'), function (b) { b.addEventListener('click', function () { BZ.metric = b.getAttribute('data-bzmet'); re(); }); });
+    [].forEach.call(el.querySelectorAll('[data-bzbrand]'), function (b) { b.addEventListener('click', function () { var k = b.getAttribute('data-bzbrand'); BZ.open[k] = !BZ.open[k]; re(); }); });
+    [].forEach.call(el.querySelectorAll('[data-bzsort]'), function (b) { b.addEventListener('click', function () { var k = b.getAttribute('data-bzsort'); BZ.sort = { k: k, dir: BZ.sort.k === k ? -BZ.sort.dir : (k === 'name' ? 1 : -1) }; re(); }); });
+    [].forEach.call(el.querySelectorAll('[data-bzview]'), function (b) { b.addEventListener('click', function () { BZ.view = b.getAttribute('data-bzview'); re(); }); });
+    var q = el.querySelector('#bzq'); if (q) q.addEventListener('input', function () { BZ.q = q.value; clearTimeout(q.t); q.t = setTimeout(function () { re(); var n = $('bzq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
+    [].forEach.call(el.querySelectorAll('[data-bzexp]'), function (b) { b.addEventListener('click', function () { var t = (BZ.lastTable || {})[b.getAttribute('data-bzexp')]; if (!t) return;
+      sheetsXlsx(CLIENT + ' ' + BZ.tab + ' ' + p.start + ' to ' + p.end, [{ sheet: 'Detail', cols: t.cols.map(function (c) { return c.l; }), rows: t.rows.map(function (r) { return t.cols.map(function (c) { if (c.k === 'name') return short(r.brand) + (r.location ? ' · ' + r.location : ''); var v = c.v(r); return v == null ? '' : Math.round(v * 10) / 10; }); }) }]).catch(function (e) { toast(e.message); }); }); });
+    [].forEach.call(document.querySelectorAll('[data-bzprint]'), function (pr) { pr.onclick = function () { var src = $('bzbody'); if (!src) return; var tabName = (BZ_TABS.filter(function (t) { return t[0] === BZ.tab; })[0] || [])[1];
+      printReport(src, { title: CLIENT + ' ' + tabName + ' · ' + p.label, wrap: function (html) { return '<div id="oqa"><div id="main" style="padding:24px 8px;max-width:none">' + (BZ_REV_TABS.indexOf(BZ.tab) < 0 ? '<h1 style="font-size:24px;margin:0 0 4px;color:#14302A">' + esc(CLIENT) + ' · ' + esc(tabName) + '</h1><p class="mut" style="margin:0 0 14px">' + esc(p.label) + ' · ' + bzLong(p.start) + ' – ' + bzLong(p.end) + '</p>' : '') + html + '</div></div>'; } }); }; });
+    var ra = el.querySelector('[data-bzrepall]'); if (ra) ra.addEventListener('click', function () { BZ.repAll = true; re(); });
+    [].forEach.call(el.querySelectorAll('[data-bzrep]'), function (b) { b.addEventListener('click', function () { S.rq = b.getAttribute('data-bzrep'); S.rkind = ''; go('repeat'); }); });
+  }
+
   // ---------- Calls ----------
   var OUTCOMES = [['', 'Any outcome'], ['Booked', 'Booked'], ['Not Booked', 'Not booked'], ['Transferred', 'Transferred'], ['No Opportunity', 'No opportunity']];
   // KPI drill (2026-10-23): click a top tile -> every brand side by side, then the calls behind the number.
   var KPID = {
     allcalls: { t: 'Inbound calls handled', bar: 'Inbound calls handled', unit: '', list: 'All inbound calls handled', hi: true },
-    lowscore: { t: 'Avg QA score', bar: 'Avg QA score', unit: '', list: 'Lowest-scoring calls (40 or under)', hi: true },
+    lowscore: { t: 'Avg QA score', bar: 'Avg QA score', unit: '', list: 'Lowest-scoring calls (40% or under)', hi: true },
     notbooked: { t: 'Booking rate', bar: 'Booking rate', unit: '%', list: 'Calls that didn’t book', hi: true },
     asknb: { t: 'Ask rate · not booked', bar: 'Asked for the booking on not-booked opportunities', unit: '%', list: 'Not booked and the CSR didn’t ask for the booking', hi: true },
     nocard: { t: 'Card asked', bar: 'Card asked on booked service calls', unit: '%', list: 'Booked service calls with no card ask', hi: true }
@@ -677,23 +1777,23 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function vCalls(tok) {
     var c = S.calls, chips = [];
-    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40 or under)', ctrl: 'Controllable misses (not booked)', other: 'Not booked: outside CSR control' };
+    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40% or under)', ctrl: 'Controllable misses (not booked)', other: 'Not booked: outside CSR control' };
     if (c.bucket) chips.push([BUCKETNAMES[c.bucket] || c.bucket, 'bucket']);
     if (S.callsAgent) chips.push(['CSR: ' + S.callsAgent, 'agent']);
     if (c.outcome) chips.push(['Outcome: ' + c.outcome, 'outcome']);
     if (c.step) chips.push(['Missed: ' + (STEPNAMES[c.step] || c.step), 'step']);
     if (c.winnable) chips.push(['Winnable, didn’t book', 'winnable']);
-    if (c.scoreMax != null) chips.push(['Score ≤ ' + c.scoreMax, 'scoreMax']);
-    if (c.scoreMin != null) chips.push(['Score ≥ ' + c.scoreMin, 'scoreMin']);
+    if (c.scoreMax != null) chips.push(['Score ≤ ' + c.scoreMax + '%', 'scoreMax']);
+    if (c.scoreMin != null) chips.push(['Score ≥ ' + c.scoreMin + '%', 'scoreMin']);
     if (c.q) chips.push(['“' + c.q + '”', 'q']);
     if (c.nocard) chips.push(['Booked, card not asked', 'nocard']);
     if (c.ff) chips.push([c.ff.label, 'ff']);
     if (c.xfer) chips.push([c.xferWith ? (c.xfer === 'out' ? 'Transferred to ' + c.xferWith : 'Received from ' + c.xferWith) : (c.xfer === 'out' ? 'Transferred out' : 'Transferred in'), 'xfer']);
     setMain(crumb([['Call reviews']]) + '<div class="oq-card" id="sreqs" style="display:none"></div><div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h2 class="ttl">Call reviews</h2><button class="sel" data-act="copylink" title="Copy a link to exactly this list" style="min-height:32px;padding:3px 10px;font-size:12.5px;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>Copy link</button></div><p class="sub" id="ctot">Loading…</p></div>' +
       '<form id="callq" class="row" style="gap:8px"><label class="sr" for="cq">Search calls</label><input id="cq" class="oq-field" style="width:230px" placeholder="Search summaries, CSRs, brands, phone…" value="' + esc(c.q || '') + '"><select id="co" class="oq-field" style="width:auto" aria-label="Outcome">' + OUTCOMES.map(function (o) { return '<option value="' + o[0] + '"' + ((c.outcome || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
-      '<select id="cs2" class="oq-field" style="width:auto" aria-label="Missed step"><option value="">Any step</option>' + Object.keys(STEPNAMES).slice(0, 5).map(function (k) { return '<option value="' + k + '"' + (c.step === k ? ' selected' : '') + '>Missed: ' + STEPNAMES[k] + '</option>'; }).join('') + '</select>' +
+      '<select id="cs2" class="oq-field" style="width:auto" aria-label="Missed step"><option value="">Any step</option>' + CUR_STEPS.map(function (x) { var k = x[0]; return '<option value="' + k + '"' + (c.step === k ? ' selected' : '') + '>Missed: ' + x[1] + '</option>'; }).join('') + '</select>' +
       '<select id="cxf" class="oq-field" style="width:auto" aria-label="Transfers"><option value="">Any transfer</option><option value="out"' + (c.xfer === 'out' ? ' selected' : '') + '>Transferred out</option><option value="in"' + (c.xfer === 'in' ? ' selected' : '') + '>Transferred in</option></select>' +
-      '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40 or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70 or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90 or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
+      '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40% or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70% or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90% or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
       (chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + chips.map(function (ch) { return '<button class="chip on" data-unfilter="' + ch[1] + '" aria-label="Remove filter ' + esc(ch[0]) + '">' + esc(ch[0]) + ' ✕</button>'; }).join('') + '<button class="more" data-unfilter="all">Clear all</button></div>' : '') +
       (c.xferWith ? '<div id="xwhy" style="margin-top:12px;background:#F5F3EE;border-radius:12px;padding:12px 14px"></div>' : '') + '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
     var body = c.bucket ? Object.assign({ action: 'bucketcalls', bucket: c.bucket }, win({ limit: 25, offset: c.offset })) : Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'cc_not_asked' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: phoneQ(c.q) || c.q || null, limit: 25, offset: c.offset }));
@@ -724,18 +1824,18 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!D || !D.total) return '';
     var col = function (title, rows, color) {
       var tot = rows.reduce(function (a, r) { return a + (+r.n || 0); }, 0) || 1, P = pct100(rows.map(function (r) { return r.n; }));
-      return '<div style="flex:1 1 220px;min-width:0"><div class="cap" style="margin-bottom:6px">' + title + '</div>' + rows.map(function (r, i) {
+      return '<div style="flex:1 1 220px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#FBFAF7;"><div class="cap" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)">' + title + '</div>' + rows.map(function (r, i) {
         var br = r.decided ? Math.round(100 * r.booked / r.decided) + '% booked' : '';
         return '<button class="click" data-ffk="' + r.d + '" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 56px 44px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><span style="white-space:normal;min-width:0">' + esc(r.k) + '<span class="mut" style="display:block;font-size:11.5px">' + fmt(r.n) + ' calls' + (br ? ' · ' + br : '') + '</span></span><span class="track" style="height:7px"><span style="display:block;height:100%;width:' + Math.round(100 * r.n / tot) + '%;background:' + color + '"></span></span><span class="num" style="text-align:right">' + P[i] + '</span></button>'; }).join('') + '</div>'; };
     var tag = function (list, d) { return (list || []).map(function (r) { return Object.assign({ d: d }, r); }); };
     var flags = (D.flags || []).filter(function (f) { return f && FLAGN[f.k]; }).map(function (f) { var L = FLAGN[f.k], t = (+f.yes || 0) + (+f.no || 0), P = pct100([f.yes, f.no]);
       return '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><button class="click" data-ffk="flag" data-ffv="' + f.k + ':yes" title="Hear these calls" style="all:unset;cursor:pointer"><b style="font-weight:600;color:#1F5A41">' + P[0] + '</b> ' + L[0] + '<span class="mut" style="display:block;font-size:11.5px">' + fmt(f.yes) + ' of ' + fmt(t) + '</span></button><button class="click" data-ffk="flag" data-ffv="' + f.k + ':no" title="Hear these calls" style="all:unset;cursor:pointer"><b style="font-weight:600;color:#A8441A">' + P[1] + '</b> ' + L[1] + '<span class="mut" style="display:block;font-size:11.5px">' + fmt(f.no) + ' ' + L[2] + '</span></button></div>'; }).join('');
     return '<div class="oq-card" style="grid-column:1/-1"><h2 class="ttl">Every call, identified</h2><p class="sub">Click any row to hear those calls.</p>' +
-      '<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px">' + col('Product', tag(D.product, 'product'), '#3A4380') + col('Residential or commercial', tag(D.segment, 'segment'), '#2F5E4E') + col('Sales, service or warranty', tag(D.line, 'line'), '#C9662A') +
-      (flags ? '<div style="flex:1.3 1 300px;min-width:0"><div class="cap" style="margin-bottom:6px">How the call was handled</div>' + flags + '</div>' : '') + '</div></div>';
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-top:12px">' + col('Product', tag(D.product, 'product'), '#3A4380') + col('Residential or commercial', tag(D.segment, 'segment'), '#2F5E4E') + col('Sales, service or warranty', tag(D.line, 'line'), '#C9662A') +
+      (flags ? '<div style="flex:1.3 1 300px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#FBFAF7;"><div class="cap" style="margin-bottom:2px;padding-bottom:4px">How the call was handled</div>' + flags + '</div>' : '') + '</div></div>';
   }
   function vInsights(tok) {
-    setMain(crumb([['Insights']]) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(420px,1fr));align-items:start" id="ins">' + ('<div class="oq-card">' + skel(20, 8) + '</div>').repeat(4) + '</div>');
+    setMain(crumb([['Insights']]) + '<style>#ins{grid-template-columns:repeat(2,minmax(0,1fr))}@media (max-width:980px){#ins{grid-template-columns:minmax(0,1fr)}}</style><div class="grid" style="align-items:start" id="ins">' + ('<div class="oq-card">' + skel(20, 8) + '</div>').repeat(4) + '</div>');
     Promise.all([loadReport(), loadFocus(null, null), loadExtras().catch(function () { return {}; })]).then(function (r) {
       if (tok !== T) return; var rep = r[0], f = r[1], X = r[2] || {}, B = X.base || {}; noteKnown(rep);
       var NO_OTHER = function (L) { return (L || []).filter(function (x) { return x.k && !/^(other|general inquiry|unspecified)$/i.test(x.k); }); };
@@ -745,20 +1845,22 @@ export function mountOpsisQA(ROOT, cfg) {
       var catTot = cats.reduce(function (t, x) { return t + (+x.n || 0); }, 0);
       // [title, sub, rows, colour, -, drill kind, denominator, denominator words]
       var cust = [
-        ['What callers wanted', 'One call type per call · % of ' + fmt(catTot) + ' customer conversations', cats, '#3A4380', 'q', 'category', catTot, 'conversations'],
-        ['Why calls didn’t book', '% of the ' + fmt(notBooked) + ' opportunities that didn’t book', NO_OTHER(rep.reasons), O, 'reason', 'reason', notBooked, 'not booked'],
-        ['What customers pushed back on', '% of the ' + fmt(B.opps || 0) + ' booking opportunities', NO_OTHER(rep.objections), '#2F5E4E', 'q', 'objection', B.opps || 0, 'opportunities']
+        ['What callers wanted', 'One call type per call · % of ' + fmt(catTot) + ' customer conversations', cats, '#3A4380', 'q', 'category', catTot, 'conversations', true],
+        ['Why calls didn’t book', '% of the ' + fmt(notBooked) + ' opportunities that didn’t book · a call can have more than one reason, so these add to more than 100%', NO_OTHER(rep.reasons), O, 'reason', 'reason', notBooked, 'not booked'],
+        ['What customers pushed back on', '% of the ' + fmt(B.opps || 0) + ' booking opportunities · a call can have more than one', NO_OTHER(rep.objections), '#2F5E4E', 'q', 'objection', B.opps || 0, 'opportunities']
       ];
       var csr = [
         ['Top coaching priorities', '% of the ' + fmt(B.scored || 0) + ' scored conversations where the CSR missed it', NO_OTHER(rep.priorities), '#14302A', 'x', 'priority', B.scored || 0, 'scored calls'],
         ['What CSRs do well', '% of the ' + fmt(B.scored || 0) + ' scored conversations where the CSR did it', NO_OTHER(rep.strengths), G, 'x', 'strength', B.scored || 0, 'scored calls'],
-        ['How every call ended', '% of all ' + fmt(outTot) + ' calls, including voicemail and internal', outs, '#8C8478', 'outcome', 'outcome', outTot, 'calls']
+        ['How every call ended', '% of all ' + fmt(outTot) + ' calls, including voicemail and internal', outs, '#8C8478', 'outcome', 'outcome', outTot, 'calls', true]
       ];
       var card = function (g) {
         var rows = g[2] || [], max = rows.length ? rows[0].n : 1, d = g[6];
+        // 11/18 (PORT-09): one decimal on every row; one-per-call lists (g[8]) are rounded so they add to exactly 100.0%.
+        var P = g[8] ? pct100k(rows, d) : null;
         return '<div class="oq-card"><h2 class="ttl">' + g[0] + '</h2><p class="sub">' + g[1] + ' · click one to hear the calls</p><div style="margin-top:10px">' + (rows.length ? rows.slice(0, 10).map(function (r) {
           var attr = ' data-ffk="' + g[5] + '" data-ffv="' + esc(r.k) + '" title="Hear these calls"';
-          return '<button class="click" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 54px 58px;gap:10px;align-items:center;font-size:12.5px;padding:6px 2px"' + attr + '><span>' + esc(r.k) + '</span><span class="track" style="height:8px;display:block"><span style="display:block;height:100%;border-radius:999px;background:' + g[3] + ';width:' + (r.n / max * 100).toFixed(1) + '%"></span></span><b class="num" style="text-align:right">' + pctTxt(r.n, d) + '</b><span class="num mut" style="text-align:right;font-size:11.5px">' + fmt(r.n) + '</span></button>';
+          return '<button class="click" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 54px 58px;gap:10px;align-items:center;font-size:12.5px;padding:6px 2px"' + attr + '><span>' + esc(r.k) + '</span><span class="track" style="height:8px;display:block"><span style="display:block;height:100%;border-radius:999px;background:' + g[3] + ';width:' + (r.n / max * 100).toFixed(1) + '%"></span></span><b class="num" style="text-align:right">' + (P ? P[r.k] : pct1(r.n, d)) + '</b><span class="num mut" style="text-align:right;font-size:11.5px">' + fmt(r.n) + '</span></button>';
         }).join('') : '<p class="mut" style="font-size:13px">Nothing in this range.</p>') + '</div></div>';
       };
       var cohort = '<div class="oq-card" style="grid-column:1/-1;padding:14px 18px;display:flex;gap:22px;flex-wrap:wrap;align-items:baseline"><span><span class="cap">Cohort</span> <b>' + esc(rangeLabel()) + '</b> · ' + esc(S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : (LOCK ? short(LOCK) : 'All brands')) + '</span><span><b class="num">' + fmt(B.calls || 0) + '</b> <span class="mut">calls</span></span><span><b class="num">' + fmt(B.conversations || 0) + '</b> <span class="mut">customer conversations</span></span><span><b class="num">' + fmt(B.opps || 0) + '</b> <span class="mut">booking opportunities</span> <span class="mut" style="font-size:12px">= <b class="num" style="color:#1F5A41">' + fmt(B.booked || 0) + '</b> booked + <b class="num" style="color:#A8441A">' + fmt(B.not_booked || 0) + '</b> not booked + <b class="num">' + fmt(Math.max(0, (B.opps || 0) - (B.booked || 0) - (B.not_booked || 0))) + '</b> transferred</span></span><span><b class="num">' + ((B.booked || 0) + (B.not_booked || 0) ? (100 * (B.booked || 0) / ((B.booked || 0) + (B.not_booked || 0))).toFixed(1) + '%' : '—') + '</b> <span class="mut">booking rate</span></span><span class="mut" style="font-size:12px">Percents use these totals; the small number is the count of calls.</span></div>';
@@ -775,6 +1877,293 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // Knowledge base
   var KBS = { list: null, edit: null, del: null, busy: false, q: '', cat: '' };
+  // ---------- Portal settings: branding + company info (2026-10-29) ----------
+  var BR = { d: null, busy: false, draft: null }, BR_DEF = { sidebar: '#14302A', accent: '#2F7D5B', highlight: '#2A4A42' };
+  function shade(hex, f) { var n = parseInt(String(hex).slice(1), 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; var m = function (c) { return Math.max(0, Math.min(255, Math.round(f < 0 ? c * (1 + f) : c + (255 - c) * f))); }; return '#' + [m(r), m(g), m(b)].map(function (c) { return ('0' + c.toString(16)).slice(-2); }).join(''); }
+  function applyBranding(b) {
+    if (!b) return; var R0 = $('oqa'); if (!R0) return;
+    var side = b.sidebar || BR_DEF.sidebar, acc = b.accent || BR_DEF.accent;
+    var hl = b.highlight || (b.sidebar ? shade(side, 0.18) : BR_DEF.highlight);
+    R0.style.setProperty('--side', side); R0.style.setProperty('--hl', hl); R0.style.setProperty('--g', acc); R0.style.setProperty('--gd', shade(acc, -0.25)); R0.style.setProperty('--gl', shade(acc, 0.85));
+    G = acc;
+    if (b.name) { CLIENT = OPSIS && !b.logo ? CLIENT : b.name; }
+    var lg = $('oqlogo'), lt = $('oqlogotxt');
+    if (b.logo && !lg && lt) { lt.insertAdjacentHTML('afterend', '<img id="oqlogo" alt="">'); lt.remove(); lg = $('oqlogo'); }
+    if (lg && b.logo) { lg.src = b.logo; lg.alt = b.name || CLIENT; }
+  }
+  function vBrandSet(tok) {
+    setMain(crumb([['Portal settings']]) + '<div id="bswrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
+    api({ action: 'branding' }).then(function (r) { if (tok !== T) return; BR.d = r; BR.draft = { name: r.name || '', accent: r.accent || BR_DEF.accent, sidebar: r.sidebar || BR_DEF.sidebar, highlight: r.highlight || (r.sidebar ? shade(r.sidebar, 0.18) : BR_DEF.highlight), hlAuto: !r.highlight, profile: Object.assign({}, r.profile || {}) }; drawBrandSet(); })
+      .catch(function (e) { if (tok === T && $('bswrap')) $('bswrap').innerHTML = errBox(e); });
+  }
+  var BR_FIELDS = [['company', 'Company name', 'Legal or display name'], ['tagline', 'Tagline', 'Shown under your name in reports (optional)'], ['website', 'Website', 'https://'], ['phone', 'Main phone', '(555) 555-5555'], ['email', 'Support email', 'support@company.com'], ['contact_name', 'Primary contact', 'Name'], ['contact_email', 'Primary contact email', 'name@company.com'], ['address', 'Address', 'Street, city, state, ZIP'], ['timezone', 'Time zone', 'e.g. America/New_York']];
+  function drawBrandSet() {
+    var el = $('bswrap'); if (!el || !BR.d) return; var d = BR.draft, can = BR.d.can_edit, dis = can ? '' : ' disabled';
+    var color = function (k, label, help) { return '<div style="flex:1 1 220px"><label class="l" for="bs_' + k + '">' + label + '</label><div style="display:flex;gap:8px;align-items:center"><input type="color" id="bs_' + k + 'p" data-bscolor="' + k + '" value="' + esc(d[k]) + '"' + dis + ' style="width:44px;height:40px;padding:2px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer"><input class="oq-field" id="bs_' + k + '" data-bshex="' + k + '" value="' + esc(d[k]) + '" maxlength="7"' + dis + ' style="width:110px;font-family:monospace"></div><div class="mut" style="font-size:11.5px;margin-top:4px">' + help + '</div></div>'; };
+    var logo = BR.d.logo;
+    var preview = '<div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;min-height:150px;max-width:460px"><div style="width:150px;background:' + esc(d.sidebar) + ';padding:14px 10px;display:flex;flex-direction:column;gap:8px"><div style="background:#fff;border-radius:10px;height:44px;display:flex;align-items:center;justify-content:center;padding:4px">' + (logo ? '<img src="' + esc(logo) + '" alt="" style="max-height:36px;max-width:120px">' : '<b style="font-size:13px;color:#14302A">' + esc(d.name || CLIENT) + '</b>') + '</div>' + ['Overview', 'Insights', 'Call reviews'].map(function (x, i) { return '<div style="color:#fff;font-size:11.5px;padding:6px 8px;border-radius:7px;' + (i ? 'opacity:.8' : 'background:' + esc(d.highlight)) + '">' + x + '</div>'; }).join('') + '</div><div style="flex:1;padding:14px;background:#F5F3EE"><div style="background:#fff;border-radius:10px;padding:10px 12px"><div class="cap">Booking rate</div><div class="num" style="font-size:22px;font-weight:600">62.4%</div><div class="track" style="margin-top:6px"><div style="width:62%;background:' + esc(d.accent) + '"></div></div></div><button class="sel" style="margin-top:10px;background:' + esc(d.sidebar) + ';border-color:' + esc(d.sidebar) + ';color:#fff;min-height:32px;font-size:12px">Button</button></div></div>';
+    el.innerHTML = '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:1 1 520px"><h2 class="ttl">Branding</h2><p class="sub">How the portal looks for everyone on your account. Changes show for your team the next time they open the portal.' + (can ? '' : ' Only account admins can change these.') + '</p>' +
+      '<div style="margin-top:14px"><label class="l" for="bs_name">Portal name</label><input class="oq-field" id="bs_name" value="' + esc(d.name) + '" maxlength="80"' + dis + ' placeholder="Your company name"></div>' +
+      '<div style="margin-top:16px"><div class="l">Logo</div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="width:180px;height:72px;border:1px dashed #CFCAC0;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff;padding:6px">' + (logo ? '<img src="' + esc(logo) + '" alt="Current logo" style="max-width:100%;max-height:100%">' : '<span class="mut" style="font-size:12px">No logo yet</span>') + '</div>' +
+        (can ? '<label class="sel" style="cursor:pointer">' + (BR.busy === 'logo' ? 'Uploading…' : (logo ? 'Replace logo' : 'Upload logo')) + '<input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-bslogo="1" style="display:none"></label>' + (logo ? '<button class="sel" data-act="bsnologo">Remove</button>' : '') : '') + '</div><div class="mut" style="font-size:11.5px;margin-top:6px">PNG, JPG, SVG or WebP. Best: about 600 × 150 px, on a transparent or white background. Large images are shrunk automatically.</div></div>' +
+      '<div class="row" style="margin-top:16px;gap:18px">' + color('sidebar', 'Sidebar and button color', 'The left menu and main buttons.') + color('highlight', 'Menu highlight', 'The selected page in the left menu.') + color('accent', 'Accent color', 'Charts and positive numbers.') + '</div>' +
+      (can ? '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap"><button class="sel btnd" data-act="bssave"' + (BR.busy ? ' disabled' : '') + '>' + (BR.busy === 'save' ? 'Saving…' : 'Save branding') + '</button><button class="sel" data-act="bsreset">Reset colors to default</button></div>' : '') + '</div>' +
+      '<div class="oq-card" style="flex:1 1 360px"><h2 class="ttl">Preview</h2><p class="sub">Updates as you change colors. Save to apply.</p><div style="margin-top:12px">' + preview + '</div></div></div>' +
+      '<div class="oq-card"><h2 class="ttl">Company Information</h2><p class="sub">Your company details, used on reports and so our team knows who to reach.</p><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px">' +
+        BR_FIELDS.map(function (f) { return '<div' + (f[0] === 'address' ? ' style="grid-column:1/-1"' : '') + '><label class="l" for="bsp_' + f[0] + '">' + f[1] + '</label><input class="oq-field" id="bsp_' + f[0] + '" data-bsprof="' + f[0] + '" value="' + esc(d.profile[f[0]] || '') + '" placeholder="' + esc(f[2]) + '"' + dis + ' maxlength="' + (f[0] === 'address' ? 300 : 160) + '"></div>'; }).join('') + '</div>' +
+        (can ? '<div style="margin-top:14px"><button class="sel btnd" data-act="bssave"' + (BR.busy ? ' disabled' : '') + '>Save company information</button></div>' : '') + '</div>' + '<div id="locset"></div><div id="recapset"></div>';
+    locCard(); recapCard();
+    var nm = $('bs_name'); if (nm) nm.addEventListener('input', function () { d.name = nm.value; });
+    [].forEach.call(el.querySelectorAll('[data-bsprof]'), function (inp) { inp.addEventListener('input', function () { d.profile[inp.getAttribute('data-bsprof')] = inp.value; }); });
+    [].forEach.call(el.querySelectorAll('[data-bscolor]'), function (inp) { inp.addEventListener('input', function () { var k = inp.getAttribute('data-bscolor'); d[k] = inp.value; bsAuto(k); drawBrandSet(); }); });
+    [].forEach.call(el.querySelectorAll('[data-bshex]'), function (inp) { inp.addEventListener('change', function () { var k = inp.getAttribute('data-bshex'), v = inp.value.trim(); if (!/^#?[0-9a-f]{6}$/i.test(v)) { toast('Use a color like #2F7D5B'); inp.value = d[k]; return; } d[k] = v[0] === '#' ? v : '#' + v; bsAuto(k); drawBrandSet(); }); });
+    var lf = el.querySelector('[data-bslogo]'); if (lf) lf.addEventListener('change', function () { var f = lf.files && lf.files[0]; if (!f) return;
+      // Logos are shrunk in the browser first (max 1200 x 400), so big exports upload fine (10/29).
+      var send = function (dataUrl) { BR.busy = 'logo'; drawBrandSet(); api({ action: 'branding', op: 'logo', data: dataUrl }).then(function (r) { BR.busy = false; BR.d = r; applyBranding(r); try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(r)); } catch (x) {} toast('Logo updated'); drawBrandSet(); }).catch(function (e) { BR.busy = false; toast(e.message || 'Couldn’t upload that logo.'); drawBrandSet(); }); };
+      var rd = new FileReader();
+      rd.onload = function () { var src = String(rd.result);
+        if (/^data:image\/svg/.test(src)) { if (f.size > 1500000) { toast('That SVG is too big. Use a file under 1.5 MB.'); return; } send(src); return; }
+        var im = new Image(); im.onload = function () { var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, k = Math.min(1, 1200 / w, 400 / h);
+          var cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * k)); cv.height = Math.max(1, Math.round(h * k)); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+          var out = cv.toDataURL('image/png'); if (out.length > 1900000) out = cv.toDataURL('image/webp', 0.92); if (out.length > 1900000) { toast('That image is too detailed to use as a logo. Try a simpler PNG or an SVG.'); return; } send(out); };
+        im.onerror = function () { toast('That file isn’t an image we can read. Use PNG, JPG, SVG or WebP.'); };
+        im.src = src; };
+      rd.readAsDataURL(f); });
+  }
+  // ---------- Recapture switch (Becky 11/16, rebuilt 11/23) ----------
+  // A not-booked inbound opportunity counts as "recaptured" when the same caller books on a later call within N days.
+  // Off by default (some clients won't favor it). Shown as its own line under the Overview numbers; the booking rate tile never changes.
+  var RCP = { d: null, busy: false, err: null };
+  // Your locations (Becky 11/23): one per line; feeds the location pickers (Phone setup, dashboard, call routing).
+  var LOCS = { d: null, busy: false };
+  function locCard() {
+    var el = $('locset'); if (!el || !CFG.locationsGet) return;
+    var head = '<div class="oq-card" style="margin-top:16px"><h2 class="ttl">Your locations</h2><p class="sub">One per line. These show up wherever you pick a location — phone lines, campaigns and reports.</p>';
+    if (!LOCS.d) { el.innerHTML = head + skel(20, 2) + '</div>'; CFG.locationsGet().then(function (r) { LOCS.d = r || { locations: [] }; locCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var can = LOCS.d.can_edit;
+    el.innerHTML = head + '<label class="sr" for="loclist">Locations, one per line</label><textarea id="loclist" class="oq-field" rows="' + Math.min(12, Math.max(4, (LOCS.d.locations || []).length + 2)) + '" style="margin-top:12px;resize:vertical" placeholder="Downtown\nNorthside\nRiverview, FL"' + (can ? '' : ' disabled') + '>' + esc((LOCS.d.locations || []).join('\n')) + '</textarea>' +
+      (can ? '<div style="margin-top:10px"><button class="sel btnd" data-act="locsave"' + (LOCS.busy ? ' disabled' : '') + '>' + (LOCS.busy ? 'Saving…' : 'Save locations') + '</button></div>' : '<p class="mut" style="font-size:12.5px;margin-top:8px">Only account admins can change this.</p>') + '</div>';
+  }
+  function locSave() {
+    var L = (($('loclist') || {}).value || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    LOCS.busy = true; locCard();
+    CFG.locationsSet(L).then(function (r) { LOCS.busy = false; LOCS.d.locations = r || L; locCard(); toast('Locations saved.'); })
+      .catch(function (e) { LOCS.busy = false; locCard(); toast(e.message); });
+  }
+  // ---------- Callbacks (Rob 11/23, item 4) ----------
+  // Opportunity calls that didn't book and are worth a call back (customer will call back, we'll call them back,
+  // cut off / dropped, winnable…), minus anyone who booked on a later call. The same list is emailed each morning
+  // to each brand's callback owner.
+  var CB = { d: null, key: '' };
+  function vCallbacks(tok) {
+    setMain(crumb([['Callbacks']]) + '<div class="oq-card" id="cbwrap">' + skel(30, 10) + '</div>');
+    if (!CFG.callbacks) { $('cbwrap').innerHTML = 'This page isn’t available here.'; return; }
+    var w0 = win(), key = [w0.start, w0.end, (w0.brands || []).join('|')].join('~');
+    CFG.callbacks(w0).then(function (r) { if (tok !== T) return; CB.d = r || { rows: [] }; CB.key = key; drawCallbacks(); })
+      .catch(function (e) { if (tok === T && $('cbwrap')) $('cbwrap').innerHTML = errBox(e); });
+  }
+  function drawCallbacks() {
+    var w = $('cbwrap'); if (!w || !CB.d) return; var d = CB.d, rows = d.rows || [], own = d.owners || {}, ed = d.can_edit;
+    var by = {}; rows.forEach(function (r) { (by[r.brand] = by[r.brand] || []).push(r); });
+    var brands = Object.keys(by).sort();
+    var tm = function (iso) { if (!iso) return ''; try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }); } catch (x) { return ''; } };
+    var h = '<h2 class="ttl">Callbacks</h2><p class="sub">Customers who needed service, didn’t book, and haven’t booked since. ' + fmt(rows.length) + ' in this date range. Each brand’s list is also emailed at 7am ET to the people you set below.</p>';
+    if (!rows.length) { w.innerHTML = h + '<p class="mut" style="margin-top:14px">Nobody to call back in this date range.</p>'; return; }
+    h += brands.map(function (b, i) {
+      var list = by[b], em = (own[b] || []).join(', ');
+      return '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><b style="font-size:15px">' + esc(b) + '</b> <span class="mut">· ' + list.length + ' to call back</span></div>' +
+        (ed ? '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' + ((own[b] || []).length ? (own[b] || []).map(function (e) { return '<span class="pill" style="background:#EEF2FB;color:#2B3A67;display:inline-flex;gap:6px;align-items:center">' + esc(e) + '<button data-act="cbodel" data-b="' + esc(b) + '" data-e="' + esc(e) + '" aria-label="Remove ' + esc(e) + '" style="all:unset;cursor:pointer;font-weight:700">×</button></span>'; }).join('') : '<span class="mut" style="font-size:12px">No one gets this list by email yet</span>') + '</div>' +
+          '<div style="display:flex;gap:6px;align-items:center"><label class="sr" for="cbo' + i + '">Add an email for ' + esc(b) + '</label><input id="cbo' + i + '" class="oq-field" style="width:240px" placeholder="Add an email (or several, with commas)"><button class="sel" data-act="cbosave" data-i="' + i + '" data-b="' + esc(b) + '" style="padding:6px 10px;font-size:12px">Add</button></div></div>'
+          : '<span class="mut" style="font-size:12px">' + (em ? 'Emailed to ' + esc(em) : 'No one gets this list by email yet') + '</span>') + '</div>' +
+        '<div style="overflow-x:auto;margin-top:8px"><table class="tbl" style="font-size:13px"><thead><tr><th>Customer</th><th>Called</th><th>CSR</th><th>Why it didn’t book</th><th>What they needed</th><th></th></tr></thead><tbody>' +
+        list.map(function (r) { return '<tr><td><b>' + esc(r.customer || 'Unknown name') + '</b><div class="num">' + (r.phone ? esc(fphone(r.phone)) : '<span style="color:#B4461F">no number</span>') + '</div></td><td class="mut" style="white-space:nowrap">' + esc(tm(r.started_at)) + '</td><td>' + esc(r.agent || '—') + '</td><td>' + esc(r.reason) + '</td><td style="max-width:360px">' + esc(String(r.what || r.summary || '').slice(0, 200)) + '</td><td><button class="sel" data-call="' + esc(r.review_id) + '" style="padding:4px 10px;font-size:12px">Listen</button></td></tr>'; }).join('') +
+        '</tbody></table></div></div>';
+    }).join('');
+    w.innerHTML = h;
+  }
+  function cbOwnerSave(d, remove) {
+    var cur = ((CB.d.owners || {})[d.b] || []).slice(), add = [];
+    if (remove) cur = cur.filter(function (x) { return x !== d.e; });
+    else {
+      add = (($('cbo' + d.i) || {}).value || '').split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+      var bad = add.filter(function (x) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
+      if (bad.length) { toast('Check this email: ' + bad[0]); return; }
+      if (!add.length) { toast('Type an email address first.'); return; }
+      add.forEach(function (x) { if (cur.indexOf(x) < 0) cur.push(x); });
+    }
+    CFG.callbackOwnerSet(d.b, cur).then(function () { CB.d.owners = CB.d.owners || {}; CB.d.owners[d.b] = cur; drawCallbacks(); toast(remove ? 'Removed.' : 'Added. ' + d.b + '’s list goes to ' + cur.length + ' ' + (cur.length === 1 ? 'person' : 'people') + ' each morning.'); })
+      .catch(function (e) { toast(e.message); });
+  }
+  // ---------- Numbers we never score + excluded-call check (Rob 11/23, items 10 & 11) ----------
+  var EXN = { d: null, busy: false }, EXA = { d: null };
+  function exnCard() {
+    var el = $('exnset'); if (!el || !CFG.excludedNumbers) return;
+    var head = '<div class="oq-card" style="margin-top:16px"><h2 class="ttl">Numbers we never score</h2><p class="sub">Vendors, delivery drivers, solicitors and your own staff. Calls from these numbers are left out of scores, booking rate, revenue and coaching. To see every call that was left out and why, open <button class="more" data-go="reporting" style="font-size:inherit">Reporting → Left-out calls check</button>.</p>';
+    if (!EXN.d) { el.innerHTML = head + skel(20, 2) + '</div>'; CFG.excludedNumbers().then(function (r) { EXN.d = r || { numbers: [] }; exnCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var d = EXN.d, ed = d.can_edit, L = d.numbers || [];
+    el.innerHTML = head + (L.length ? '<div style="margin-top:10px">' + L.map(function (n) { return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)"><div><b class="num">' + esc(fphone(n.phone)) + '</b>' + (n.label ? ' · ' + esc(n.label) : '') + '<div class="mut" style="font-size:12px">Added ' + (n.created_at ? ago(n.created_at) : '') + (n.added_by ? ' by ' + esc(n.added_by) : '') + '</div></div>' + (ed ? '<button class="sel" data-act="exndel" data-p="' + esc(n.phone) + '" style="padding:5px 10px;font-size:12px">Score it again</button>' : '') + '</div>'; }).join('') + '</div>' : '<p class="mut" style="margin-top:10px">No numbers yet.</p>') +
+      (ed ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:flex-end"><div><label class="l" for="exnp">Phone number</label><input id="exnp" class="oq-field" style="width:170px" placeholder="(555) 555-1234"></div><div style="flex:1 1 220px"><label class="l" for="exnl">Who is it?</label><input id="exnl" class="oq-field" placeholder="e.g. Freight carrier, parts vendor"></div><button class="sel btnd" data-act="exnadd"' + (EXN.busy ? ' disabled' : '') + '>' + (EXN.busy ? 'Saving…' : 'Add number') + '</button></div><p class="mut" style="font-size:12px;margin-top:6px">Applies to new calls right away. Past calls from the number are left out within a few minutes.</p>' : '<p class="mut" style="font-size:12.5px;margin-top:8px">Only account admins can change this.</p>') + '</div>';
+  }
+  function exnSave(phone, label, active) {
+    EXN.busy = true; exnCard();
+    CFG.excludedNumberSet(phone, label, active).then(function () { EXN.busy = false; EXN.d = null; exnCard(); toast(active === false ? 'That number will be scored again.' : 'Added. Calls from that number won’t be scored.'); })
+      .catch(function (e) { EXN.busy = false; exnCard(); toast(e.message); });
+  }
+  function exAuditCard() {
+    var el = $('exaudit'); if (!el || !CFG.excludedAudit) return;
+    var start = S.start, end = S.end, bk = start + '|' + end + '|' + S.brands.join(',');
+    if (EXA.key !== bk) { EXA.d = null; EXA.key = bk; }
+    var head = '<div class="oq-card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><h2 class="ttl">Left-out calls check</h2>' + (CFG.excludedExport ? '<button class="sel" data-act="exaexp" data-s="' + start + '" data-e="' + end + '" style="padding:6px 12px;font-size:12.5px">Export all (CSV)</button>' : '') + '</div><p class="sub">' + esc(fdate(start)) + ' – ' + esc(fdate(end)) + (S.brands.length ? ' · ' + esc(S.brands.map(short).join(', ')) : ' · all ' + esc(W_BRANDS.toLowerCase())) + ' (uses the filters at the top): every call we left out of scoring and why, with a sample to spot-check. Anything that looks like a real customer should be scored.' + (CFG.excludedNumbers ? ' To leave a number out for good, add it under <button class="more" data-go="qasettings" style="font-size:inherit">QA settings → Numbers we never score</button>.' : '') + '</p>';
+    if (!EXA.d) { el.innerHTML = head + skel(20, 3) + '</div>'; CFG.excludedAudit({ start: start, end: end, brands: S.brands }).then(function (r) { EXA.d = r || {}; exAuditCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var d = EXA.d, why = d.by_reason || [], smp = d.sample || [], mm = d.mismatches || [];
+    el.innerHTML = head + '<div style="margin-top:10px;font-size:13.5px"><b>' + fmt(d.excluded_total || 0) + '</b> calls left out' + (why.length ? ': ' + why.map(function (x) { return esc(x.reason) + ' (' + x.n + ')'; }).join(' · ') : '') + '</div>' +
+      (mm.length ? '<div class="banner" style="margin-top:10px">' + mm.length + ' call' + (mm.length > 1 ? 's' : '') + ' were marked as a sales opportunity in the review but not counted in reporting. Let the Opsis CX Support team know so they can check them.</div>' : '<div class="mut" style="font-size:12.5px;margin-top:6px">Every sales opportunity in the reviews is counted in reporting.</div>') +
+      (smp.length ? '<div style="margin-top:10px">' + smp.slice(0, 15).map(function (x) { return '<button class="click" data-call="' + esc(x.review_id || '') + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:block;padding:9px 0;border-top:1px solid var(--line2)"><b>' + esc(short(x.brand || '')) + '</b> · ' + esc(x.call_date) + (x.phone ? ' · <span class="num">' + esc(fphone(x.phone)) + '</span>' : '') + ' · <span class="mut">' + esc(x.reason) + '</span><div class="mut" style="font-size:12.5px">' + esc(String(x.summary || '').slice(0, 220)) + '</div></button>'; }).join('') + '</div>' : '') + '</div>';
+  }
+  function exAuditCsv(d, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+    CFG.excludedExport({ start: d.s, end: d.e, brands: S.brands }).then(function (rows) {
+      var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+      var lines = [['Date', W_BRAND, W_CSR, 'Phone', 'Why it was left out', 'Call type', 'Length (sec)', 'Summary'].join(',')].concat((rows || []).map(function (r) {
+        return [r.call_date, q(r.brand), q(r.agent), q(r.phone ? fphone(r.phone) : ''), q(r.reason), q(r.category), r.duration_seconds == null ? '' : r.duration_seconds, q(r.summary)].join(','); }));
+      saveBlob('left-out-calls-' + d.s + '-to-' + d.e + '.csv', new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+      if (btn) { btn.disabled = false; btn.textContent = 'Export all (CSV)'; }
+    }).catch(function (e) { if (btn) { btn.disabled = false; btn.textContent = 'Export all (CSV)'; } toast(e.message); });
+  }
+  function recapCard() {
+    var el = $('recapset'); if (!el || !CFG.recapSettings) return;
+    var head = '<div class="oq-card"><h2 class="ttl">Recapture</h2><p class="sub">Give credit when a caller who didn’t book on the first call books on a later call. When it’s on, the Overview shows a “Recaptured” line under the numbers. The booking rate itself never changes.</p>';
+    if (RCP.err && !RCP.d) { el.innerHTML = head + '<div class="banner" style="margin-top:10px">' + esc(RCP.err) + '</div></div>'; return; }
+    if (!RCP.d) { el.innerHTML = head + skel(20, 2) + '</div>'; CFG.recapSettings().then(function (r) { RCP.d = r; recapCard(); }).catch(function (e) { RCP.err = e.message; recapCard(); }); return; }
+    var d = RCP.d, dis = d.can_edit && !RCP.busy ? '' : ' disabled';
+    el.innerHTML = head + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px"><label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px"><input type="checkbox" id="rcpon"' + (d.recapture ? ' checked' : '') + dis + '> Turn on recapture</label>' +
+      '<span style="font-size:13.5px">Count bookings within <input type="number" id="rcpdays" class="oq-field" min="1" max="30" value="' + esc(d.recapture_days || 7) + '" style="width:70px"' + dis + '> days of the first call</span>' +
+      (d.can_edit ? '<button class="sel btnd" data-act="rcpsave"' + dis + '>' + (RCP.busy ? 'Saving…' : 'Save') + '</button>' : '<span class="mut" style="font-size:12.5px">Only account admins can change this.</span>') + '</div></div>';
+  }
+  function recapSave() {
+    if (RCP.busy) return; var on = !!($('rcpon') || {}).checked, days = Math.max(1, Math.min(30, +(($('rcpdays') || {}).value) || 7));
+    RCP.busy = true; recapCard();
+    CFG.recapSave({ on: on, days: days }).then(function (r) { RCP.busy = false; RCP.d = r; recapCard(); toast(on ? 'Recapture is on' : 'Recapture is off'); })
+      .catch(function (e) { RCP.busy = false; recapCard(); toast(e.message); });
+  }
+  // The line under the Overview numbers: only shows when the client has recapture turned on.
+  function recapLine(tok) {
+    var el = $('recapln'); if (!el || !CFG.recapture) return;
+    CFG.recapture({ start: S.start, end: S.end, brands: S.brands }).then(function (r) {
+      if (tok !== T || !$('recapln')) return;
+      if (!r || !r.enabled) { el.innerHTML = ''; return; }
+      var dec = +r.decided || 0, bk = +r.booked || 0, rc = +r.recaptured || 0, nb = +r.not_booked || 0;
+      var base = dec ? 100 * bk / dec : null, withR = dec ? 100 * (bk + rc) / dec : null;
+      el.innerHTML = '<div class="oq-card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 16px">' +
+        '<div><span class="cap">Recaptured' + itip('Opportunities that didn’t book on the call, where the same caller booked on a later call within ' + r.days + ' days. Booking rate with recapture = (booked + recaptured) ÷ booked + not booked. The booking rate tile above doesn’t include these.') + '</span><div class="num" style="font-size:20px;font-weight:600;margin-top:4px">' + fmt(rc) + ' <span class="mut" style="font-size:13px;font-weight:500">of ' + fmt(nb) + ' not booked</span></div></div>' +
+        '<div><span class="cap">Booking rate with recapture' + itip('(Booked + recaptured) ÷ booked + not booked, for the dates and brands picked.') + '</span><div class="num" style="font-size:20px;font-weight:600;margin-top:4px">' + (withR == null ? '—' : withR.toFixed(1) + '%') + '</div></div>' +
+        '<div><span class="cap">Booked on the first call' + itip('Booked ÷ booked + not booked. Same as the booking rate above.') + '</span><div class="num" style="font-size:20px;font-weight:600;margin-top:4px">' + (base == null ? '—' : base.toFixed(1) + '%') + '</div></div></div>';
+    }).catch(function () { if ($('recapln')) $('recapln').innerHTML = ''; });
+  }
+  // Menu highlight follows the sidebar color until someone picks it on purpose.
+  function bsAuto(k) { var d = BR.draft; if (k === 'highlight') d.hlAuto = false; else if (k === 'sidebar' && d.hlAuto) d.highlight = shade(d.sidebar, 0.18); }
+  function bsSave(extra) {
+    if (BR.busy) return; var d = BR.draft; BR.busy = 'save'; drawBrandSet();
+    api(Object.assign({ action: 'branding', op: 'set', name: d.name, accent: d.accent, sidebar: d.sidebar, highlight: d.hlAuto ? null : d.highlight, profile: d.profile }, extra || {})).then(function (r) { BR.busy = false; BR.d = r; applyBranding(r); try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(r)); } catch (x) {} toast('Saved'); renderNav(); drawBrandSet(); })
+      .catch(function (e) { BR.busy = false; toast(e.message || 'Couldn’t save.'); drawBrandSet(); });
+  }
+  // Connect your calls (Becky 11/23): customers bring their own calls — upload recordings, or save their phone system's API key.
+  var CXN = { d: null, prov: null, busy: false, up: [], err: null };
+  var CC_PROV = [
+    { k: 'five9', n: 'Five9', f: [['domain', 'Five9 domain name'], ['username', 'API user name']], s: 'API user password',
+      st: ['In Five9 VCC Admin, add a new user just for Opsis (for example opsis.api).', 'Give that user the <b>Reporting</b> and <b>Call recording</b> permissions.', 'Make sure call recording is turned on for the campaigns you want scored.', 'Paste the domain, user name and password below.'] },
+    { k: 'ringcentral', n: 'RingCentral', auto: 1, f: [['client_id', 'App client ID']], s: 'JWT credential', s2: ['client_secret', 'App client secret'],
+      st: ['Go to developers.ringcentral.com and sign in with an admin account.', 'Create a <b>REST API app</b> with <b>JWT auth</b> and the <b>Read Call Log</b> and <b>Read Call Recording</b> permissions.', 'Under Credentials, create a JWT for the same admin user.', 'Paste the app client ID, client secret and the JWT below.'] },
+    { k: 'twilio', n: 'Twilio', auto: 1, f: [['account_sid', 'Account SID (starts with AC)']], s: 'Auth token',
+      st: ['Sign in to console.twilio.com.', 'On the home page, find <b>Account Info</b>.', 'Copy the Account SID and the Auth token (click “show”).', 'Make sure your calls are set to record.'] },
+    { k: 'dialpad', n: 'Dialpad', f: [], s: 'API key',
+      st: ['In Dialpad, open <b>Admin settings → My company → Authentication → API keys</b>.', 'Create a key named “Opsis”.', 'Turn on call recording for the offices you want scored.', 'Paste the key below.'] },
+    { k: 'zoom', n: 'Zoom Phone', auto: 1, f: [['account_id', 'Account ID'], ['client_id', 'Client ID']], s: 'Client secret',
+      st: ['Go to marketplace.zoom.us → <b>Develop → Build app → Server-to-Server OAuth</b>.', 'Add the scopes <b>phone:read:admin</b> and <b>phone_recording:read:admin</b>, then activate the app.', 'Copy the Account ID, Client ID and Client secret.'] },
+    { k: 'aircall', n: 'Aircall', auto: 1, f: [['api_id', 'API ID']], s: 'API token',
+      st: ['In the Aircall dashboard, open <b>Integrations & API → API keys</b>.', 'Create a key named “Opsis”.', 'Paste the API ID and API token below.'] },
+    { k: 'lightspeed', n: 'LightSpeed', f: [['account', 'Company / account name']], s: 'API key',
+      st: ['Ask your LightSpeed account rep to turn on <b>API access to call recordings</b>.', 'They will send you an API key.', 'Paste it below.'] },
+    { k: 'other', n: 'Something else', f: [['system', 'Phone system name'], ['docs', 'Link to its API docs (if you have it)']], s: 'API key or password',
+      st: ['Most phone systems let an admin create an API key that can read call recordings.', 'Create one, paste it below and tell us the system’s name.', 'Not sure? Upload a few recordings on the left to get started today.'] }
+  ];
+  function vConnect(tok) {
+    setMain(crumb([['Connect your calls']]) + '<div id="cxnwrap"><div class="oq-card">' + skel(40, 4) + '</div></div>');
+    if (!CFG.callSources) { $('cxnwrap').innerHTML = '<div class="oq-card">This page isn’t available here.</div>'; return; }
+    CFG.callSources().then(function (d) { if (tok !== T) return; CXN.d = d; drawConnect(); })
+      .catch(function (e) { if (tok === T && $('cxnwrap')) $('cxnwrap').innerHTML = errBox(e); });
+  }
+  function ccStatus(s, p) { if (s === 'pending' && !(p && p.auto)) return ['Saved · automatic pulling coming soon', '#8A6A12']; return { connected: ['Connected · pulls new calls every hour', '#1F7A4D'], pending: ['Saved · checking…', '#8A6A12'], error: ['Needs attention', '#B4461F'] }[s] || [s, '#55615C']; }
+  function drawConnect() {
+    var w = $('cxnwrap'); if (!w || !CXN.d) return; var d = CXN.d, ed = d.can_edit, u = d.uploads || {};
+    var have = (d.sources || []).map(function (s) { var p = CC_PROV.filter(function (x) { return x.k === s.provider; })[0] || { n: s.provider }, st = ccStatus(s.status, p);
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)"><div><b>' + esc(p.n) + '</b>' + (s.label ? ' · ' + esc(s.label) : '') + '<div class="mut" style="font-size:12px">Key ending ••••' + esc(s.secret_hint || '') + ' · added ' + ago(s.created_at) + (s.created_by_name ? ' by ' + esc(s.created_by_name) : '') + (s.last_sync_at ? ' · last checked ' + ago(s.last_sync_at) : '') + '</div>' + (s.last_error ? '<div style="font-size:12.5px;color:#B4461F;margin-top:3px">' + esc(s.last_error) + '</div>' : '') + (CXN.msg && CXN.msg.id === s.id ? '<div style="font-size:12.5px;color:#1F5A41;margin-top:3px">' + esc(CXN.msg.t) + '</div>' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;font-weight:600;color:' + st[1] + '">' + st[0] + '</span>' + (ed && p.auto ? '<button class="sel" data-act="cctest" data-id="' + s.id + '" style="padding:5px 10px;font-size:12px"' + (CXN.testing === s.id ? ' disabled' : '') + '>' + (CXN.testing === s.id ? 'Checking…' : 'Check now') + '</button>' : '') + (ed ? '<button class="sel" data-act="ccrm" data-id="' + s.id + '" style="padding:5px 10px;font-size:12px">Disconnect</button>' : '') + '</div></div>'; }).join('');
+    var upCard = '<div class="oq-card" style="flex:1 1 340px;align-self:flex-start"><h2 class="ttl">1 · Upload recordings</h2><p class="sub">The fastest way to start. Drop in MP3, WAV or M4A files — each one is transcribed and scored, usually within a few minutes.</p>' +
+      (ed ? '<label id="ccdrop" for="ccfile" style="display:block;margin-top:14px;border:2px dashed var(--line2);border-radius:12px;padding:26px 14px;text-align:center;cursor:pointer"><b>Drag files here</b> or click to choose<div class="mut" style="font-size:12px;margin-top:4px">Up to 50 files at a time · 100 MB each · 500 calls a day</div></label><input id="ccfile" type="file" multiple accept="audio/*,.mp3,.wav,.m4a" class="sr">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><div style="flex:1 1 140px"><label class="l" for="ccagent">CSR name (optional)</label><input id="ccagent" class="oq-field" placeholder="Who took these calls"></div><div style="flex:1 1 140px"><label class="l" for="ccdate">Call date</label><input id="ccdate" type="date" class="oq-field" value="' + todayET() + '"></div></div>' +
+        (CXN.up.length ? '<div style="margin-top:12px;font-size:13px">' + CXN.up.map(function (f) { return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span><span class="mut">' + esc(f.st) + '</span></div>'; }).join('') + '</div>' : '')
+        : '<p class="mut" style="margin-top:12px">Only account admins can upload calls.</p>') +
+      '<div class="mut" style="font-size:12.5px;margin-top:14px;line-height:1.6">Uploaded so far: <b>' + (u.total || 0) + '</b> · scored <b>' + (u.scored || 0) + '</b>' + (u.working ? ' · in progress <b>' + u.working + '</b>' : '') + (u.failed ? ' · couldn’t be read <b>' + u.failed + '</b>' : '') + '</div></div>';
+    var P = CXN.prov ? CC_PROV.filter(function (x) { return x.k === CXN.prov; })[0] : null;
+    var apiCard = '<div class="oq-card" style="flex:1.4 1 420px;align-self:flex-start"><h2 class="ttl">2 · Connect your phone system</h2><p class="sub">Calls then come in on their own every day — no more uploads. Your key is stored encrypted and only used to read call recordings.</p>' +
+      (have ? '<div style="margin-top:10px">' + have + '</div>' : '') +
+      (ed ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' + CC_PROV.map(function (p) { return '<button class="sel' + (CXN.prov === p.k ? ' btnd' : '') + '" data-act="ccprov" data-k="' + p.k + '">' + esc(p.n) + '</button>'; }).join('') + '</div>' : '<p class="mut" style="margin-top:12px">Only account admins can connect a phone system.</p>') +
+      (P && ed ? '<div style="margin-top:16px;padding:14px;border-radius:12px;background:#F5F7F6"><b>' + esc(P.n) + ' — steps</b><ol style="margin:8px 0 0;padding-left:20px;font-size:13.5px;line-height:1.65">' + P.st.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol>' +
+        '<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">' + P.f.map(function (f) { return '<div><label class="l" for="ccf_' + f[0] + '">' + esc(f[1]) + '</label><input id="ccf_' + f[0] + '" class="oq-field" autocomplete="off"></div>'; }).join('') +
+        (P.s2 ? '<div><label class="l" for="ccsec2">' + esc(P.s2[1]) + '</label><input id="ccsec2" type="password" class="oq-field" autocomplete="new-password"></div>' : '') + '<div><label class="l" for="ccsec">' + esc(P.s) + '</label><input id="ccsec" type="password" class="oq-field" autocomplete="new-password"></div>' +
+        (CXN.err ? '<div style="color:#A8441A;font-size:13px">' + esc(CXN.err) + '</div>' : '') +
+        '<div style="display:flex;gap:8px"><button class="sel btnd" data-act="ccsave"' + (CXN.busy ? ' disabled' : '') + '>' + (CXN.busy ? 'Saving…' : 'Save and connect') + '</button><button class="sel" data-act="ccprov" data-k="">Cancel</button></div></div></div>' : '') + '</div>';
+    var ownCard = '<div class="oq-card" style="flex:1 1 100%"><h2 class="ttl">3 · No phone system? Use ours</h2><p class="sub">Get local phone numbers, an AI receptionist and a softphone for your team, all inside this portal. Calls on our lines are scored automatically — nothing to connect.</p>' +
+      (CFG.mountExt && CFG.supervisor ? '<button class="sel btnd" data-go="phonesetup" style="margin-top:10px">Open phone setup</button>' : '<p class="mut" style="font-size:12.5px;margin-top:8px">Ask the Opsis CX Support team to turn on phone lines for your account.</p>') + '</div>';
+    w.innerHTML = '<div class="row" style="align-items:flex-start">' + upCard + apiCard + ownCard + '</div>';
+    var fi = $('ccfile'), dz = $('ccdrop');
+    if (fi) fi.addEventListener('change', function () { ccUpload(fi.files); fi.value = ''; });
+    if (dz) { ['dragover', 'dragenter'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.style.background = '#EEF4EF'; }); });
+      dz.addEventListener('dragleave', function () { dz.style.background = ''; });
+      dz.addEventListener('drop', function (e) { e.preventDefault(); dz.style.background = ''; ccUpload(e.dataTransfer.files); }); }
+  }
+  function ccUpload(files) {
+    var L = Array.prototype.slice.call(files || []).slice(0, 50); if (!L.length) return;
+    var agent = ($('ccagent') || {}).value || '', day = ($('ccdate') || {}).value || todayET();
+    var items = L.map(function (f) { return { f: f, name: f.name, st: f.size > 100 * 1024 * 1024 ? 'Too big (100 MB max)' : /audio|\.(mp3|wav|m4a)$/i.test(f.type + ' ' + f.name) ? 'Waiting…' : 'Not an audio file' }; });
+    CXN.up = items.concat(CXN.up).slice(0, 60); drawConnect();
+    var q = items.filter(function (x) { return x.st === 'Waiting…'; }), i = 0;
+    function next() {
+      if (i >= q.length) { CFG.callSources().then(function (d) { CXN.d = d; drawConnect(); }).catch(function () {}); return; }
+      var it = q[i++]; it.st = 'Uploading…'; drawConnect();
+      CFG.callUpload({ file: it.f, agent: agent, date: day }).then(function (r) { it.st = r && r.duplicate ? 'Already uploaded' : 'Scoring soon ✓'; })
+        .catch(function (e) { it.st = e.message || 'Failed'; }).then(function () { drawConnect(); next(); });
+    }
+    next(); next();
+  }
+  function ccTest(id) {
+    if (!CFG.callSourceTest) return; CXN.testing = id; CXN.msg = null; drawConnect();
+    CFG.callSourceTest(id).then(function (r) { CXN.msg = { id: id, t: r.message || 'Checked.' }; })
+      .catch(function (e) { CXN.msg = { id: id, t: '' }; toast(e.message); })
+      .then(function () { CXN.testing = null; return CFG.callSources().then(function (x) { CXN.d = x; }); }).then(function () { drawConnect(); });
+  }
+  function ccAct(a, d) {
+    if (a === 'ccprov') { CXN.prov = d.k || null; CXN.err = null; drawConnect(); return; }
+    if (a === 'ccsave') {
+      var P = CC_PROV.filter(function (x) { return x.k === CXN.prov; })[0]; if (!P) return;
+      var cfg = {}, miss = null; P.f.forEach(function (f) { var v = (($('ccf_' + f[0]) || {}).value || '').trim(); cfg[f[0]] = v; if (!v && f[0] !== 'docs' && !miss) miss = f[1]; });
+      var sec = (($('ccsec') || {}).value || '').trim(), sec2 = P.s2 ? (($('ccsec2') || {}).value || '').trim() : '';
+      if (P.s2 && !sec2) { CXN.err = 'Paste your ' + P.s2[1].toLowerCase() + '.'; drawConnect(); return; }
+      if (miss) { CXN.err = 'Fill in: ' + miss + '.'; drawConnect(); return; }
+      if (!sec) { CXN.err = 'Paste your ' + P.s.toLowerCase() + '.'; drawConnect(); return; }
+      CXN.busy = true; CXN.err = null; drawConnect();
+      CFG.callSourceSave({ provider: P.k, config: cfg, secret: P.s2 ? JSON.stringify({ jwt: sec, client_secret: sec2 }) : sec, label: cfg.system || null })
+        .then(function (r) { return CFG.callSources().then(function (x) { CXN.d = x; CXN.prov = null; toast('Saved. Your key is stored encrypted.'); if (P.auto && r && r.id) ccTest(r.id); }); })
+        .catch(function (e) { CXN.err = e.message; }).then(function () { CXN.busy = false; drawConnect(); });
+      return;
+    }
+    if (a === 'cctest') { ccTest(d.id); return; }
+    if (a === 'ccrm') {
+      if (!confirm('Disconnect this phone system? Its key is deleted and new calls stop coming in.')) return;
+      CFG.callSourceRemove(d.id).then(function () { return CFG.callSources(); }).then(function (x) { CXN.d = x; drawConnect(); toast('Disconnected.'); }).catch(function (e) { toast(e.message); });
+    }
+  }
   function vKb(tok) {
     setMain(crumb([['Knowledge base']]) + '<div id="kbwrap"><div class="oq-card">' + skel(40, 5) + '</div></div>');
     api({ action: 'kb' }).then(function (r) { if (tok !== T) return; KBS.list = r.articles || []; drawKb(); })
@@ -815,12 +2204,12 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // Card capture: booked service calls where the CSR asked for a card to hold the appointment (asked)
   // and the customer gave one (captured). Same numbers as the daily card capture email.
-  var CAP = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50 };
+  var CAP = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50, loc: '', sk: 'booked', sd: -1, cs: 'new' };
   function vCard(tok) {
     setMain(crumb([['Card capture']]) + '<div id="ccwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
     var key = S.start + '|' + S.end + '|' + S.brands.join(',');
     if (CAP.d && CAP.key === key) { drawCard(); return; }
-    api(win({ action: 'cardcap' })).then(function (r) { if (tok !== T) return; CAP.d = r || {}; CAP.key = key; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); })
+    api(win({ action: 'cardcap' })).then(function (r) { if (tok !== T) return; CAP.d = r || {}; CAP.key = key; CAP.ag = null; CAP.b = null; CAP.loc = ''; CAP.shown = 50; drawCard(); })
       .catch(function (e) { if (tok === T && $('ccwrap')) $('ccwrap').innerHTML = errBox(e); });
   }
   function ccPct(a, b) { return b ? pc(100 * a / b) : '—'; }
@@ -830,48 +2219,1070 @@ export function mountOpsisQA(ROOT, cfg) {
     return (CAP.d.calls || []).filter(function (c) {
       if (CAP.ag && (c.agent !== CAP.ag || c.brand !== CAP.b)) return false;
       if (CAP.b && !CAP.ag && c.brand !== CAP.b) return false;
+      if (CAP.loc && (c.location || 'No location') !== CAP.loc) return false;
       return f === 'all' || (f === 'asked' && c.asked_for_cc) || (f === 'cap' && c.collected_cc) || (f === 'miss' && c.asked_for_cc && !c.collected_cc) || (f === 'not' && !c.asked_for_cc);
     });
   }
+  function ccLocs() { var m = {}; ((CAP.d && CAP.d.by_agent) || []).forEach(function (r) { var l = r.location || 'No location'; m[l] = (m[l] || 0) + (+r.booked || 0); }); return Object.keys(m).sort(function (a, b) { return (a === 'No location') - (b === 'No location') || a.localeCompare(b); }); }
+  // Sortable columns for the By brand and By CSR tables (2026-11-19: every column sorts, both tables).
+  function ccVal(r, k) { return k === 'agent' ? String(r.agent || '') : k === 'location' ? String(r.location || 'zz') : k === 'brand' ? String(r.brand || '') : k === 'askpct' ? (+r.booked ? r.asked_cc / r.booked : -1) : k === 'cappct' ? (+r.asked_cc ? r.captured_cc / r.asked_cc : -1) : k === 'missed' ? (+r.asked_cc || 0) - (+r.captured_cc || 0) : k === 'capbk' ? (+r.booked ? r.captured_cc / r.booked : -1) : +r[k] || 0; }
+  function ccSort(rows, k, dir) { dir = dir || -1; return rows.slice().sort(function (a, b) { var x = ccVal(a, k), y = ccVal(b, k); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir || (b.booked - a.booked); }); }
+  function ccAgents() {
+    return ccSort(((CAP.d && CAP.d.by_agent) || []).filter(function (r) { return !CAP.loc || (r.location || 'No location') === CAP.loc; }), CAP.sk, CAP.sd);
+  }
   function drawCard() {
     var w = $('ccwrap'); if (!w || !CAP.d) return; var d = CAP.d, o = d.overall || {};
+    if (CAP.loc) { o = (d.by_agent || []).filter(function (r) { return (r.location || 'No location') === CAP.loc; }).reduce(function (a, r) { a.booked += +r.booked || 0; a.asked_cc += +r.asked_cc || 0; a.captured_cc += +r.captured_cc || 0; return a; }, { booked: 0, asked_cc: 0, captured_cc: 0 }); }
     var bk = +o.booked || 0, as = +o.asked_cc || 0, cp = +o.captured_cc || 0;
     var tiles = '<div class="row">' +
-      mnTile('Booked service calls', n0(bk), 'Repair and maintenance appointments booked by CSRs', '', 'Booked service calls handled by your CSRs, duplicates removed.') +
+      mnTile('Booked service calls', n0(bk), 'Residential repair appointments booked by CSRs', '', 'Booked service calls handled by your CSRs, duplicates removed.') +
       mnTile('Card asked', ccPct(as, bk), n0(as) + ' of ' + n0(bk) + ' bookings · the CSR asked for a card to hold the appointment', '#2B3A67', 'This is the CSR behavior. A card mentioned only as a way to pay later does not count.') +
       mnTile('Card captured', ccPct(cp, as), n0(cp) + ' of ' + n0(as) + ' asks · ' + ccPct(cp, bk) + ' of all bookings', '#1F5A41', 'The customer gave a card when asked.') +
       mnTile('Asked, not captured', n0(Math.max(as - cp, 0)), 'Customer declined or the card wasn’t taken', '#A8441A') + '</div>';
+    var hasLoc = (d.by_agent || []).some(function (r) { return r.location; });
+    var ccTh = function (k, l, al, br) { var sk = br ? CAP.bsk : CAP.sk, sd = br ? CAP.bsd : CAP.sd, on = sk === k; return '<th style="text-align:' + (al || 'right') + ';cursor:pointer;white-space:nowrap" data-act="ccsort" data-k="' + k + '"' + (br ? ' data-t="b"' : '') + ' title="Sort by ' + esc(l) + '">' + l + (on ? (sd === 1 ? ' ▲' : ' ▼') : '') + '</th>'; };
+    // 2026-11-13: each number in the By brand / By CSR tables opens the matching calls (Booked = all, Asked % = not asked, etc.).
+    var ccTd = function (f, what, v, sty) { return '<td class="num" data-cf="' + f + '" title="Show ' + what + '" style="text-align:right;text-decoration:underline dotted #B9B2A6;text-underline-offset:3px' + (sty ? ';' + sty : '') + '">' + v + '</td>'; };
     var tbl = function (title, sub, rows, isAgent) {
       if (!rows.length) return '';
-      return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p></div>' + (isAgent ? '<button class="sel btnd" data-act="cccsv">⬇ Download CSV</button>' : '') + '</div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;width:100%"><thead><tr><th style="text-align:left">' + (isAgent ? 'CSR' : 'Brand') + '</th>' + (isAgent && !LOCK ? '<th style="text-align:left">Brand</th>' : '') + '<th style="text-align:right">Booked</th><th style="text-align:right">Asked</th><th style="text-align:right">Asked %</th><th style="text-align:right">Captured</th><th style="text-align:right">Captured ÷ asked</th><th style="text-align:right">Asked, not captured</th><th style="text-align:right">Captured ÷ booked</th></tr></thead><tbody>' +
+      return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p></div>' + (isAgent ? '<button class="sel btnd" data-act="cccsv">⬇ Download CSV</button>' : '') + '</div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;width:100%"><thead><tr>' + (isAgent ? ccTh('agent', 'CSR', 'left') + (hasLoc ? ccTh('location', 'Location', 'left') : '') + (!LOCK ? ccTh('brand', 'Brand', 'left') : '') + ccTh('booked', 'Booked') + ccTh('asked_cc', 'Asked') + ccTh('askpct', 'Asked %') + ccTh('captured_cc', 'Captured') + ccTh('cappct', 'Captured ÷ asked') + ccTh('missed', 'Asked, not captured') + ccTh('capbk', 'Captured ÷ booked')
+          : ccTh('brand', 'Brand', 'left', 1) + ccTh('booked', 'Booked', 0, 1) + ccTh('asked_cc', 'Asked', 0, 1) + ccTh('askpct', 'Asked %', 0, 1) + ccTh('captured_cc', 'Captured', 0, 1) + ccTh('cappct', 'Captured ÷ asked', 0, 1) + ccTh('missed', 'Asked, not captured', 0, 1) + ccTh('capbk', 'Captured ÷ booked', 0, 1)) + '</tr></thead><tbody>' +
         rows.map(function (r) {
           var on = isAgent ? (CAP.ag === r.agent && CAP.b === r.brand) : (CAP.b === r.brand && !CAP.ag);
-          return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="' + (isAgent ? 'ccag' : 'ccbr') + '" data-ag="' + esc(r.agent || '') + '" data-br="' + esc(r.brand) + '"><td>' + esc(isAgent ? r.agent : r.brand) + '</td>' + (isAgent && !LOCK ? '<td class="mut">' + esc(r.brand) + '</td>' : '') +
-            '<td class="num" style="text-align:right">' + n0(r.booked) + '</td><td class="num" style="text-align:right">' + n0(r.asked_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.asked_cc, r.booked) + '</td><td class="num" style="text-align:right">' + n0(r.captured_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.captured_cc, r.asked_cc) + '</td><td class="num" style="text-align:right;color:#A8441A">' + n0(Math.max((+r.asked_cc || 0) - (+r.captured_cc || 0), 0)) + '</td><td class="num" style="text-align:right">' + ccPct(r.captured_cc, r.booked) + '</td></tr>';
+          return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="' + (isAgent ? 'ccag' : 'ccbr') + '" data-ag="' + esc(r.agent || '') + '" data-br="' + esc(r.brand) + '"><td>' + esc(isAgent ? r.agent : r.brand) + '</td>' + (isAgent && hasLoc ? '<td class="mut">' + esc(r.location || '—') + '</td>' : '') + (isAgent && !LOCK ? '<td class="mut">' + esc(r.brand) + '</td>' : '') +
+            ccTd('all', 'all booked calls', n0(r.booked)) + ccTd('asked', 'calls where the card was asked', n0(r.asked_cc)) + ccTd('not', 'calls where the card was NOT asked', ccPct(r.asked_cc, r.booked)) + ccTd('cap', 'calls where the card was captured', n0(r.captured_cc)) + ccTd('cap', 'calls where the card was captured', ccPct(r.captured_cc, r.asked_cc)) + ccTd('miss', 'calls where the card was asked but not captured', n0(Math.max((+r.asked_cc || 0) - (+r.captured_cc || 0), 0)), 'color:#A8441A') + ccTd('cap', 'calls where the card was captured', ccPct(r.captured_cc, r.booked)) + '</tr>';
         }).join('') +
-        '<tr style="font-weight:600;border-top:2px solid var(--line);background:#F3F1EC"><td>Total</td>' + (isAgent && !LOCK ? '<td></td>' : '') + '<td class="num" style="text-align:right">' + n0(bk) + '</td><td class="num" style="text-align:right">' + n0(as) + '</td><td class="num" style="text-align:right">' + ccPct(as, bk) + '</td><td class="num" style="text-align:right">' + n0(cp) + '</td><td class="num" style="text-align:right">' + ccPct(cp, as) + '</td><td class="num" style="text-align:right;color:#A8441A">' + n0(Math.max(as - cp, 0)) + '</td><td class="num" style="text-align:right">' + ccPct(cp, bk) + '</td></tr>' +
+        '<tr style="font-weight:600;border-top:2px solid var(--line);background:#F3F1EC"><td>' + (CAP.loc && isAgent ? esc(CAP.loc) + ' total' : 'Total') + '</td>' + (isAgent && hasLoc ? '<td></td>' : '') + (isAgent && !LOCK ? '<td></td>' : '') + '<td class="num" style="text-align:right">' + n0(bk) + '</td><td class="num" style="text-align:right">' + n0(as) + '</td><td class="num" style="text-align:right">' + ccPct(as, bk) + '</td><td class="num" style="text-align:right">' + n0(cp) + '</td><td class="num" style="text-align:right">' + ccPct(cp, as) + '</td><td class="num" style="text-align:right;color:#A8441A">' + n0(Math.max(as - cp, 0)) + '</td><td class="num" style="text-align:right">' + ccPct(cp, bk) + '</td></tr>' +
         '</tbody></table></div></div>';
     };
-    var brands = d.by_brand || [], agents = d.by_agent || [];
-    var rows = ccRows(), shown = rows.slice(0, CAP.shown);
+    var brands = CAP.bsk ? ccSort(d.by_brand || [], CAP.bsk, CAP.bsd) : (d.by_brand || []), agents = ccAgents();
+    var tsk = function (c) { return String(c.call_started_at || c.call_date || ''); };
+    var rows = ccRows().slice().sort(CAP.cs === 'old' ? function (a, b) { return tsk(a).localeCompare(tsk(b)); } : CAP.cs === 'csr' ? function (a, b) { return String(a.agent || '').localeCompare(String(b.agent || '')) || tsk(b).localeCompare(tsk(a)); } : CAP.cs === 'loc' ? function (a, b) { return String(a.location || 'zz').localeCompare(String(b.location || 'zz')) || String(a.agent || '').localeCompare(String(b.agent || '')); } : function (a, b) { return tsk(b).localeCompare(tsk(a)); }), shown = rows.slice(0, CAP.shown);
+    var locs = ccLocs(), allAg = (d.by_agent || []).filter(function (r) { return !CAP.loc || (r.location || 'No location') === CAP.loc; }).slice().sort(function (a, b) { return String(a.agent).localeCompare(String(b.agent)); });
+    var bar = '<div class="oq-card" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:14px 18px">' +
+      (locs.length > 1 ? '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="ccloc" class="oq-field" style="min-width:180px"><option value="">All locations</option>' + locs.map(function (l) { return '<option' + (CAP.loc === l ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' : '') +
+      '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">CSR<select id="ccagsel" class="oq-field" style="min-width:200px"><option value="">Everyone' + (CAP.loc ? ' at ' + esc(CAP.loc) : '') + '</option>' + allAg.map(function (r) { var v = r.brand + '|' + r.agent; return '<option value="' + esc(v) + '"' + (CAP.ag === r.agent && CAP.b === r.brand ? ' selected' : '') + '>' + esc(r.agent) + (LOCK ? '' : ' · ' + esc(short(r.brand))) + '</option>'; }).join('') + '</select></label>' +
+      '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Sort calls<select id="cccs" class="oq-field"><option value="new"' + (CAP.cs === 'new' ? ' selected' : '') + '>Newest first</option><option value="old"' + (CAP.cs === 'old' ? ' selected' : '') + '>Oldest first</option><option value="csr"' + (CAP.cs === 'csr' ? ' selected' : '') + '>By CSR</option>' + (locs.length > 1 ? '<option value="loc"' + (CAP.cs === 'loc' ? ' selected' : '') + '>By location</option>' : '') + '</select></label>' +
+      ((CAP.loc || CAP.ag || CAP.b) ? '<button class="lnk" data-act="ccreset" style="margin-bottom:8px">Clear filters</button>' : '') + '</div>';
     var chip = function (k, l) { return '<button class="sel' + (CAP.f === k ? ' btnd' : '') + '" data-act="ccf" data-f="' + k + '" style="padding:5px 12px;font-size:12.5px;' + (CAP.f === k ? '' : 'background:#EEF4EF;border-color:#CFE5DF;color:#14302A') + '">' + l + '</button>'; };
     var who = CAP.ag ? esc(CAP.ag) + (LOCK ? '' : ' · ' + esc(CAP.b)) : CAP.b ? esc(CAP.b) : '';
-    var list = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Booked Calls' + (who ? ' · ' + who : '') + '</h2><p class="sub">Click a call to hear it and read what was said.' + (who ? ' <button class="lnk" data-act="ccclr">Show everyone</button>' : '') + '</p></div><div style="display:flex;gap:6px;flex-wrap:wrap">' + chip('all', 'All') + chip('asked', 'Card asked') + chip('cap', 'Captured') + chip('miss', 'Asked, not captured') + chip('not', 'Not asked') + '</div></div>' +
+    var list = '<div class="oq-card" id="cclist" style="scroll-margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Booked Calls' + (who ? ' · ' + who : '') + '</h2><p class="sub">Click a call to hear it and read what was said.' + (who ? ' <button class="lnk" data-act="ccclr">Show everyone</button>' : '') + '</p></div><div style="display:flex;gap:6px;flex-wrap:wrap">' + chip('all', 'All') + chip('asked', 'Card asked') + chip('cap', 'Captured') + chip('miss', 'Asked, not captured') + chip('not', 'Not asked') + '</div></div>' +
       (shown.length ? shown.map(function (c) {
         var q = c.cc_quote;
-        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(c.brand) + '</span>') + (q ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">“' + esc(q) + '”</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none">' + ccYes(c.asked_for_cc, 'Asked', 'Not asked') + (c.asked_for_cc ? ccYes(c.collected_cc, 'Captured', 'Not captured') : '') + '</span></button>';
+        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(c.brand) + '</span>') + (c.location ? ' <span class="mut" style="font-size:12.5px">· ' + esc(c.location) + '</span>' : '') + (q ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">“' + esc(q) + '”</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none">' + ccYes(c.asked_for_cc, 'Asked', 'Not asked') + (c.asked_for_cc ? ccYes(c.collected_cc, 'Captured', 'Not captured') : '') + '</span></button>';
       }).join('') : '<div class="mut" style="padding:14px 0">No calls match.</div>') +
       (rows.length > shown.length ? '<button class="sel" data-act="ccmore" style="margin-top:10px;width:100%;justify-content:center">Show more (' + n0(rows.length - shown.length) + ' left)</button>' : '') + '</div>';
-    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>Card asked</b> means that while booking a repair or maintenance visit, the CSR asked for a card to hold or secure the appointment. <b>Captured</b> means the customer gave one. A card mentioned only as a way to pay the technician later doesn’t count. These are the same numbers as the daily card capture email.</p></div>' +
-      tiles + (LOCK || brands.length < 2 ? '' : tbl('By brand', 'Capture rate and asked-not-captured for each brand · click a brand to see its calls.', brands, false)) + tbl('By CSR', 'Click a CSR to see their calls.', agents, true) + list;
+    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>Card asked</b> means that while booking a residential repair visit, the CSR asked for a card to hold or secure the appointment. Maintenance and tune-ups (including Gold Star and other prepaid plans), warranty, return visits, sales estimates and commercial calls don\u2019t need a card and aren\u2019t counted. <b>Captured</b> means the customer gave one. A card mentioned only as a way to pay the technician later doesn’t count. These are the same numbers as the daily card capture email.</p></div>' +
+      bar + tiles + (LOCK || brands.length < 2 || CAP.loc ? '' : tbl('By brand', 'Click a column to sort · click a brand to see its calls with no card ask, or click any number to see those calls.', brands, false)) + tbl('By CSR' + (CAP.loc ? ' · ' + esc(CAP.loc) : ''), 'Click a column to sort · click a CSR to see their calls with no card ask, or click any number to see those calls.', agents, true) + list;
+    var e1 = $('ccloc'); if (e1) e1.addEventListener('change', function () { CAP.loc = e1.value; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); });
+    var e2 = $('ccagsel'); if (e2) e2.addEventListener('change', function () { var v = e2.value; if (!v) { CAP.ag = null; CAP.b = null; } else { var i = v.indexOf('|'); CAP.b = v.slice(0, i); CAP.ag = v.slice(i + 1); } CAP.shown = 50; drawCard(); });
+    var e3 = $('cccs'); if (e3) e3.addEventListener('change', function () { CAP.cs = e3.value; CAP.shown = 50; drawCard(); });
   }
   function ccCsv() {
-    var a = (CAP.d && CAP.d.by_agent) || [], o = (CAP.d && CAP.d.overall) || {};
+    var a = ccAgents(), o = CAP.loc ? a.reduce(function (t, r) { t.booked += +r.booked || 0; t.asked_cc += +r.asked_cc || 0; t.captured_cc += +r.captured_cc || 0; return t; }, { booked: 0, asked_cc: 0, captured_cc: 0 }) : ((CAP.d && CAP.d.overall) || {});
     var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var p = function (x, y) { return y ? (100 * x / y).toFixed(1) + '%' : ''; };
-    var lines = [['CSR', 'Brand', 'Booked', 'Asked', 'Asked %', 'Captured', 'Captured / asked', 'Captured / booked'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.brand), r.booked, r.asked_cc, p(r.asked_cc, r.booked), r.captured_cc, p(r.captured_cc, r.asked_cc), p(r.captured_cc, r.booked)].join(','); }));
-    lines.push(['Total', '', o.booked, o.asked_cc, p(o.asked_cc, o.booked), o.captured_cc, p(o.captured_cc, o.asked_cc), p(o.captured_cc, o.booked)].join(','));
+    var lines = [['CSR', 'Location', 'Brand', 'Booked', 'Asked', 'Asked %', 'Captured', 'Captured / asked', 'Captured / booked'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.location || ''), q(r.brand), r.booked, r.asked_cc, p(r.asked_cc, r.booked), r.captured_cc, p(r.captured_cc, r.asked_cc), p(r.captured_cc, r.booked)].join(','); }));
+    lines.push([CAP.loc ? q(CAP.loc + ' total') : 'Total', '', '', o.booked, o.asked_cc, p(o.asked_cc, o.booked), o.captured_cc, p(o.captured_cc, o.asked_cc), p(o.captured_cc, o.booked)].join(','));
     saveBlob('card-capture-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
+  }
+  // ---------- Price talk (Rob & Marc 11/3) — analytics only; price and fees are not part of the QA score ----------
+  var PT = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50, sk: 'n', sd: -1, bk: 'n', bd: -1, scroll: false };
+  var PTK = { none: 'Price never came up', asked_answered: 'Customer asked · CSR gave a number', asked_no_number: 'Customer asked · left to the tech', volunteered: 'CSR brought it up first' };
+  var PTC = { none: ['#E6F0EA', '#1F5A41'], asked_answered: ['#EEF2FB', '#2B3A67'], asked_no_number: ['#F3F1EC', '#3B4541'], volunteered: ['#FCEBDD', '#A8441A'] };
+  function vPrice(tok) {
+    setMain(crumb([['Price talk']]) + '<div id="ptwrap"><div class="oq-card">' + skel(36, 6) + '</div></div><div id="iftrend"></div>');
+    ifTrend(tok);
+    var key = S.start + '|' + S.end + '|' + S.brands.join(',');
+    if (PT.d && PT.key === key) { drawPrice(); return; }
+    api(win({ action: 'pricetalk' })).then(function (r) { if (tok !== T) return; PT.d = r || {}; PT.key = key; PT.ag = null; PT.b = null; PT.shown = 50; drawPrice(); })
+      .catch(function (e) { if (tok === T && $('ptwrap')) $('ptwrap').innerHTML = errBox(e); });
+  }
+  // Info before price, week over week (Rob 11/23, item 12): of the calls where price came up, how often the CSR
+  // collected or confirmed the customer's information first. By brand and by CSR.
+  var IF = { by: 'brand' };
+  function ifTrend(tok) {
+    var el = $('iftrend'); if (!el || !CFG.infoFirst) return;
+    el.innerHTML = '<div class="oq-card" style="margin-top:16px">' + skel(24, 5) + '</div>';
+    CFG.infoFirst({ end: S.end, brands: S.brands }).then(function (r) { if (tok !== T) return; IF.d = r || {}; drawIf(); })
+      .catch(function (e) { if (tok === T && $('iftrend')) $('iftrend').innerHTML = '<div class="oq-card" style="margin-top:16px">' + errBox(e) + '</div>'; });
+  }
+  function drawIf() {
+    var el = $('iftrend'); if (!el || !IF.d) return; var d = IF.d, wk = d.weeks || [], by = IF.by;
+    var cell = function (y, n, py, pn) { if (!n) return '<td class="num mut" style="text-align:center">—</td>'; var c = Math.round(100 * y / n), pv = pn ? Math.round(100 * py / pn) : null, dl = pv == null ? '' : ' <span style="font-size:11px;color:' + (c >= pv ? '#1F5A41' : '#B4461F') + '">' + (c >= pv ? '▲' : '▼') + Math.abs(c - pv) + '</span>';
+      return '<td class="num" style="text-align:center"><b>' + c + '%</b>' + dl + '<div class="mut" style="font-size:11px">' + y + ' of ' + n + '</div></td>'; };
+    var src = by === 'csr' ? (d.csrs || []) : (d.brands || []), keyOf = function (x) { return by === 'csr' ? x.agent : x.brand; };
+    var M = {}; src.forEach(function (x) { var k = keyOf(x); (M[k] = M[k] || { brand: x.brand, w: {}, n: 0 }).w[x.wk] = x; M[k].n += x.n; });
+    var names = Object.keys(M).filter(function (k) { return by !== 'csr' || M[k].n >= 5; }).sort(function (a, b) { return M[b].n - M[a].n; });
+    var T0 = {}; (d.total || []).forEach(function (x) { T0[x.wk] = x; });
+    var row = function (label, W, bold) { return '<tr><td' + (bold ? ' style="font-weight:700"' : '') + '>' + label + '</td>' + wk.map(function (w, i) { var a = W[w] || {}, b = i ? (W[wk[i - 1]] || {}) : {}; return cell(a.y || 0, a.n || 0, b.y || 0, b.n || 0); }).join('') + '</tr>'; };
+    el.innerHTML = '<div class="oq-card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Info before price, week by week</h2><p class="sub">Of the calls where price came up, how often the CSR collected or confirmed the customer’s information before giving a price. ▲▼ is the change from the week before.</p></div>' +
+      '<div style="display:flex;gap:6px"><button class="chip' + (by === 'brand' ? ' on' : '') + '" data-act="ifby" data-k="brand">By ' + esc(W_BRAND.toLowerCase()) + '</button><button class="chip' + (by === 'csr' ? ' on' : '') + '" data-act="ifby" data-k="csr">By CSR</button></div></div>' +
+      (wk.length ? '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13px"><thead><tr><th>' + (by === 'csr' ? 'CSR' : W_BRAND) + '</th>' + wk.map(function (w) { return '<th style="text-align:center">Week of ' + esc(fdate(w)) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        row('All', T0, true) + names.slice(0, 80).map(function (k) { return row(esc(by === 'csr' ? k + ' · ' + short(M[k].brand) : short(k)), M[k].w, false); }).join('') + '</tbody></table></div>' + (by === 'csr' ? '<p class="mut" style="font-size:12px;margin-top:6px">CSRs with at least 5 pricing calls in these weeks.</p>' : '')
+        : '<p class="mut" style="margin-top:12px">No calls where price came up yet.</p>') + '</div>';
+  }
+  function ptPct(a, b) { return b ? pc(100 * a / b) : '—'; }
+  function ptRows() {
+    var f = PT.f;
+    return (PT.d.calls || []).filter(function (c) {
+      if (PT.ag && (c.agent !== PT.ag || c.brand !== PT.b)) return false;
+      if (PT.b && !PT.ag && c.brand !== PT.b) return false;
+      return f === 'all' || (f === 'none' && c.kind === 'none') || (f === 'nobk' && c.kind === 'none' && c.booked) || (f === 'askans' && c.kind === 'asked_answered') || (f === 'asknum' && c.kind === 'asked_no_number') || (f === 'vol' && c.kind === 'volunteered') || (f === 'ask' && /^asked/.test(c.kind)) ||
+        (f === 'lost' && c.kind !== 'none' && c.decided && !c.booked) || (f === 'decl' && c.reaction === 'declined');
+    });
+  }
+  function drawPrice() {
+    var w = $('ptwrap'); if (!w || !PT.d) return; var d = PT.d, K = d.kinds || {};
+    var g = function (k) { return K[k] || { n: 0, decided: 0, booked: 0, declined: 0, hesitated: 0, lost: 0 }; };
+    var none = g('none'), aa = g('asked_answered'), an = g('asked_no_number'), vol = g('volunteered'), read = +d.read || 0;
+    var askN = aa.n + an.n, askD = aa.decided + an.decided, askB = aa.booked + an.booked;
+    // Tiles open the matching calls (Becky 11/5: tiles weren't clickable)
+    var tclick = function (f, html) { return '<button class="click" data-act="ptf" data-f="' + f + '" data-scroll="1" title="Show these calls" style="all:unset;box-sizing:border-box;cursor:pointer;flex:1 1 0;min-width:220px;display:flex;align-items:stretch;border-radius:16px' + (PT.f === f ? ';box-shadow:0 0 0 2px #14302A' : '') + '">' + html.replace('class="oq-card" style="', 'class="oq-card" style="margin:0;width:100%;') + '</button>'; };
+    var tile = function (k, f, title, x, sub) { return tclick(f, mnTile(title, ptPct(x.n, read) + '<span style="font-size:13px;font-weight:500;margin-left:6px">of calls</span>', n0(x.n) + ' calls · ' + ptPct(x.booked, x.decided) + ' booked (' + n0(x.booked) + ' of ' + n0(x.decided) + ' with a decision)' + (sub || '') + ' · <u>see calls</u>', PTC[k][1], '')); };
+    var tiles = '<div class="row">' + tile('none', 'none', 'Price never came up', none) +
+      tclick('ask', mnTile('Customer asked about price', ptPct(askN, read) + '<span style="font-size:13px;font-weight:500;margin-left:6px">of calls</span>', n0(askN) + ' calls · ' + ptPct(askB, askD) + ' booked (' + n0(askB) + ' of ' + n0(askD) + ' with a decision) · CSR gave a number on ' + ptPct(aa.n, askN) + ' · <u>see calls</u>', PTC.asked_answered[1], 'The caller raised price first. Split below by whether the CSR gave a number or left pricing to the technician.')) +
+      tile('volunteered', 'vol', 'CSR brought up price first', vol, ' · ' + n0(vol.declined) + ' declined after hearing it') + '</div>';
+    var cmp = '<div class="oq-card"><h2 class="ttl">Booking rate by how price came up</h2><p class="sub">Only calls that reached a booking decision (booked or not booked), so these counts are smaller than the call totals in the boxes above. Price and fees are not part of the QA score; this is for coaching decisions only.</p><div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
+      ['none', 'asked_no_number', 'asked_answered', 'volunteered'].map(function (k) { var x = g(k), r = x.decided ? 100 * x.booked / x.decided : 0;
+        return '<button class="click" data-act="ptf" data-scroll="1" title="Show these calls" data-f="' + ({ none: 'none', asked_no_number: 'asknum', asked_answered: 'askans', volunteered: 'vol' })[k] + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(150px,260px) minmax(0,1fr) 54px 90px;gap:12px;align-items:center;font-size:13px"><span>' + PTK[k] + '</span><span style="height:14px;border-radius:3px;background:#F1EEE8;overflow:hidden;display:block"><span style="display:block;height:100%;background:' + PTC[k][1] + ';width:' + r.toFixed(0) + '%"></span></span><span class="num" style="text-align:right;font-weight:600">' + (x.decided ? r.toFixed(1) + '%' : '—') + '</span><span class="mut num" style="text-align:right;font-size:12px">' + n0(x.booked) + ' of ' + n0(x.decided) + '</span></button>'; }).join('') + '</div></div>';
+    // Sortable columns (Becky 11/5). Ratios sort by their value; ties fall back to volume.
+    var rt = function (a, b) { return b ? a / b : -1; };
+    var AV = { agent: function (r) { return String(r.agent || ''); }, brand: function (r) { return String(short(r.brand) || ''); }, n: function (r) { return +r.n || 0; }, vol: function (r) { return rt(r.vol, r.n); }, asked: function (r) { return rt(r.asked, r.n); }, ans: function (r) { return rt(r.ans, r.asked); }, bk: function (r) { return rt(r.bk, r.d); } };
+    var BV = { brand: function (r) { return String(short(r.brand) || ''); }, n: function (r) { return +r.n || 0; }, talk: function (r) { return rt(r.talk, r.n); }, vol: function (r) { return rt(r.vol, r.n); }, b0: function (r) { return rt(r.b0, r.d0); }, b1: function (r) { return rt(r.b1, r.d1); } };
+    var srt = function (arr, V, k, dir) { var f = V[k] || V.n; return arr.slice().sort(function (a, b) { var x = f(a), y = f(b); var c = typeof x === 'string' ? x.localeCompare(y) : x - y; return c * dir || ((+b.n || 0) - (+a.n || 0)); }); };
+    var sh = function (act, k, t, cur, dir, left, tip) { return '<th data-act="' + act + '" data-k="' + k + '" role="button" tabindex="0" style="cursor:pointer;white-space:nowrap;text-align:' + (left ? 'left' : 'right') + '"' + (tip ? ' title="' + esc(tip) + '"' : ' title="Sort"') + '>' + t + (cur === k ? (dir > 0 ? ' ▲' : ' ▼') : ' <span style="opacity:.35">↕</span>') + '</th>'; };
+    var th = function (t, tip, k) { return sh('ptsort', k, t, PT.sk, PT.sd, false, tip); };
+    var bth = function (t, k) { return sh('ptbsort', k, t, PT.bk, PT.bd, false); };
+    var lnk = function (t) { return '<span style="color:#1E5AA8;text-decoration:underline;text-underline-offset:2px">' + t + '</span>'; };
+    var brands = srt(d.by_brand || [], BV, PT.bk, PT.bd), agents = srt(d.by_agent || [], AV, PT.sk, PT.sd);
+    var btbl = (LOCK || brands.length < 2) ? '' : '<div class="oq-card"><h2 class="ttl">By brand</h2><p class="sub">Click a column to sort · click a brand to see its calls.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr>' + sh('ptbsort', 'brand', 'Brand', PT.bk, PT.bd, true) + bth('Opportunities', 'n') + bth('Price came up', 'talk') + bth('CSR first', 'vol') + bth('Booked · no price talk', 'b0') + bth('Booked · price came up', 'b1') + '</tr></thead><tbody>' +
+      brands.map(function (r) { var on = PT.b === r.brand && !PT.ag; return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="ptbr" data-scroll="1" title="See ' + esc(short(r.brand)) + '\u2019s calls" data-br="' + esc(r.brand) + '"><td>' + lnk(esc(short(r.brand))) + '</td><td class="num" style="text-align:right">' + n0(r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.talk, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.vol, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.b0, r.d0) + '</td><td class="num" style="text-align:right">' + ptPct(r.b1, r.d1) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    var atbl = !agents.length ? '' : '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">By CSR</h2><p class="sub">CSRs with 3+ opportunities read · click a column to sort · click a CSR to see their calls.</p></div><button class="sel btnd" data-act="ptcsv">⬇ Download CSV</button></div><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr>' + sh('ptsort', 'agent', 'CSR', PT.sk, PT.sd, true) + (LOCK ? '' : sh('ptsort', 'brand', 'Brand', PT.sk, PT.sd, true)) + th('Opportunities', null, 'n') + th('CSR brought up price first', 'Share of the CSR’s opportunities where they raised a price or fee before the caller asked', 'vol') + th('Customer asked', null, 'asked') + th('Gave a number when asked', null, 'ans') + th('Booking rate', null, 'bk') + '</tr></thead><tbody>' +
+      agents.map(function (r) { var on = PT.ag === r.agent && PT.b === r.brand; return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="ptag" data-scroll="1" title="See ' + esc(r.agent) + '\u2019s calls" data-ag="' + esc(r.agent) + '" data-br="' + esc(r.brand) + '"><td>' + lnk(esc(r.agent)) + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(r.brand)) + '</td>') + '<td class="num" style="text-align:right">' + n0(r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.vol, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.asked, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.ans, r.asked) + '</td><td class="num" style="text-align:right">' + ptPct(r.bk, r.d) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    var rows = ptRows(), shown = rows.slice(0, PT.shown);
+    var chip = function (k, l) { return '<button class="sel' + (PT.f === k ? ' btnd' : '') + '" data-act="ptf" data-f="' + k + '" style="padding:5px 12px;font-size:12.5px;' + (PT.f === k ? '' : 'background:#EEF4EF;border-color:#CFE5DF;color:#14302A') + '">' + l + '</button>'; };
+    var who = PT.ag ? esc(PT.ag) + (LOCK ? '' : ' · ' + esc(short(PT.b))) : PT.b ? esc(short(PT.b)) : '';
+    var selR = PT.ag ? (d.by_agent || []).filter(function (r) { return r.agent === PT.ag && r.brand === PT.b; })[0] : null;
+    var selS = selR ? '<div style="display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 2px;padding:10px 12px;border-radius:10px;background:#F5F3EE;font-size:13px"><span><b class="num">' + n0(selR.n) + '</b> opportunities</span><span>CSR brought up price first <b class="num">' + ptPct(selR.vol, selR.n) + '</b></span><span>Customer asked <b class="num">' + ptPct(selR.asked, selR.n) + '</b></span><span>Gave a number when asked <b class="num">' + ptPct(selR.ans, selR.asked) + '</b></span><span>Booking rate <b class="num">' + ptPct(selR.bk, selR.d) + '</b></span></div>' : '';
+    var list = '<div class="oq-card" id="ptcalls" style="scroll-margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Calls' + (who ? ' · ' + who : '') + ' <span class="mut" style="font-weight:500;font-size:14px">(' + n0(rows.length) + ')</span></h2><p class="sub">Click a call to hear it.' + (who ? ' <button class="lnk" data-act="ptclr">Show everyone</button>' : '') + '</p></div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      chip('all', 'All') + chip('none', 'Price never came up') + chip('nobk', 'Booked, price never came up') + chip('ask', 'Customer asked') + chip('askans', 'Asked · gave a number') + chip('asknum', 'Asked · left to the tech') + chip('vol', 'CSR brought it up') + chip('lost', 'Not booked after price talk') + chip('decl', 'Declined after hearing price') + '</div></div>' + selS +
+      (shown.length ? shown.map(function (c) { var col = PTC[c.kind] || PTC.none;
+        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(short(c.brand)) + '</span>') + (c.summary ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">' + esc(c.summary) + '</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end;max-width:46%"><span class="pill" style="background:' + col[0] + ';color:' + col[1] + '">' + esc(PTK[c.kind] || c.kind) + '</span><span class="pill" style="background:' + (c.booked ? '#E6F0EA;color:#1F5A41' : '#F3F1EC;color:#56605B') + '">' + esc(c.outcome || '') + '</span></span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No calls match.</div>') +
+      (rows.length > shown.length ? '<button class="sel" data-act="ptmore" style="margin-top:10px;width:100%;justify-content:center">Show more (' + n0(rows.length - shown.length) + ' left)</button>' : '') + '</div>';
+    var cov = (+d.opps || 0) > read ? '<p class="mut" style="font-size:12px;margin:6px 0 0">Read so far: ' + n0(read) + ' of ' + n0(d.opps) + ' opportunities in this period. The rest are still being read and will appear on refresh.</p>' : '';
+    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>How price comes up on revenue opportunity calls.</b> Price and fees are <b>not</b> part of the QA score (GarageCo, 11/3). This shows who raised price first, whether the CSR gave a number, and how bookings compare, so pricing coaching can be based on real calls.</p>' + cov + '</div>' +
+      (read ? tiles + cmp + btbl + atbl + list : '<div class="oq-card"><p class="mut">No calls have been read for price talk in this period yet.</p></div>');
+    if (PT.scroll) { PT.scroll = false; var pc0 = $('ptcalls'); if (pc0) try { pc0.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (x) { pc0.scrollIntoView(); } }
+  }
+  function ptCsv() {
+    var a = (PT.d && PT.d.by_agent) || [];
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var p = function (x, y) { return y ? (100 * x / y).toFixed(1) + '%' : ''; };
+    var lines = [['CSR', 'Brand', 'Opportunities', 'CSR brought up price first', 'Customer asked', 'Gave a number when asked', 'Booking rate'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.brand), r.n, p(r.vol, r.n), p(r.asked, r.n), p(r.ans, r.asked), p(r.bk, r.d)].join(','); }));
+    saveBlob('price-talk-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
+  }
+  // ---------- Practice: AI practice customer (pilot) ----------
+  var PR = { d: null, brand: '', live: null, result: null, busy: false, err: null, view: null, okChecked: false };
+  var PR_BRANDS = ['Apple Door', 'Cedar Park Overhead Door', 'Cheney Door', 'Cunningham Door', 'Dan’s Doors', 'Genson Overhead Door', 'Omaha Door', 'PDQ', 'Quality Overhead Door', 'TVG'];
+  function prCheckAccess() {
+    if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
+    api({ action: 'practice', op: 'access' }).then(function (r) {
+      if (!r || !r.allowed) return;
+      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var keys = function () { return sec.map(function (n) { return n[0]; }); }; var i = keys().indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); var j = keys().indexOf('reporting'); sec.splice(j >= 0 ? j + 1 : sec.length, 0, ['receptionist', 'AI CSR']); mgrNav(); }
+      renderNav();
+    }).catch(function () { });
+  }
+  function prDots(n) { return '<span title="' + (['', 'Easier', 'Normal', 'Tougher'][n] || '') + '" style="letter-spacing:2px;color:#E0662A">' + '●●●'.slice(0, n || 2) + '<span style="color:#E1DCD2">' + '●●●'.slice(0, 3 - (n || 2)) + '</span></span>'; }
+  function vPractice(tok) {
+    if (!PR.live) PR.result = null;
+    setMain(crumb([['Practice']]) + '<div id="prwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
+    prList().then(function (r) { if (tok !== T) return; PR.d = r; if (!PR.brand) PR.brand = r.lock || 'Quality Overhead Door'; drawPractice(); })
+      .catch(function (e) { if (tok === T && $('prwrap')) $('prwrap').innerHTML = errBox(e); });
+  }
+  // go-live PRAC-06 (11/20): tries / best and the history follow the "Practice as" brand.
+  function prBrandNow() { return LOCK || PR.brand || 'Quality Overhead Door'; }
+  function prMine(sid) { var me = PR.d && PR.d.me, b = prBrandNow(); return ((PR.d && PR.d.sessions) || []).filter(function (s) { return s.scenario_id === sid && s.user_id === me && s.status === 'scored' && (!s.brand || s.brand === b); }); }
+  function prScoreChip(v) { return v == null ? '<span class="mut">—</span>' : '<span class="pill num" style="' + chipScore(Math.round(v)) + '">' + Math.round(v) + '%' + '</span>'; }
+  function drawPractice() {
+    var w = $('prwrap'); if (!w || !PR.d) return; var d = PR.d;
+    if (PR.live) { w.innerHTML = prLiveHtml(); return; }
+    if (PR.result) { w.innerHTML = prResultHtml(PR.result); return; }
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">Practice calls</h2><p class="sub" style="line-height:1.55;margin:0">Take a 1–3 minute call from an AI customer, then get an instant debrief on the 5-step call flow. Use your computer’s mic and speakers (a headset works best). Practice calls are saved here so you can see progress over time; they never count toward real QA scores. <b>Pilot</b> — only a few people can see this tab.</p>' +
+      (!d.ready ? '<div class="banner" style="margin-top:10px"><b>Not set up yet.</b> ' + (CFG.staff ? 'Add the ElevenLabs key, then <button class="lnk" data-act="prsetup">set up the practice caller</button>.' : 'Opsis is finishing setup.') + '</div>' : '') +
+      (LOCK ? '' : '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px;margin-top:12px" class="mut">Practice as<select id="prbrand" class="oq-field" style="min-width:230px">' + PR_BRANDS.map(function (b) { return '<option' + (PR.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>') +
+      (PR.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(PR.err) + '</div>' : '') + '</div>';
+    if (CFG.staff && d.ready) {
+      var pvc = (VX.practice || {});
+      intro += '<div class="oq-card"><h2 class="ttl" style="margin:0">Caller voices</h2><p class="sub">The voice of the AI customer on female-caller and male-caller scenarios. ▶ Sample plays ElevenLabs’ clip. Saving updates the practice caller right away.' + (VX.err ? ' <span style="color:#A8441A">' + esc(VX.err) + '</span>' : '') + '</p>' +
+        '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px">' +
+        '<label class="mut" style="display:flex;flex-direction:column;gap:4px;font-size:12px">Female caller' + vxSelect('', pvc.female || 'female', 'practice', false, 'data-pv="female"') + '</label>' +
+        '<label class="mut" style="display:flex;flex-direction:column;gap:4px;font-size:12px">Male caller' + vxSelect('', pvc.male || 'male', 'practice', false, 'data-pv="male"') + '</label></div>' +
+        '<div style="margin-top:12px"><button class="sel btnd" data-act="prvoice"' + (VX.list && VX.list.length ? '' : ' disabled') + '>Save caller voices</button></div></div>';
+    }
+    var cards = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">' + (d.scenarios || []).map(function (s) {
+      var mine = prMine(s.id), best = mine.reduce(function (m, x) { return x.score_pct != null && (m == null || x.score_pct > m) ? x.score_pct : m; }, null);
+      return '<div class="oq-card" style="display:flex;flex-direction:column;gap:8px;margin:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="font-weight:600;font-size:15px">' + esc(s.title) + '</div>' + prDots(s.difficulty) + '</div>' +
+        '<div class="mut" style="font-size:12px">' + esc(s.call_type || '') + ' · ' + (function () { var sl = s.voice === 'male' ? 'male' : 'female', id = (VX.practice || {})[sl], nm = vxName(id); return sl + ' caller' + (nm ? ' (' + esc(nm) + ')' : ''); })() + '</div>' +
+        '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;flex:1">' + esc(s.goal.length > 190 ? s.goal.slice(0, 187) + '…' : s.goal) + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mut" style="font-size:12px">' + (mine.length ? mine.length + ' tr' + (mine.length === 1 ? 'y' : 'ies') + ' · best ' + Math.round(best || 0) : 'Not tried yet') + '</span><button class="sel btnd" data-act="prstart" data-id="' + esc(s.id) + '"' + (d.ready && !PR.busy ? '' : ' disabled') + '>☎ Start call</button></div></div>';
+    }).join('') + '</div>';
+    var hist = (d.sessions || []).filter(function (x) { return (x.status === 'scored' || x.status === 'failed') && (LOCK || !x.brand || x.brand === prBrandNow()); });
+    var names = {}; (d.scenarios || []).forEach(function (s) { names[s.id] = s.title; });
+    var showWho = hist.some(function (x) { return x.user_id !== d.me; });
+    var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + esc(d.teamLabel || (showWho ? 'Everyone in the pilot' : 'Your practice calls')) + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
+      hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
+    w.innerHTML = intro + cards + htbl;
+    var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; drawPractice(); });
+  }
+  function prLiveHtml() {
+    var L = PR.live, sc = L.sc;
+    var lines = L.lines.slice(-14).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#E6F0EA;color:#14302A' : 'background:#F3F1EC;color:#1C2421') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You' : 'Customer') + '</b>' + esc(m.text) + '</span></div>'; }).join('');
+    if (L.state === 'ringing') return '<div class="oq-card" style="text-align:center;padding:40px 20px"><div class="mut" style="font-size:12px">Incoming call · ' + esc(short(L.brand)) + ' line</div><div style="font-size:42px;margin:14px 0;display:inline-block;animation:prring 1s ease-in-out infinite">☎</div><h2 class="ttl" style="margin:0">' + esc(sc.title) + '</h2><p class="mut" style="margin:8px 0 18px">Answer like a live call — greet the caller first.</p><div style="display:flex;gap:10px;justify-content:center"><button class="sel" data-act="pranswer" style="background:#2F7D5B;border-color:#2F7D5B;color:#fff;padding:10px 26px;font-size:15px"' + (L.ready ? '' : ' disabled') + '>' + (L.ready ? 'Answer' : 'Getting ready…') + '</button><button class="sel" data-act="prcancel">Cancel</button></div><style>@keyframes prring{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}75%{transform:rotate(14deg)}}</style></div>';
+    var st = L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Scoring your call…' : (L.mode === 'speaking' ? 'Customer is talking…' : 'Listening — go ahead');
+    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Practice call · ' + esc(short(L.brand)) + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(sc.title) + '</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="prclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' +
+      (L.state === 'ending' ? '' : '<button class="sel" data-act="prend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">End call</button>') + '</div></div>' +
+      '<div style="margin-top:12px;display:flex;align-items:center;gap:10px"><span style="width:12px;height:12px;border-radius:999px;background:' + (L.mode === 'speaking' ? '#E0662A' : '#2F7D5B') + ';box-shadow:0 0 0 6px ' + (L.mode === 'speaking' ? '#FCEBDD' : '#E6F0EA') + '"></span><b>' + st + '</b></div>' +
+      '<div class="banner" style="margin-top:12px;background:#FAF8F4;border-color:#E8E4DC;color:#3B4541;font-size:12.5px"><b>Your goal:</b> ' + esc(sc.goal) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + (lines || '<div class="mut">You\u2019re connected \u2014 greet the caller.</div>') + '</div></div>';
+  }
+  function prResultHtml(r) {
+    if (r.status === 'failed') return '<div class="oq-card"><h2 class="ttl">Practice call</h2><p>' + esc(r.error || 'That call couldn’t be scored.') + '</p><div style="display:flex;gap:8px;margin-top:10px"><button class="sel btnd" data-act="prback">Back to practice</button></div></div>';
+    if (r.status !== 'scored') return '<div class="oq-card"><h2 class="ttl">Scoring your call…</h2><p class="mut">This usually takes under a minute.</p></div>';
+    var D = r.debrief || {}, sc = r.score, col = sc == null ? '#CFC9BE' : (sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O));
+    var li = function (a) { return (a || []).map(function (x) { return '<li style="margin:4px 0">' + esc(x) + '</li>'; }).join(''); };
+    var steps = (r.steps || []).map(function (s) { var c = s.answer === 'yes' ? ['#E6F0EA', '#1F5A41', 'Done'] : s.answer === 'no' ? ['#FCEBDD', '#A8441A', 'Missed'] : ['#F3F1EC', '#56605B', 'N/A'];
+      return '<div style="display:grid;grid-template-columns:minmax(150px,230px) 70px 1fr;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line2);font-size:13px"><span>' + esc(STEPNAMES[s.key] || s.label || s.key) + '</span><span class="pill" style="background:' + c[0] + ';color:' + c[1] + ';justify-self:start">' + c[2] + '</span><span class="mut" style="line-height:1.45">' + esc(s.note || '') + '</span></div>'; }).join('');
+    var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role === 'CSR' ? '#1F5A41' : '#5F6763') + '">' + (t.role === 'CSR' ? 'You' : 'Customer') + ':</b> ' + esc(t.text) + '</div>'; }).join('');
+    return '<div class="oq-card"><div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + (sc == null ? '—' : Math.round(sc)) + '</span></div></div>' +
+      '<div style="flex:1;min-width:220px"><div class="mut" style="font-size:12px">' + esc(r.title || 'Practice call') + ' · ' + esc(short(r.brand || '')) + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + ' · ' + (r.booked ? 'Booked' : 'Not booked') + '</div><div style="font-size:16px;font-weight:600;margin-top:4px;line-height:1.4">' + esc(D.headline || '') + '</div></div></div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">What went well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.went_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">Try this next time</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.try_next) + '</ul></div></div>' +
+      (r.checking ? '<div class="banner" style="margin-top:14px"><b>Double-checking what you said…</b> We’re listening to the recording again so names and the brand are heard right. Your score may update in a few seconds.</div>' : '') +
+      (D.say_this ? '<div class="banner" style="margin-top:14px;background:#EEF2FB;border-color:#D5DDF3;color:#2B3A67"><b>Say it like this:</b> “' + esc(D.say_this) + '”</div>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (r.scenario_id ? '<button class="sel btnd" data-act="prstart" data-id="' + esc(r.scenario_id) + '">↻ Try it again</button>' : '') + '<button class="sel" data-act="prback">Pick another scenario</button></div></div>' +
+      (r.session_id ? '<div class="oq-card"><h2 class="ttl" style="margin:0 0 8px">Recording</h2>' + prAudioHtml(r.session_id) + '</div>' : '') +
+      '<div class="oq-card"><h2 class="ttl">Call flow</h2>' + steps + '</div>' +
+      '<div class="oq-card"><details><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
+  }
+  // Practice call recordings (Rob 11/17): practice-audio pulls the ElevenLabs audio once, then serves a signed link.
+  var PR_AUD = {};
+  function prTeam(body) {
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach practice review.'); return j; }); });
+  }
+  // Scenarios come from the portal function; history comes from practice-audio so RMs see their brand, GMs their location, admins everyone.
+  // Second listen (Becky 11/18): re-transcribe the recording with a more accurate model primed with brand and
+  // people names, then re-score. The live transcript often mishears names ("Quality Open Door").
+  function prRecheck(sid, n) {
+    prTeam({ op: 'rescore', session_id: sid }).then(function (j) {
+      if (j.skipped === 'no recording' && n < 3) { setTimeout(function () { prRecheck(sid, n + 1); }, 8000); return; }
+      var R = PR.result; if (!R || R.session_id !== sid) return;
+      if (j.retranscribed) { ['score', 'booked', 'steps', 'debrief', 'transcript'].forEach(function (k) { R[k] = j[k]; }); }
+      R.checking = false; drawPractice();
+      prList().then(function (d) { PR.d = d; if (!PR.live) drawPractice(); }).catch(function () { });
+    }).catch(function () { var R = PR.result; if (R && R.session_id === sid) { R.checking = false; drawPractice(); } });
+  }
+  function prList() {
+    return Promise.all([api({ action: 'practice', op: 'list' }), prTeam({ op: 'list' }).catch(function () { return null; })]).then(function (rr) {
+      var d = rr[0], t = rr[1]; if (t && t.sessions) { d.sessions = t.sessions; d.teamLabel = t.scope === 'own' ? null : t.label; } return d;
+    });
+  }
+  function prAudioHtml(sid) {
+    var a = PR_AUD[sid];
+    if (!a) { setTimeout(function () { prAudioLoad(sid); }, 0); return '<div id="praud" class="mut" style="font-size:13px">Loading recording…</div>'; }
+    if (a.url) return '<div id="praud"><audio controls preload="metadata" src="' + esc(a.url) + '" style="width:100%;max-width:560px"></audio></div>';
+    return '<div id="praud" class="mut" style="font-size:13px">' + esc(a.reason || 'No recording for this call.') + '</div>';
+  }
+  function prAudioLoad(sid) {
+    if (PR_AUD[sid] || PR_AUD['_' + sid]) return; PR_AUD['_' + sid] = 1;
+    prTeam({ op: 'audio', session_id: sid })
+      .then(function (j) { PR_AUD[sid] = { url: j.url || null, reason: j.url ? null : (j.reason || j.error || 'Couldn’t load the recording.') }; })
+      .catch(function () { PR_AUD[sid] = { url: null, reason: 'Couldn’t load the recording.' }; })
+      .then(function () { delete PR_AUD['_' + sid]; var el = $('praud'); if (el && PR.result && PR.result.session_id === sid) el.outerHTML = prAudioHtml(sid); });
+  }
+  var PR_SDK = null;
+  function prSdk() { if (!PR_SDK) PR_SDK = (new Function('u', 'return import(u)'))('https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.35.0/+esm'); return PR_SDK; }
+  var PR_RING = null;
+  function prRing(on) {
+    try {
+      if (!on) { if (PR_RING) { clearInterval(PR_RING.t); PR_RING.ctx.close(); } PR_RING = null; return; }
+      if (PR_RING) return; var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var burst = function () { [440, 480].forEach(function (f) { var o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; g.gain.value = 0.06; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 2); }); };
+      burst(); PR_RING = { ctx: ctx, t: setInterval(burst, 4000) };
+    } catch (e) { }
+  }
+  function prStart(id) {
+    var sc = ((PR.d && PR.d.scenarios) || []).filter(function (s) { return s.id === id; })[0]; if (!sc || PR.busy) return;
+    PR.busy = true; PR.err = null; PR.result = null;
+    var brand = LOCK || PR.brand || 'Quality Overhead Door';
+    var L = PR.live = { sc: sc, brand: brand, lines: [], state: 'ringing', mode: 'listening', secs: 0, conv: null, sid: null, ready: false };
+    drawPractice(); prRing(true);
+    L.prep = Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can\u2019t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
+      .then(function (rr) { L.st = rr[0]; L.SDK = rr[1]; L.sid = rr[0].session_id; L.ready = true; if (PR.live === L && L.state === 'ringing') drawPractice(); })
+      .catch(function (e) { prFail(L, e); });
+    L.giveUp = setTimeout(function () { if (PR.live === L && L.state === 'ringing') { prRing(false); PR.live = null; PR.busy = false; PR.err = 'Missed call \u2014 click Start call to try again.'; drawPractice(); } }, 45000);
+  }
+  function prFail(L, e) { prRing(false); if (L && L.timer) clearInterval(L.timer); if (PR.live !== L) return; PR.live = null; PR.busy = false; PR.err = (e && e.message) || String(e); drawPractice(); }
+  function prCancel() { var L = PR.live; if (!L || L.state !== 'ringing') return; prRing(false); clearTimeout(L.giveUp); PR.live = null; PR.busy = false; drawPractice(); }
+  function prAnswer() {
+    var L = PR.live; if (!L || L.state !== 'ringing' || !L.ready) return;
+    prRing(false); clearTimeout(L.giveUp); L.state = 'connecting'; drawPractice();
+    L.SDK.Conversation.startSession({ signedUrl: L.st.signed_url, connectionType: 'websocket', dynamicVariables: L.st.dynamic_variables,
+      onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('prclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 300) prEnd(); }, 1000); drawPractice(); },
+      onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (PR.live === L) drawPractice(); },
+      onModeChange: function (m) { L.mode = (m && m.mode) || m; if (PR.live === L) drawPractice(); },
+      onError: function (e) { console.warn('practice', e); },
+      onDisconnect: function () { if (PR.live === L) prFinish(); }
+    }).then(function (conv) { L.conv = conv; }).catch(function (e) { prFail(L, e); });
+  }
+  function prEnd() { var L = PR.live; if (!L || L.state === 'ending') return; if (L.conv && L.conv.endSession) { L.conv.endSession(); } else prFinish(); }
+  function prFinish() {
+    var L = PR.live; if (!L || L.state === 'ending') return; L.state = 'ending'; if (L.timer) clearInterval(L.timer); drawPractice();
+    var cid = null; try { cid = L.conv && L.conv.getId ? L.conv.getId() : null; } catch (e) { }
+    if (!L.sid || !cid) { PR.live = null; PR.busy = false; PR.err = 'The call ended before it connected. Check your mic and try again.'; drawPractice(); return; }
+    var tries = 0, go = function (op) {
+      api(op === 'finish' ? { action: 'practice', op: 'finish', session_id: L.sid, conversation_id: cid } : { action: 'practice', op: 'session', session_id: L.sid }).then(function (r) {
+        if (r.status === 'processing' && tries++ < 12) { setTimeout(function () { go('finish'); }, 4000); return; }
+        r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; drawPractice(); // keep the old list (Back is instant); refresh it below (Becky 11/18)
+        if (r.status === 'scored') { r.checking = true; prRecheck(r.session_id, 0); }
+        prList().then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
+      }).catch(function (e) { PR.live = null; PR.busy = false; PR.err = e.message; drawPractice(); });
+    };
+    go('finish');
+  }
+  function prView(id) {
+    prTeam({ op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
+  }
+  // ---------- AI CSR (Broccoli replacement, phase 1, pilot) ----------
+  var RC = { d: null, brand: '', live: null, res: null, err: null, tab: CFG.recepDash ? 'dash' : 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
+  var RC_DAYS = [['sun', 'Sun'], ['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat']];
+  var RC_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']];
+  function rcStrip(s) { return String(s || '').replace(/\[[a-z][a-z ,'-]{0,30}\]\s*/gi, '').replace(/\s{2,}/g, ' ').trim(); }
+  function vRecep(tok) {
+    if (!RC.live) RC.res = null;
+    setMain(crumb([['AI CSR']]) + '<div id="rcwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
+    api({ action: 'receptionist', op: 'list' }).then(function (r) { if (tok !== T) return; RC.d = r; if (!RC.brand) RC.brand = r.lock || 'Apple Door'; drawRecep(); })
+      .catch(function (e) { if (tok === T && $('rcwrap')) $('rcwrap').innerHTML = errBox(e); });
+  }
+  function rcField(l, v) { return '<div><div class="cap">' + esc(l) + '</div><div style="font-size:13.5px;margin-top:2px">' + (v != null && v !== '' ? esc(String(v)) : '<span class="mut">—</span>') + '</div></div>'; }
+  function rcResultHtml(r) {
+    if (r.status === 'failed') return '<div class="oq-card"><p>' + esc(r.error || 'That call couldn’t be read.') + '</p><button class="sel btnd" data-act="rcback">Back</button></div>';
+    if (r.status !== 'done') return '<div class="oq-card"><h2 class="ttl">Reading the call…</h2><p class="mut">This usually takes under a minute.</p></div>';
+    var L = r.lead || {}, V = r.review || {}, who = r.agent_name || 'Ava';
+    var li = function (a) { return (a || []).map(function (x) { return '<li style="margin:3px 0">' + esc(x) + '</li>'; }).join(''); };
+    var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role !== 'Caller' ? '#1F5A41' : '#5F6763') + '">' + esc(t.role) + ':</b> ' + esc(rcStrip(t.text)) + '</div>'; }).join('');
+    var ans = L.answers && typeof L.answers === 'object' ? Object.keys(L.answers) : [];
+    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div class="mut" style="font-size:12px">AI CSR · ' + esc(short(r.brand)) + (r.location ? ' · ' + esc(r.location) : '') + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.summary || 'Service request') + '</h2></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (L.category ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + esc(L.category) + '</span>' : '') + (L.outcome ? '<span class="pill" style="background:#F3F1EC;color:#5F6763">' + esc(L.outcome) + '</span>' : '') + (L.urgent ? '<span class="pill" style="background:#FDECEC;color:#A61B1B">Urgent</span>' : '') + '</div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:14px">' + rcField('Name', L.name) + rcField('Phone', L.phone) + rcField('Email', L.email) + rcField('Address', L.address) + rcField('Location', r.location || L.location) + rcField('Home or business', L.home_or_business) + rcField('Approves the work', L.approver) + rcField('Preferred day', L.preferred_day) + rcField('Preferred window', L.preferred_window) + (L.transferred_to ? rcField('Transferred to', L.transferred_to) : '') +
+      ans.map(function (k) { return rcField(k, L.answers[k]); }).join('') + '</div>' +
+      '<div style="margin-top:12px">' + rcField('Issue', L.issue) + '</div>' +
+      '<div class="banner" style="margin-top:12px;background:#E6F0EA;border-color:#CFE5DF;color:#14302A"><b>Next step for the team:</b> ' + esc(L.next_step || '—') + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">' + (r.call_id ? '<span id="rcaudio" style="display:inline-flex;flex:0 1 auto"><button class="sel btnd" data-act="rcplay" data-id="' + esc(r.call_id) + '">▶ Listen' + (r.duration_secs ? ' (' + fsecs(r.duration_secs) + ')' : '') + '</button></span>' : '') + '<button class="sel" data-act="rcstart">☎ Call again</button><button class="sel" data-act="rcback">Back to the list</button></div></div>' +
+      '<div class="oq-card"><h2 class="ttl">How ' + esc(who) + ' did</h2><div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">Handled well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(V.handled_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">To fix</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + (li(V.issues) || '<li class="mut">Nothing flagged</li>') + '</ul>' + ((V.missing || []).length ? '<div class="mut" style="font-size:12.5px;margin-top:6px">Didn’t get: ' + esc(V.missing.join(', ')) + '</div>' : '') + '</div></div></div>' +
+      '<div class="oq-card"><details open><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
+  }
+  function rcTabs() {
+    var t = (CFG.recepDash ? [['dash', 'Dashboard']] : []).concat([['calls', 'Test calls'], ['settings', 'Settings'], ['reports', 'Reports']]);
+    return '<div style="display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap">' + t.map(function (x) { var on = RC.tab === x[0]; return '<button class="sel' + (on ? ' btnd' : '') + '" data-act="rctab" data-t="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  }
+  function rcBrandSel(id, val, all) {
+    if (LOCK) return '';
+    return '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Brand<select id="' + id + '" class="oq-field" style="min-width:220px">' + (all ? '<option value=""' + (!val ? ' selected' : '') + '>All brands</option>' : '') + PR_BRANDS.map(function (b) { var v = b.replace(/\u2019/g, "'"); return '<option value="' + esc(v) + '"' + (val === v || val === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>';
+  }
+  function drawRecep() {
+    var w = $('rcwrap'); if (!w || !RC.d) return; var d = RC.d;
+    if (RC.live) {
+      var L = RC.live, who = L.agent || 'Ava', lines = L.lines.slice(-16).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#F3F1EC' : 'background:#E6F0EA;color:#14302A') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You (caller)' : esc(who)) + '</b>' + esc(rcStrip(m.text)) + '</span></div>'; }).join('');
+      w.innerHTML = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Test call · you are the customer</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.brand) + ' line</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="rcclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' + (L.state === 'ending' ? '' : '<button class="sel" data-act="rcend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">Hang up</button>') + '</div></div>' +
+        '<div style="margin-top:12px"><b>' + (L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Reading the call…' : (L.mode === 'speaking' ? esc(who) + ' is talking…' : 'Listening')) + '</b></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + lines + '</div></div>';
+      return;
+    }
+    if (RC.res) { w.innerHTML = rcResultHtml(RC.res); return; }
+    if (RC.tab === 'settings') { w.innerHTML = rcTabs() + '<div id="rcset"></div>'; drawRcSettings(); return; }
+    if (RC.tab === 'reports') { w.innerHTML = rcTabs() + '<div id="rcrep"></div>'; drawRcReport(); return; }
+    if (RC.tab === 'dash' && CFG.recepDash) { w.innerHTML = rcTabs() + '<div id="rddash"></div>'; drawRecepDash(); return; }
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI CSR (test)</h2><p class="sub" style="line-height:1.55;margin:0">The AI CSR answers the brand’s line like a top CSR: she follows the 5-step call flow, asks your required questions, offers the days and windows in Settings, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. Transfers are simulated, and a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
+      '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + rcBrandSel('rcbrand', RC.brand) +
+      (RL.brand === (LOCK || RC.brand) && RL.d && (RL.d.locations || []).some(function (x) { return x.built; }) ? '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="rcloc" class="oq-field" style="min-width:180px"><option value="">Brand line</option>' + RL.d.locations.filter(function (x) { return x.built; }).map(function (x) { return '<option value="' + esc(x.location) + '"' + (RC.loc === x.location ? ' selected' : '') + '>' + esc(x.location === 'Main' ? 'Main line' : x.location) + '</option>'; }).join('') + '</select></label>' : '') +
+      '<button class="sel btnd" data-act="rcstart"' + (d.ready ? '' : ' disabled') + '>☎ Call the ' + esc(short(LOCK || RC.brand)) + ' line</button></div>' +
+      (RC.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(RC.err) + '</div>' : '') + '</div>';
+    var rows = (d.calls || []).filter(function (c) { return c.status === 'done'; });
+    var tbl = '<div class="oq-card"><h2 class="ttl">Requests taken</h2><p class="sub">Test calls so far · click one to see the request and transcript.</p>' + (rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl rctbl" style="font-size:13px"><thead><tr><th>When</th><th>Brand</th><th>Location</th><th>Caller</th><th>Request</th><th class="r">Length</th><th>Tested by</th></tr></thead><tbody>' +
+      rows.map(function (c) { var L = c.lead || {}; return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(c.id) + '"><td>' + fdate(String(c.started_at).slice(0, 10)) + '</td><td class="mut">' + esc(short(c.brand)) + '</td><td class="mut">' + esc(c.location || '—') + '</td><td>' + esc(L.name || '—') + '</td><td class="req">' + (L.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(L.summary || L.issue || '') + '</td><td class="num r">' + (c.duration_secs ? fsecs(c.duration_secs) : '—') + '</td><td class="mut">' + esc(c.user_name || '') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No test calls yet.</p>') + '</div>';
+    w.innerHTML = rcTabs() + intro + tbl;
+    var bs = $('rcbrand'); if (bs) bs.addEventListener('change', function () { RC.brand = bs.value; RC.loc = ''; drawRecep(); });
+    var ls = $('rcloc'); if (ls) ls.addEventListener('change', function () { RC.loc = ls.value; });
+    var rb = LOCK || RC.brand; if (rb && RL.brand !== rb) rlLoad(rb, function () { if (RC.tab === 'calls' && !RC.live && !RC.res) drawRecep(); });
+  }
+
+
+  // ---------- AI CSR · Dashboard (Becky 11/19: "make it BETTER" than Broccoli's) ----------
+  // Live phone calls only (test calls stay on the Test calls tab). Data: RPC qa_recep_dash (date range + the previous period
+  // of the same length for the change arrows; office hours + time zone per brand). Everything is clickable: any bar, band,
+  // cell or row narrows the call list at the bottom, and a call opens the full request + transcript.
+  var RD = { d: null, key: '', loc: '', f: null, more: 0, busy: false, err: null };
+  var RD_OUT = [['Request taken', 'Request taken', '#1F8A5B'], ['Message taken', 'Message taken', '#3474C9'], ['No request', 'No request', '#E0662A'], ['Transferred', 'Transferred', '#9B59C9'], ['No one on the line', 'No one on the line', '#CFCAC0']];
+  var RD_COL = {}; RD_OUT.forEach(function (o) { RD_COL[o[0]] = o[2]; });
+  var RD_LEADS = ['Repair', 'New door / sales quote', 'Opener', 'Maintenance', 'Emergency'];
+  var RD_DOW = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], RD_DOWL = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function rdLocal(iso, tz) {
+    var p = {}; try { new Intl.DateTimeFormat('en-US', { timeZone: tz || 'America/Chicago', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(iso)).forEach(function (x) { p[x.type] = x.value; }); } catch (e) {}
+    var h = +p.hour % 24, m = +p.minute || 0;
+    return { dow: RD_DOWL.indexOf(p.weekday), h: h, min: h * 60 + m, ymd: p.year + '-' + p.month + '-' + p.day };
+  }
+  function rdWhy(c) {
+    var r = String(c.nbr || '').toLowerCase();
+    if (!r) return 'No reason given';
+    if (/outside|service area|don.?t service|out of area/.test(r)) return 'Outside the service area';
+    if (/cancel/.test(r)) return 'Cancelling or changing a job';
+    if (/price|cost|expensive|charge/.test(r)) return 'Price';
+    if (/didn.?t provide|did not provide|declin|refus|wouldn.?t give/.test(r)) return 'Wouldn’t give their details';
+    if (/hung up|hang ?up|disconnect|ended before|incomplete|cut off|dropped/.test(r)) return 'Call ended early';
+    if (/held|pending|confirm/.test(r)) return 'Time held, waiting on a callback';
+    if (/transfer|on-call|emergency team/.test(r)) return 'Sent to a person';
+    if (/call ?back|callback|quote|information only|just/.test(r)) return 'Wants a callback or quote';
+    return 'Other';
+  }
+  function rdMiss(c) {
+    var t = [].concat(c.missing || [], c.issues || []).join(' ').toLowerCase(), out = [];
+    [['Phone number', /phone|number|digits/], ['Email', /email|e-mail/], ['Address or ZIP', /address|zip|street/], ['Name spelling', /name|spell/], ['Asked a question twice', /twice|again|repeat/], ['Talked over the caller', /interrupt|talk(ed)? over|cut .* off/], ['Required question', /heard about|required question/], ['Scheduling', /schedul|window|day|time/]]
+      .forEach(function (k) { if (k[1].test(t)) out.push(k[0]); });
+    return out;
+  }
+  function rdXfer(x) { var t = String(x || '').trim(); if (!t) return ''; t = t.replace(/\s*\(.*\)\s*/, ' ').trim(); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase().replace(/\bsalina\b/, 'Salina'); }
+  function rdAfter(c, B) {
+    var b = B[c.brand] || {}, H = b.hours, L = c.L; if (!H || L.dow < 0) return false;
+    var d = H[RD_DOW[L.dow]]; if (!d || d.open === false) return true;
+    var f = String(d.from || '0:0').split(':'), t = String(d.to || '24:0').split(':');
+    return L.min < (+f[0]) * 60 + (+f[1] || 0) || L.min >= (+t[0]) * 60 + (+t[1] || 0);
+  }
+  function rdPrep(d) {
+    var B = d.brands || {}, cur = [], prev = [];
+    (d.calls || []).forEach(function (c) {
+      c.L = rdLocal(c.at, (B[c.brand] || {}).tz); var et = rdLocal(c.at, 'America/New_York').ymd;
+      c.real = c.outcome !== 'No one on the line'; c.lead = c.real && RD_LEADS.indexOf(c.category) >= 0;
+      c.got = c.outcome === 'Request taken' || c.outcome === 'Message taken' || c.outcome === 'Transferred';
+      c.after = rdAfter(c, B); c.why = c.lead && c.outcome === 'No request' ? rdWhy(c) : null; c.miss = c.real ? rdMiss(c) : []; c.xf = c.outcome === 'Transferred' ? (rdXfer(c.xfer) || 'Team member') : '';
+      c.cat = c.real ? (c.category || 'Other') : null;
+      if (RD.loc && (c.location || '') !== RD.loc) return;
+      (et >= d.start ? cur : prev).push(c);
+    });
+    return { cur: cur, prev: prev, B: B };
+  }
+  function rdKpis(a) {
+    var real = a.filter(function (c) { return c.real; }), leads = real.filter(function (c) { return c.lead; }), rv = real.filter(function (c) { return c.complete != null; });
+    var al = a.map(function (c) { return c.alert_at && c.ended ? (new Date(c.alert_at) - new Date(c.ended)) / 60000 : null; }).filter(function (x) { return x != null && x >= 0; }).sort(function (x, y) { return x - y; });
+    var sec = real.filter(function (c) { return c.secs; });
+    return { calls: a.length, real: real.length, leads: leads.length,
+      cap: leads.length ? 100 * leads.filter(function (c) { return c.got; }).length / leads.length : null,
+      contain: real.length ? 100 * real.filter(function (c) { return c.outcome !== 'Transferred'; }).length / real.length : null,
+      complete: rv.length ? 100 * rv.filter(function (c) { return c.complete; }).length / rv.length : null,
+      neg: real.filter(function (c) { return c.sentiment; }).length ? 100 * real.filter(function (c) { return c.sentiment === 'Negative'; }).length / real.filter(function (c) { return c.sentiment; }).length : null,
+      after: real.length ? 100 * real.filter(function (c) { return c.after; }).length / real.length : null,
+      alert: al.length ? al[Math.floor(al.length / 2)] : null, talk: sec.length ? sec.reduce(function (s, c) { return s + c.secs; }, 0) / sec.length : null,
+      urgent: real.filter(function (c) { return c.urgent; }).length };
+  }
+  var RD_F = {
+    all: function () { return true; }, outcome: function (c, v) { return c.outcome === v; }, real: function (c) { return c.real; }, lead: function (c) { return c.lead; }, cat: function (c, v) { return c.cat === v; },
+    why: function (c, v) { return c.why === v; }, xf: function (c, v) { return c.xf === v; }, miss: function (c, v) { return c.miss.indexOf(v) >= 0; },
+    cell: function (c, v) { var p = v.split('-'); return c.L.dow === +p[0] && c.L.h === +p[1]; }, day: function (c, v) { return rdLocal(c.at, 'America/New_York').ymd === v; },
+    phone: function (c, v) { return c.phone === v; }, after: function (c, v) { return c.real && c.after === (v === '1'); }, urgent: function (c) { return c.urgent; },
+    sent: function (c, v) { return c.sentiment === v; }, incomplete: function (c) { return c.complete === false; }
+  };
+  function drawRecepDash() {
+    var el = $('rddash'); if (!el) return;
+    var brands = LOCK ? [LOCK] : S.brands, key = S.start + '|' + S.end + '|' + brands.join(',');
+    if (RD.key !== key) {
+      RD.key = key; RD.d = null; RD.err = null; RD.f = null;
+      el.innerHTML = '<div class="oq-card">' + skel(90, 1) + '</div><div class="oq-card">' + skel(30, 6) + '</div>';
+      CFG.recepDash({ start: S.start, end: S.end, brands: brands }).then(function (d) { if (RD.key !== key) return; RD.d = d; if ($('rddash')) drawRecepDash(); })
+        .catch(function (e) { if (RD.key !== key) return; RD.err = e; RD.key = ''; if ($('rddash')) $('rddash').innerHTML = errBox(e); });
+      return;
+    }
+    if (!RD.d) return;
+    var P = rdPrep(RD.d), A = P.cur, K = rdKpis(A), KP = rdKpis(P.prev), agent = ((P.B[A[0] && A[0].brand] || {}).agent) || 'Ava';
+    var pc = function (v, dp) { return v == null ? '—' : v.toFixed(dp || 0) + '%'; };
+    var dl = function (k, good, unit) { var a = K[k], b = KP[k]; if (a == null || b == null || !P.prev.length) return '<span class="mut">no earlier data</span>'; var dd = a - b; if (Math.abs(dd) < 0.05) return '<span class="mut">same as before</span>'; var up = dd > 0, ok = good === 0 ? null : (up === (good > 0));
+      return '<span style="color:' + (ok == null ? 'var(--mut)' : ok ? '#1F8A5B' : '#B4432F') + ';font-weight:600">' + (up ? '▲ ' : '▼ ') + (unit === '%' ? Math.abs(dd).toFixed(1) + ' pts' : unit === 'm' ? Math.abs(dd).toFixed(1) + ' min' : fmt(Math.abs(Math.round(dd)))) + '</span> <span class="mut">vs prior</span>'; };
+    var kt = function (lbl, val, sub, tip) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:12px 14px;min-width:0" title="' + esc(tip) + '"><div class="cap">' + lbl + '</div><div class="num" style="font-weight:700;font-size:24px;margin:2px 0">' + val + '</div><div style="font-size:11.5px">' + sub + '</div></div>'; };
+    var locs = []; (RD.d.calls || []).forEach(function (c) { var l = c.location || ''; if (l && locs.indexOf(l) < 0) locs.push(l); }); locs.sort();
+    var h = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + esc(agent) + ' · AI CSR dashboard</h2><p class="sub">Live calls ' + esc(agent) + ' answered · ' + esc(rangeLabel()) + ' · ' + (LOCK ? esc(short(LOCK)) : brands.length ? brands.map(short).map(esc).join(', ') : 'all brands') + '. Click anything to see the calls behind it.</p></div>' +
+      (locs.length > 1 ? '<div class="row" style="gap:6px"><button class="chip' + (!RD.loc ? ' on' : '') + '" data-rdloc="">All locations</button>' + locs.map(function (l) { return '<button class="chip' + (RD.loc === l ? ' on' : '') + '" data-rdloc="' + esc(l) + '">' + esc(l) + '</button>'; }).join('') + '</div>' : '') + '</div>';
+    if (!A.length) { el.innerHTML = h + '<p class="mut" style="margin-top:12px">No live calls in this date range' + (RD.loc ? ' for ' + esc(RD.loc) : '') + '. Try a longer range.</p></div>'; rdWire(el); return; }
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-top:12px">' +
+      kt('Calls answered', fmt(K.calls), dl('calls', 0), 'Every live call ' + agent + ' picked up, including hang-ups and silent calls') +
+      kt('Leads captured', pc(K.cap, 1), dl('cap', 1, '%'), 'Of ' + K.leads + ' callers who needed service (repair, new door, opener, maintenance or emergency): request taken, message taken, or sent straight to a person') +
+      kt('Handled by ' + esc(agent) + ' alone', pc(K.contain), dl('contain', 1, '%'), 'Real conversations that finished without a transfer') +
+      kt('After hours', pc(K.after), '<span class="mut">' + fmt(A.filter(function (c) { return c.real && c.after && c.got; }).length) + ' leads caught while closed</span>', 'Conversations outside each brand’s office hours, in the brand’s own time zone') +
+      kt('Info complete', pc(K.complete), dl('complete', 1, '%'), 'Calls where the review found every detail the team needs (name, phone, address, job, required questions)') +
+      kt('Team alerted in', K.alert == null ? '—' : (K.alert < 1 ? '<1' : K.alert.toFixed(1)) + ' min', dl('alert', -1, 'm'), 'Median time from the end of the call to the email or text reaching the team') +
+      kt('Upset callers', pc(K.neg), dl('neg', -1, '%'), 'Share of conversations the review rated negative') + '</div></div>';
+
+    // insights (computed, no AI)
+    var ins = [], cnt = function (arr, f) { var m = {}; arr.forEach(function (c) { [].concat(f(c) || []).forEach(function (k) { if (k) m[k] = (m[k] || 0) + 1; }); }); return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (x, y) { return y[1] - x[1]; }); };
+    var ahLeads = A.filter(function (c) { return c.real && c.after && c.got; }).length;
+    if (K.after != null && K.after >= 20) ins.push(['after', '1', '<b>' + pc(K.after) + ' of conversations came in after hours.</b> ' + agent + ' captured ' + ahLeads + ' lead' + (ahLeads === 1 ? '' : 's') + ' while the office was closed.']);
+    var why = cnt(A, function (c) { return c.why; });
+    if (why.length) ins.push(['why', why[0][0], '<b>Top reason a lead didn’t become a request: ' + esc(why[0][0].toLowerCase()) + '</b> (' + why[0][1] + ' of ' + A.filter(function (c) { return c.why; }).length + ').']);
+    var miss = cnt(A, function (c) { return c.miss; });
+    if (miss.length) ins.push(['miss', miss[0][0], '<b>Most common miss: ' + esc(miss[0][0].toLowerCase()) + '</b> on ' + miss[0][1] + ' call' + (miss[0][1] === 1 ? '' : 's') + '. Worth a look in Settings.']);
+    var ph = {}; A.forEach(function (c) { if (!c.phone) return; var x = ph[c.phone] = ph[c.phone] || { n: 0, days: {} }; x.n++; x.days[c.L.ymd] = (x.days[c.L.ymd] || 0) + 1; });
+    var reps = Object.keys(ph).filter(function (k) { return ph[k].n > 1; }).map(function (k) { var x = ph[k]; return { phone: k, n: x.n, max: Math.max.apply(null, Object.keys(x.days).map(function (d) { return x.days[d]; })), last: A.filter(function (c) { return c.phone === k; })[0] }; }).sort(function (a, b) { return b.max - a.max || b.n - a.n; });
+    if (reps.length) ins.push(['phone', reps[0].phone, '<b>' + reps.length + ' caller' + (reps.length === 1 ? '' : 's') + ' called more than once</b>' + (reps.filter(function (r) { return r.max >= 3; }).length ? ', ' + reps.filter(function (r) { return r.max >= 3; }).length + ' of them 3+ times in one day' : '') + '. Repeat calls usually mean a callback didn’t happen.']);
+    var aerr = A.filter(function (c) { return c.alert_err; }).length; if (aerr) ins.push(['outcome', 'Request taken', '<b style="color:#B4432F">' + aerr + ' team alert' + (aerr === 1 ? '' : 's') + ' failed to send.</b> Check the alert contacts in Settings.']);
+    if (K.urgent) ins.push(['urgent', '1', '<b>' + K.urgent + ' urgent call' + (K.urgent === 1 ? '' : 's') + '</b>, ' + A.filter(function (c) { return c.urgent && c.outcome === 'Transferred'; }).length + ' sent straight to a person.']);
+    if (ins.length) h += '<div class="oq-card" style="background:#F4F8F5;border-color:#D6E7DD"><h2 class="ttl" style="margin-bottom:6px">What stands out</h2><ul style="margin:0;padding-left:18px;line-height:1.6;font-size:13.5px">' + ins.slice(0, 5).map(function (x) { return '<li><button class="lnk" data-rdf="' + x[0] + '" data-rdv="' + esc(x[1]) + '" style="all:unset;cursor:pointer">' + x[2] + ' <span style="color:#1F5A41;font-weight:600">See calls →</span></button></li>'; }).join('') + '</ul></div>';
+
+    // flow + daily
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px"><div class="oq-card"><h2 class="ttl">Where calls ended up</h2><p class="sub">From pickup to outcome. Click any number, bar or row to see those calls.</p>' + rdFlow(A) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Calls by day</h2><p class="sub">Click a day to see its calls.</p>' + rdDays(A, RD.d.start, RD.d.end) + '</div></div>';
+    // heatmap
+    h += '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><h2 class="ttl">When people call</h2><p class="sub">Conversations by day and hour, in each brand’s time zone. Outlined = office hours.</p></div>' + rdHoursSplit(A) + '</div>' + rdHeat(A, P.B) + '</div>';
+    // reason cards
+    var cats = cnt(A, function (c) { return c.cat; }), xf = cnt(A, function (c) { return c.xf; });
+    var bars = function (rows, k, col, tot) { if (!rows.length) return '<p class="mut" style="font-size:12.5px">None in this range.</p>'; var mx = rows[0][1]; return rows.slice(0, 7).map(function (r) { return '<button data-rdf="' + k + '" data-rdv="' + esc(r[0]) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;width:100%;padding:6px 0;border-top:1px solid var(--line2)"><span style="font-size:13px">' + esc(r[0]) + '</span><span class="num" style="font-size:13px"><b>' + r[1] + '</b> <span class="mut" style="font-size:11.5px">' + Math.round(100 * r[1] / (tot || 1)) + '%</span></span><span style="grid-column:1/3;height:6px;background:#F3F1EC;border-radius:3px"><span style="display:block;height:6px;border-radius:3px;background:' + col + ';width:' + Math.max(3, 100 * r[1] / mx).toFixed(1) + '%"></span></span></button>'; }).join(''); };
+    var nReal = A.filter(function (c) { return c.real; }).length, nWhy = A.filter(function (c) { return c.why; }).length, nX = A.filter(function (c) { return c.xf; }).length;
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">' +
+      '<div class="oq-card"><h2 class="ttl">What callers needed</h2><p class="sub">' + nReal + ' conversations</p>' + bars(cats, 'cat', '#3474C9', nReal) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Why leads didn’t become requests</h2><p class="sub">' + nWhy + ' service callers with no request</p>' + bars(why, 'why', '#E0662A', nWhy) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Who ' + esc(agent) + ' handed off to</h2><p class="sub">' + nX + ' transfers</p>' + bars(xf, 'xf', '#9B59C9', nX) + '</div></div>';
+    // quality + repeat callers
+    var sent = cnt(A.filter(function (c) { return c.real; }), function (c) { return c.sentiment; }), sTot = sent.reduce(function (s, x) { return s + x[1]; }, 0), SC = { Positive: '#1F8A5B', Neutral: '#A9A398', Negative: '#B4432F' };
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px"><div class="oq-card"><h2 class="ttl">How well ' + esc(agent) + ' handled it</h2><p class="sub">From the review of every conversation</p>' +
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;margin:8px 0 10px"><button data-rdf="incomplete" data-rdv="1" style="all:unset;cursor:pointer"><div class="cap">Info complete</div><div class="num" style="font-size:22px;font-weight:700">' + pc(K.complete) + '</div><div class="mut" style="font-size:11.5px">' + A.filter(function (c) { return c.complete === false; }).length + ' calls missing something →</div></button>' +
+      '<div style="flex:1;min-width:200px"><div class="cap">Caller mood</div><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin:8px 0 6px;background:#fff">' + sent.map(function (x) { return '<button data-rdf="sent" data-rdv="' + esc(x[0]) + '" title="' + esc(x[0]) + ': ' + x[1] + '" style="all:unset;cursor:pointer;background:' + (SC[x[0]] || '#CFCAC0') + ';width:' + (100 * x[1] / (sTot || 1)).toFixed(1) + '%"></button>'; }).join('') + '</div><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px">' + sent.map(function (x) { return '<span><span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:' + (SC[x[0]] || '#CFCAC0') + ';margin-right:5px"></span>' + esc(x[0]) + ' ' + x[1] + '</span>'; }).join('') + '</div></div></div>' +
+      '<div class="cap" style="margin-top:4px">Most common misses</div>' + bars(miss, 'miss', '#B4432F', A.filter(function (c) { return c.miss.length; }).length) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Repeat callers</h2><p class="sub">Called more than once in this range. Click one to see every call.</p>' + (reps.length ? '<table class="tbl rdt" style="font-size:13px;margin-top:8px"><thead><tr><th>Caller</th><th class="num">Calls</th><th class="num">Most in a day</th><th>Last call</th></tr></thead><tbody>' + reps.slice(0, 8).map(function (r) { var L = r.last; return '<tr class="click" data-rdf="phone" data-rdv="' + esc(r.phone) + '"><td><b style="font-weight:600">' + esc(L.name || '—') + '</b><div class="mut" style="font-size:11.5px">' + esc(fphone(r.phone)) + '</div></td><td class="num">' + r.n + '</td><td class="num">' + (r.max >= 3 ? '<b style="color:#B4432F">' + r.max + '</b>' : r.max) + '</td><td>' + rdPill(L.outcome) + '<div class="mut" style="font-size:11.5px;margin-top:2px">' + fdate(L.L.ymd) + '</div></td></tr>'; }).join('') + '</tbody></table>' : '<p class="mut" style="font-size:12.5px">Nobody called twice. </p>') + '</div></div>';
+    // call list
+    h += '<div class="oq-card" id="rdlist"></div>';
+    el.innerHTML = h; rdWire(el); rdList(A);
+  }
+  function fphone(p) { var d = String(p || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (p || ''); }
+  function rdPill(o) { var c = RD_COL[o] || '#A9A398'; return o ? '<span class="pill" style="background:' + c + '1A;color:' + (o === 'No one on the line' ? '#5F6763' : c) + ';border:1px solid ' + c + '55">' + esc(o) + '</span>' : ''; }
+  function rdFlow(A) {
+    var n = A.length, real = A.filter(function (c) { return c.real; }), got = real.filter(function (c) { return c.outcome === 'Request taken' || c.outcome === 'Message taken'; }).length;
+    var pc = function (a, b) { return b ? Math.round(100 * a / b) + '%' : '—'; };
+    var step = function (k, v, big, lbl, sub) { return '<button data-rdf="' + k + '" data-rdv="' + esc(v) + '" style="all:unset;cursor:pointer;flex:1;min-width:120px;padding:10px 12px;border-radius:12px;background:#FAF9F6;border:1px solid #EEEBE4"><div class="num" style="font-size:26px;font-weight:700;color:#14302A">' + big + '</div><div style="font-size:12.5px;font-weight:600">' + lbl + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div></button>'; };
+    var arrow = '<span aria-hidden="true" style="align-self:center;color:#A9A398;font-size:18px">→</span>';
+    var h = '<div style="display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap">' + step('all', '1', fmt(n), 'Calls', 'every pickup') + arrow + step('real', '1', fmt(real.length), 'Conversations', pc(real.length, n) + ' of calls') + arrow + step('outcome', 'Request taken', fmt(got), 'Request or message', pc(got, real.length) + ' of conversations') + '</div>';
+    var segs = RD_OUT.map(function (o) { return [o[0], A.filter(function (c) { return c.outcome === o[0]; }).length, o[2]]; }).filter(function (x) { return x[1]; });
+    h += '<div style="display:flex;height:16px;gap:2px;border-radius:8px;overflow:hidden">' + segs.map(function (x) { return '<button data-rdf="outcome" data-rdv="' + esc(x[0]) + '" title="' + esc(x[0] + ': ' + x[1]) + '" style="all:unset;cursor:pointer;background:' + x[2] + ';flex:' + x[1] + ' 1 0"></button>'; }).join('') + '</div>';
+    h += '<div style="margin-top:8px">' + segs.map(function (x) { return '<button data-rdf="outcome" data-rdv="' + esc(x[0]) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:14px minmax(0,1fr) 44px 44px;gap:8px;align-items:center;width:100%;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><span style="width:10px;height:10px;border-radius:3px;background:' + x[2] + '"></span><span>' + esc(x[0]) + '</span><b class="num" style="text-align:right">' + x[1] + '</b><span class="num mut" style="text-align:right;font-size:12px">' + pc(x[1], n) + '</span></button>'; }).join('') + '</div>';
+    return h;
+  }
+  function rdDays(A, start, end) {
+    var days = [], d = new Date(start + 'T12:00:00Z'), e = new Date(end + 'T12:00:00Z'); while (d <= e && days.length < 93) { days.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
+    var by = {}; A.forEach(function (c) { var k = rdLocal(c.at, 'America/New_York').ymd; (by[k] = by[k] || []).push(c); });
+    var mx = Math.max.apply(null, days.map(function (k) { return (by[k] || []).length; }).concat([1])), W = 640, H = 220, pl = 28, pb = 26, bw = Math.max(4, Math.min(44, (W - pl) / days.length - 6)), step = (W - pl) / days.length;
+    var nice = mx <= 5 ? mx : Math.ceil(mx / 4) * 4, s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Calls by day">';
+    [0, .5, 1].forEach(function (f) { var y = H - pb - f * (H - pb - 10); s += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="#EEEBE4"/><text x="' + (pl - 6) + '" y="' + y + '" font-size="10" fill="#8A918D" text-anchor="end" dominant-baseline="middle">' + Math.round(f * nice) + '</text>'; });
+    days.forEach(function (k, i) { var list = by[k] || [], x = pl + i * step + (step - bw) / 2, y = H - pb, leads = list.filter(function (c) { return c.lead; }), cap = leads.length ? Math.round(100 * leads.filter(function (c) { return c.got; }).length / leads.length) : null;
+      var tip = fdate(k) + ': ' + list.length + ' calls' + RD_OUT.map(function (o) { var m = list.filter(function (c) { return c.outcome === o[0]; }).length; return m ? '\n' + o[1] + ': ' + m : ''; }).join('') + (cap != null ? '\nLeads captured: ' + cap + '%' : '');
+      s += '<g data-rdf="day" data-rdv="' + k + '" style="cursor:pointer"><title>' + esc(tip) + '</title><rect x="' + (pl + i * step) + '" y="0" width="' + step + '" height="' + (H - pb) + '" fill="transparent"/>';
+      RD_OUT.forEach(function (o) { var m = list.filter(function (c) { return c.outcome === o[0]; }).length; if (!m) return; var hgt = m / nice * (H - pb - 10); s += '<rect x="' + x + '" y="' + (y - hgt) + '" width="' + bw + '" height="' + Math.max(1, hgt - 2) + '" rx="2" fill="' + o[2] + '"/>'; y -= hgt; });
+      if (days.length <= 16 || i % Math.ceil(days.length / 12) === 0) s += '<text x="' + (x + bw / 2) + '" y="' + (H - 8) + '" font-size="10" fill="#8A918D" text-anchor="middle">' + fdate(k) + '</text>';
+      s += '</g>'; });
+    s += '</svg><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-top:4px">' + RD_OUT.map(function (o) { return '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + o[2] + ';margin-right:5px"></span>' + o[1] + '</span>'; }).join('') + '</div>';
+    return s;
+  }
+  function rdHoursSplit(A) {
+    var r = A.filter(function (c) { return c.real; }), f = function (af) { var a = r.filter(function (c) { return c.after === af; }), l = a.filter(function (c) { return c.lead; }); return { n: a.length, cap: l.length ? 100 * l.filter(function (c) { return c.got; }).length / l.length : null }; }, o = f(false), a = f(true);
+    var box = function (lbl, x, v) { return '<button data-rdf="after" data-rdv="' + v + '" style="all:unset;cursor:pointer;padding:6px 12px;border:1px solid #EEEBE4;border-radius:10px;background:#FAF9F6"><div class="cap">' + lbl + '</div><div style="font-size:13px"><b class="num">' + x.n + '</b> calls · <b class="num">' + (x.cap == null ? '—' : x.cap.toFixed(0) + '%') + '</b> leads captured</div></button>'; };
+    return '<div class="row" style="gap:8px">' + box('Office hours', o, '0') + box('After hours', a, '1') + '</div>';
+  }
+  function rdHeat(A, B) {
+    var g = {}, mx = 1, office = {}; A.forEach(function (c) { if (!c.real || c.L.dow < 0) return; var k = c.L.dow + '-' + c.L.h; g[k] = (g[k] || 0) + 1; mx = Math.max(mx, g[k]); });
+    var b0 = B[(A[0] || {}).brand] || {}, H = b0.hours || {};
+    RD_DOW.forEach(function (d, i) { var x = H[d]; if (!x || x.open === false) return; var f = +String(x.from || '0').split(':')[0], t = +String(x.to || '24').split(':')[0]; for (var hr = f; hr < t; hr++) office[i + '-' + hr] = 1; });
+    var hrs = []; for (var hr = 6; hr < 23; hr++) hrs.push(hr); var early = A.some(function (c) { return c.real && (c.L.h < 6 || c.L.h >= 23); }); if (early) { hrs = []; for (var h2 = 0; h2 < 24; h2++) hrs.push(h2); }
+    var lab = function (h3) { return (h3 % 12 || 12) + (h3 < 12 ? 'a' : 'p'); };
+    var s = '<div style="overflow-x:auto;margin-top:10px"><table style="border-collapse:separate;border-spacing:3px;font-size:11px;width:100%;min-width:560px"><thead><tr><th></th>' + hrs.map(function (h3) { return '<th class="mut" style="font-weight:500;text-align:center">' + lab(h3) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    RD_DOWL.forEach(function (d, i) { s += '<tr><th class="mut" style="font-weight:600;text-align:left;padding-right:6px">' + d + '</th>' + hrs.map(function (h3) { var k = i + '-' + h3, v = g[k] || 0, a = v ? 0.16 + 0.84 * v / mx : 0;
+      return '<td data-rdf="' + (v ? 'cell' : '') + '" data-rdv="' + k + '" title="' + d + ' ' + lab(h3) + 'm: ' + v + ' conversation' + (v === 1 ? '' : 's') + (office[k] ? ' (office hours)' : ' (after hours)') + '" style="height:22px;border-radius:4px;text-align:center;' + (v ? 'cursor:pointer;' : '') + 'background:' + (v ? 'rgba(31,138,91,' + a.toFixed(2) + ')' : '#F6F4EF') + ';color:' + (a > 0.55 ? '#fff' : '#1C2421') + ';' + (office[k] ? 'box-shadow:inset 0 0 0 1.5px #14302A55' : '') + '">' + (v || '') + '</td>'; }).join('') + '</tr>'; });
+    return s + '</tbody></table></div>' + (Object.keys(B).length > 1 ? '<p class="mut" style="font-size:11.5px;margin:6px 0 0">Office-hours outline uses ' + esc(short((A[0] || {}).brand || '')) + '’s hours; the after-hours split above uses each brand’s own.</p>' : '');
+  }
+  var RD_FL = { all: 'All calls', outcome: 'Outcome', real: 'Real conversations', lead: 'Service callers', cat: 'Needed', why: 'Not a request because', xf: 'Handed off to', miss: 'Missed', cell: 'Day & hour', day: 'Day', phone: 'Caller', after: '', urgent: 'Urgent', sent: 'Caller mood', incomplete: 'Info incomplete' };
+  function rdList(A) {
+    var el = $('rdlist'); if (!el) return;
+    var f = RD.f, rows = f ? A.filter(function (c) { return RD_F[f.k](c, f.v); }) : A, show = 25 + RD.more;
+    var lbl = !f ? '' : f.k === 'after' ? (f.v === '1' ? 'After hours' : 'Office hours') : f.k === 'cell' ? RD_DOWL[+f.v.split('-')[0]] + ' ' + ((+f.v.split('-')[1]) % 12 || 12) + ((+f.v.split('-')[1]) < 12 ? 'am' : 'pm') : f.k === 'day' ? fdate(f.v) : f.k === 'phone' ? fphone(f.v) : (RD_FL[f.k] ? RD_FL[f.k] + (f.v && f.v !== '1' ? ': ' : '') : '') + (f.v && f.v !== '1' ? f.v : '');
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Calls</h2><p class="sub">' + fmt(rows.length) + ' call' + (rows.length === 1 ? '' : 's') + ' · newest first · click one for the request, recording and transcript</p></div>' + (f ? '<button class="chip on" data-rdclear="1">' + esc(lbl) + ' ✕</button>' : '') + '</div>';
+    h += rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl rdt" style="font-size:13px"><thead><tr><th>When</th><th>Caller</th><th>What they needed</th><th>Outcome</th><th class="num">Length</th><th title="Did the review find every detail the team needs?">Info</th></tr></thead><tbody>' +
+      rows.slice(0, show).map(function (c) { return '<tr class="click" data-act="rcview" data-id="' + esc(c.id) + '"><td style="white-space:nowrap">' + fdate(c.L.ymd) + ' <span class="mut">' + ((c.L.h % 12) || 12) + ':' + ('0' + (c.L.min % 60)).slice(-2) + (c.L.h < 12 ? 'am' : 'pm') + '</span>' + (c.after && c.real ? '<div class="mut" style="font-size:11px">after hours</div>' : '') + '</td><td><b style="font-weight:600">' + esc(c.name || '—') + '</b><div class="mut" style="font-size:11.5px">' + esc(fphone(c.phone)) + (c.location ? ' · ' + esc(c.location) : '') + '</div></td><td>' + (c.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(c.summary || c.category || (c.real ? '—' : '')) + (c.why ? '<div class="mut" style="font-size:11.5px">' + esc(c.why) + '</div>' : '') + (c.xf ? '<div class="mut" style="font-size:11.5px">to ' + esc(c.xf) + '</div>' : '') + '</td><td>' + rdPill(c.outcome) + '</td><td class="num">' + (c.secs ? fsecs(c.secs) : '—') + '</td><td>' + (c.complete == null ? '<span class="mut">—</span>' : c.complete ? '<span style="color:#1F8A5B" title="Complete">✓</span>' : '<span style="color:#B4432F" title="' + esc(c.miss.join(', ') || 'Something was missing') + '">Missing</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      (rows.length > show ? '<button class="sel" data-rdmore="1" style="margin-top:10px">Show more (' + Math.min(50, rows.length - show) + ')</button>' : '') : '<p class="mut" style="margin-top:10px">No calls match.</p>';
+    el.innerHTML = h;
+    var cl = el.querySelector('[data-rdclear]'); if (cl) cl.addEventListener('click', function () { RD.f = null; RD.more = 0; rdList(A); });
+    var mo = el.querySelector('[data-rdmore]'); if (mo) mo.addEventListener('click', function () { RD.more += 50; rdList(A); });
+  }
+  function rdWire(el) {
+    [].forEach.call(el.querySelectorAll('[data-rdloc]'), function (b) { b.addEventListener('click', function () { RD.loc = b.getAttribute('data-rdloc'); RD.f = null; RD.more = 0; drawRecepDash(); }); });
+    [].forEach.call(el.querySelectorAll('[data-rdf]'), function (b) { var k = b.getAttribute('data-rdf'); if (!k || !RD_F[k]) return; b.addEventListener('click', function (e) { e.stopPropagation(); RD.f = { k: k, v: b.getAttribute('data-rdv') || '' }; RD.more = 0; var P = rdPrep(RD.d); rdList(P.cur); var l = $('rdlist'); if (l) l.scrollIntoView({ block: 'start', behavior: 'smooth' }); }); });
+  }
+  // ---------- AI CSR · Settings ----------
+  function rcLoadSettings(brand) {
+    RC.s = null; RC.sBrand = brand; RC.dirty = false; drawRcSettings();
+    api({ action: 'receptionist', op: 'settings', brand: brand }).then(function (r) { if (RC.sBrand !== brand) return; RC.s = r; drawRcSettings(); })
+      .catch(function (e) { var el = $('rcset'); if (el) el.innerHTML = errBox(e); });
+  }
+  function rcGet(path) { var o = RC.s.settings; path.split('.').forEach(function (k) { o = o == null ? o : o[k]; }); return o; }
+  function rcSet(path, v) { var ks = path.split('.'), o = RC.s.settings; for (var i = 0; i < ks.length - 1; i++) o = o[ks[i]]; o[ks[ks.length - 1]] = v; RC.dirty = true; var sv = $('rcsavebar'); if (sv) sv.style.display = 'flex'; }
+  function rcIn(path, opt) {
+    opt = opt || {}; var v = rcGet(path); var dis = RC.s.can_edit ? '' : ' disabled';
+    if (opt.type === 'textarea') return '<textarea class="oq-field" data-k="' + path + '" rows="' + (opt.rows || 2) + '" style="width:100%;resize:vertical"' + dis + '>' + esc(v == null ? '' : v) + '</textarea>';
+    if (opt.type === 'select') return '<select class="oq-field" data-k="' + path + '"' + (opt.num ? ' data-num="1"' : '') + ' style="width:auto;max-width:100%;' + (opt.style || '') + '"' + dis + '>' + opt.options.map(function (o) { var val = Array.isArray(o) ? o[0] : o, lab = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(val) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + esc(lab) + '</option>'; }).join('') + '</select>';
+    if (opt.type === 'check') return '<input type="checkbox" data-k="' + path + '"' + (v ? ' checked' : '') + dis + '>';
+    if (opt.type === 'time') return '<input type="time" class="oq-field" data-k="' + path + '" value="' + esc(v || '') + '" style="width:120px"' + dis + '>';
+    if (opt.type === 'number') return '<input type="number" class="oq-field" data-k="' + path + '" data-num="1" min="' + (opt.min != null ? opt.min : 0) + '" max="' + (opt.max != null ? opt.max : 999) + '" value="' + esc(v == null ? '' : v) + '" style="width:' + (opt.w || 80) + 'px"' + dis + '>';
+    return '<input type="text" class="oq-field" data-k="' + path + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(opt.ph || '') + '" style="width:' + (opt.w ? opt.w + 'px' : '100%') + '"' + dis + '>';
+  }
+  function rcDays(path) {
+    var v = rcGet(path) || [], dis = RC.s.can_edit ? '' : ' disabled';
+    return '<span style="display:inline-flex;gap:4px;flex-wrap:wrap">' + RC_DAYS.map(function (x) { return '<label style="display:inline-flex;align-items:center;gap:3px;font-size:12.5px;padding:3px 7px;border:1px solid var(--line2);border-radius:8px"><input type="checkbox" data-days="' + path + '" data-day="' + x[0] + '"' + (v.indexOf(x[0]) >= 0 ? ' checked' : '') + dis + '>' + x[1] + '</label>'; }).join('') + '</span>';
+  }
+  function rcRow(label, ctl, help) { return '<div style="margin-top:12px"><div style="font-size:13px;font-weight:600">' + label + '</div>' + (help ? '<div class="mut" style="font-size:12px;margin:2px 0 4px">' + help + '</div>' : '') + '<div style="margin-top:4px">' + ctl + '</div></div>'; }
+  function rcSec(id, title, help, body) {
+    var open = RC.open[id];
+    return '<div class="oq-card" style="padding:0;overflow:hidden"><button data-act="rcsec" data-id="' + id + '" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;padding:14px 18px;background:#FAF8F4"><span><b style="font-size:15px">' + title + '</b><span class="mut" style="font-size:12.5px;margin-left:8px">' + help + '</span></span><span>' + (open ? '▴' : '▾') + '</span></button>' + (open ? '<div style="padding:4px 18px 18px">' + body + '</div>' : '') + '</div>';
+  }
+  function rcDel(list, i) { return RC.s.can_edit ? '<button class="lnk" data-act="rcdel" data-list="' + list + '" data-i="' + i + '" title="Remove" style="color:#A61B1B">✕ Remove</button>' : ''; }
+  function rcAdd(list, label) { return RC.s.can_edit ? '<button class="sel" data-act="rcadd" data-list="' + list + '" style="margin-top:10px">+ ' + label + '</button>' : ''; }
+  function rcZips(v) { var out = [], t = Array.isArray(v) ? v.join(',') : String(v || ''), re = /(\d{5})(?:\s*(?:-|–|to)\s*(\d{5}))?/g, m; while ((m = re.exec(t)) && out.length < 3000) { var a = +m[1], b = m[2] ? +m[2] : a; if (b >= a && b - a <= 2000) { for (var z = a; z <= b; z++) { var k = String(z); while (k.length < 5) k = '0' + k; if (out.indexOf(k) < 0) out.push(k); } } else if (out.indexOf(m[1]) < 0) out.push(m[1]); } return out; }
+  function rcPreview(s) { return function (t) { return String(t || '').replace(/\{agent\}/gi, s.agent_name || 'Ava').replace(/\{company\}/gi, s.company_name || ''); }; }
+  // ---- Voice picker (Becky 11/16: more ElevenLabs voices) ----
+  var VX = { list: null, practice: null, recep: {}, err: null, busy: false, audio: null, btn: null };
+  function vxTok() { try { var rw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw) { for (var i = 0; i < localStorage.length; i++) { var kk = localStorage.key(i); if (/^sb-.*-auth-token$/.test(kk)) { rw = localStorage.getItem(kk); break; } } } var jj = rw && JSON.parse(rw); return jj && (jj.access_token || (jj.currentSession && jj.currentSession.access_token)); } catch (x) { return null; } }
+  function vxCall(body) {
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-voices', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach the voice service.'); return j; }); });
+  }
+  var VX_DEF = { female: '21m00Tcm4TlvDq8ikWAM', male: 'pNInz6obpgDQGcFmaJgB' };
+  function vxLoad(action) {
+    if (VX.list || VX.busy) return; VX.busy = true;
+    vxCall({ op: 'list' }).then(function (r) { VX.busy = false; VX.err = null; VX.list = r.voices || []; VX.practice = r.practice || null; VX.recep = r.recep || {}; if (action === 'practice') drawPractice(); else drawRcSettings(); })
+      .catch(function (e) { VX.busy = false; VX.err = e.message; VX.list = []; if (action === 'practice') drawPractice(); else drawRcSettings(); });
+  }
+  function vxLabel(v) { var bits = [v.accent, v.age].filter(Boolean).map(function (x) { return String(x).replace(/_/g, ' '); }); return String(v.name).replace(/\s+-\s+/, ' — ') + (bits.length ? ' (' + bits.join(', ') + ')' : ''); }
+  function vxName(id) { var v = (VX.list || []).filter(function (x) { return x.id === id; })[0]; return v ? String(v.name).split(/\s+-\s+/)[0] : null; }
+  function vxSelect(key, cur, action, disabled, attr) {
+    if (!VX.list) vxLoad(action);
+    var id = VX_DEF[cur] || cur, list = VX.list || [], has = list.some(function (v) { return v.id === id; });
+    var grp = function (lab, f) { var xs = list.filter(f); return xs.length ? '<optgroup label="' + lab + '">' + xs.map(function (v) { return '<option value="' + esc(v.id) + '"' + (v.id === id ? ' selected' : '') + '>' + esc(vxLabel(v)) + '</option>'; }).join('') + '</optgroup>' : ''; };
+    var opts = (has ? '' : '<option value="' + esc(cur) + '" selected>' + (id === VX_DEF.male ? 'Adam (current)' : id === VX_DEF.female ? 'Rachel (current)' : 'Current voice') + '</option>') +
+      grp('Female voices', function (v) { return v.gender === 'female'; }) + grp('Male voices', function (v) { return v.gender === 'male'; }) + grp('Other voices', function (v) { return v.gender !== 'female' && v.gender !== 'male'; });
+    return '<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><select class="oq-field" ' + (attr || 'data-k="' + key + '"') + ' style="width:auto;max-width:100%;min-width:260px"' + (disabled ? ' disabled' : '') + '>' + (VX.list ? opts : '<option>' + (VX.busy ? 'Loading voices…' : esc(cur)) + '</option>') + '</select>' +
+      '<button type="button" class="sel" data-act="vxprev" style="min-height:34px;padding:6px 12px">▶ Sample</button></span>';
+  }
+  function drawRcSettings() {
+    var el = $('rcset'); if (!el) return;
+    var brand = LOCK || RC.sBrand || RC.brand;
+    if (RC.sBrand !== brand) { rcLoadSettings(brand); return; }
+    if (!RC.s) { el.innerHTML = '<div class="oq-card">' + skel(30, 6) + '</div>'; return; }
+    var R = RC.s, s = R.settings, pv = rcPreview(s);
+    var head = '<div class="oq-card" style="background:#FAF8F4"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;justify-content:space-between"><div><h2 class="ttl" style="margin:0">AI CSR settings</h2><p class="sub" style="margin:2px 0 0">Each brand has its own settings. Saving updates that brand’s line right away.' + (R.updated_by_name ? ' Last saved by ' + esc(R.updated_by_name) + (R.updated_at ? ' · ' + fdate(String(R.updated_at).slice(0, 10)) : '') + '.' : ' Not saved yet: these are the starting defaults.') + '</p></div>' + rcBrandSel('rcsbrand', brand) + '</div>' +
+      (!R.can_edit ? '<div class="banner" style="margin-top:10px">View only. Ask an admin to change these settings.</div>' : '') + '</div>';
+    // ▶ Hear it (2026-11-10, Becky): plays each line in her voice with the brand's pronunciations, no test call needed
+    var say = function (ctl, k) { return '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1 1 auto;min-width:0">' + ctl + '</div><button class="sel" data-act="rcsay" data-say="' + k + '" title="Hear how she says it" style="min-height:38px;padding:6px 12px;flex:none">▶ Hear it</button></div>'; };
+    var id = rcRow('Assistant name', say(rcIn('agent_name', { w: 200 }), 'agent_name'), 'What she calls herself on the phone.') +
+      rcRow('Company name as spoken', say(rcIn('company_name', { w: 320 }), 'company_name'), 'Exactly how she says the company name, e.g. “Giel Doors” instead of “Thomas V Giel”.') +
+      rcRow('Other names callers use', say(rcIn('aka', { ph: 'e.g. TVG, Thomas V Giel' }), 'aka'), 'So she knows these are the same company.') +
+      rcRow('Voice', say(vxSelect('', VX.recep[RC.sBrand] || s.voice || 'female', 'receptionist', !RC.s.can_edit, 'data-vxrecep="1"'), 'voice'), VX.err ? '<span style="color:#A8441A">' + esc(VX.err) + '</span>' : 'Every voice in the Opsis ElevenLabs account. Picking one changes the line right away. ▶ Sample plays ElevenLabs’ own clip; ▶ Hear it plays her greeting in that voice.') +
+      rcRow('Greeting', say(rcIn('greeting', { type: 'textarea' }), 'greeting'), 'Use {agent} and {company} to fill in the names. She’ll say: <i>“' + esc(pv(s.greeting)) + '”</i>') +
+      rcRow('Closing line', say(rcIn('end_greeting', { type: 'textarea' }), 'end_greeting'), 'Said at the end of every call, then she hangs up. She’ll say: <i>“' + esc(pv(s.end_greeting)) + '”</i>');
+    var oh = rcRow('Time zone', rcIn('timezone', { type: 'select', options: RC_TZ })) +
+      '<table class="tbl" style="font-size:13px;margin-top:12px;max-width:520px"><thead><tr><th>Day</th><th>Open</th><th>From</th><th>To</th></tr></thead><tbody>' +
+      RC_DAYS.map(function (x) { return '<tr><td>' + x[1] + '</td><td>' + rcIn('office_hours.' + x[0] + '.open', { type: 'check' }) + '</td><td>' + rcIn('office_hours.' + x[0] + '.from', { type: 'time' }) + '</td><td>' + rcIn('office_hours.' + x[0] + '.to', { type: 'time' }) + '</td></tr>'; }).join('') + '</tbody></table>' +
+      rcRow('What to tell callers when the office is closed', rcIn('closed_message', { type: 'textarea' }), 'She already knows when the office opens next and will say so.');
+    var qs = (s.questions || []).map(function (q, i) { return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8"><div style="flex:2 1 260px"><div class="cap">Question she asks</div>' + rcIn('questions.' + i + '.ask', { ph: 'How did you hear about us?' }) + '</div><div style="flex:1 1 150px"><div class="cap">Report column name</div>' + rcIn('questions.' + i + '.label', { ph: 'Heard about us' }) + '</div><label style="font-size:12.5px;display:inline-flex;gap:4px;align-items:center;margin-top:14px">' + rcIn('questions.' + i + '.required', { type: 'check' }) + ' Required</label><div style="margin-top:14px">' + rcDel('questions', i) + '</div></div>'; }).join('') || '<p class="mut" style="font-size:13px">No questions yet.</p>';
+    qs += rcAdd('questions', 'Add question');
+    var reasons = R.transfer_reasons || ['Emergency', 'New door / sales', 'Commercial', 'Existing job / billing / warranty', 'Caller asks for a person', 'Other'];
+    var trs = (s.transfers || []).map(function (t, i) {
+      return '<div style="margin-top:8px;padding:12px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><div class="cap">When</div>' + rcIn('transfers.' + i + '.reason', { type: 'select', options: reasons }) + '</div><div style="flex:1 1 160px"><div class="cap">Details (optional)</div>' + rcIn('transfers.' + i + '.detail', { ph: 'e.g. door stuck open, car trapped' }) + '</div><div style="flex:1 1 150px"><div class="cap">Transfer to</div>' + rcIn('transfers.' + i + '.to_name', { ph: 'e.g. On-call tech' }) + '</div><div><div class="cap">Phone number</div>' + rcIn('transfers.' + i + '.phone', { w: 150, ph: '(555) 555-0100' }) + '</div></div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><span class="cap">Can transfer</span>' + rcDays('transfers.' + i + '.days') + rcIn('transfers.' + i + '.from', { type: 'time' }) + '<span class="mut">to</span>' + rcIn('transfers.' + i + '.to', { type: 'time' }) + '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><span class="cap">Outside those hours</span>' + rcIn('transfers.' + i + '.otherwise', { type: 'select', options: [['message', 'Take a message for a callback when the office opens'], ['urgent_callback', 'Mark urgent: on-call team calls right back']] }) + '<span style="margin-left:auto">' + rcDel('transfers', i) + '</span></div></div>';
+    }).join('') || '<p class="mut" style="font-size:13px">No transfers set up: she takes a message instead.</p>';
+    trs += rcAdd('transfers', 'Add transfer');
+    var unitOpts = [['business_days', 'Business days'], ['days', 'Days']];
+    var jt = R.job_types || ['Emergency', 'Repair', 'Opener', 'Maintenance / tune-up', 'New door estimate', 'Commercial'];
+    var sc = rcRow('Earliest regular appointment she can offer', '<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">' + rcIn('sched.earliest', { type: 'number', max: 60 }) + rcIn('sched.unit', { type: 'select', options: unitOpts }) + '<span class="mut" style="font-size:13px">out</span></span>') +
+      rcRow('Change the earliest appointment by job type', '', 'e.g. Emergency 0 days = same day; New door estimate 5 business days.') +
+      (s.sched.by_type || []).map(function (r, i) { return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8">' + rcIn('sched.by_type.' + i + '.type', { type: 'select', options: jt }) + '<span class="mut" style="font-size:13px">jobs scheduled</span>' + rcIn('sched.by_type.' + i + '.n', { type: 'number', max: 60 }) + rcIn('sched.by_type.' + i + '.unit', { type: 'select', options: unitOpts }) + '<span class="mut" style="font-size:13px">out</span><span style="margin-left:auto">' + rcDel('sched.by_type', i) + '</span></div>'; }).join('') + rcAdd('sched.by_type', 'Add job type') +
+      rcRow('Arrival windows', (s.sched.windows || []).map(function (w2, i) { return '<div style="display:inline-flex;gap:8px;align-items:center;margin:0 10px 8px 0;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8">' + rcIn('sched.windows.' + i + '.from', { type: 'time' }) + '<span class="mut">to</span>' + rcIn('sched.windows.' + i + '.to', { type: 'time' }) + rcDel('sched.windows', i) + '</div>'; }).join('') + rcAdd('sched.windows', 'Add window')) +
+      rcRow('Days she can offer appointments', rcDays('sched.days'));
+    var bh = rcRow('Tone', rcIn('behavior.tone', { type: 'select', options: [['calm', 'Calm and professional (no “Perfect!”, no exclamation points)'], ['friendly', 'Friendly'], ['upbeat', 'Upbeat']] })) +
+      rcRow('Background sound', '<span style="display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center">' + rcIn('behavior.ambience', { type: 'select', options: [['off', 'None'], ['office1', 'Office 1'], ['office2', 'Office 2'], ['typing', 'Keyboard typing']] }) + rcIn('behavior.ambience_vol', { type: 'select', options: [['quiet', 'Very quiet'], ['low', 'Quiet'], ['medium', 'Noticeable']] }) + '</span>', 'A little room sound makes her feel less robotic. She also types while she checks the calendar.') +
+      rcRow('Interruption sensitivity', rcIn('behavior.interrupt', { type: 'select', options: [['normal', 'Normal: caller can cut in any time'], ['low', 'Low: ignores “uh-huh”, “okay” and can’t be cut off during the greeting'], ['off', 'Off: she always finishes her sentence']] })) +
+      rcRow('Response speed', rcIn('behavior.speed', { type: 'select', options: [['patient', 'Patient: waits longer after the caller stops'], ['normal', 'Normal'], ['eager', 'Quick: answers as soon as the caller pauses']] })) +
+      rcRow('Check in after silence', rcIn('behavior.checkin_secs', { type: 'number', min: 1, max: 30 }) + ' <span class="mut" style="font-size:13px">seconds (she asks “are you still there?”)</span>') +
+      rcRow('End the call after silence', rcIn('behavior.silence_end_secs', { type: 'number', min: 0, max: 300 }) + ' <span class="mut" style="font-size:13px">seconds (0 = never)</span>') +
+      rcRow('Maximum call length', rcIn('behavior.max_minutes', { type: 'number', min: 1, max: 60 }) + ' <span class="mut" style="font-size:13px">minutes</span>');
+    var lc = (s.locations || []).map(function (l, i) { var zs = Array.isArray(l.zips) ? l.zips : rcZips(l.zips); return '<div style="margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 160px"><div class="cap">Location</div>' + rcIn('locations.' + i + '.name') + '</div><div style="flex:3 1 320px"><div class="cap">Cities / towns it serves</div>' + rcIn('locations.' + i + '.serves', { ph: 'e.g. Richmond, Henrico, Glen Allen, Mechanicsville' }) + '</div><div style="margin-top:14px">' + rcDel('locations', i) + '</div></div>' +
+      '<div style="margin-top:8px"><div class="cap">Service-area zip codes <span class="mut" style="text-transform:none;letter-spacing:0">(' + zs.length + ')</span></div><textarea class="oq-field" data-zips="' + i + '" rows="2" style="width:100%;resize:vertical" placeholder="Paste zip codes separated by commas, spaces or new lines. Ranges work too: 23220-23299"' + (R.can_edit ? '' : ' disabled') + '>' + esc(zs.join(', ')) + '</textarea></div></div>'; }).join('') + rcAdd('locations', 'Add location') +
+      rcRow('When the zip code isn’t in any service area', rcIn('out_of_area', { type: 'select', options: [['message', 'Take a message so a team member can call back'], ['decline', 'Politely tell the caller we don’t service that area']] }), 'Only applies once zip codes are entered.') +
+      rcRow('What to say (optional)', rcIn('out_of_area_message', { ph: 'e.g. That zip code is outside our service area, but we’d be glad to point you to someone nearby.' }));
+    var wb = '<p class="mut" style="font-size:12.5px;margin:6px 0 0">Add the website pages she can read to answer questions about services, products, door brands, warranties and service areas. Add each page you want her to know (home, services, FAQ, service areas): she reads the pages listed, not the whole site. Fees and hours still come from the Knowledge base, and she won’t quote website prices or coupons unless the Knowledge base has them too.</p>' +
+      (s.websites || []).map(function (w2, i) { return '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' + rcIn('websites.' + i + '.url', { ph: 'https://www.example.com/services' }) + (w2.kb_id ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41;white-space:nowrap">Read ✓</span>' : '<span class="pill" style="background:#F3F1EC;color:#5F6763;white-space:nowrap">Read on save</span>') + rcDel('websites', i) + '</div>'; }).join('') + rcAdd('websites', 'Add web page');
+    var nt = rcRow('Extra instructions', rcIn('notes', { type: 'textarea', rows: 4 }), 'Anything else she should know or say, in plain words. Fees and hours come from the Knowledge base.');
+    el.innerHTML = head +
+      rcSec('id', 'Name and greetings', 'name, company name, greeting, closing', id) +
+      rcSec('hours', 'Office hours', 'when someone is in the office to call back', oh) +
+      rcSec('qs', 'Required questions', 'asked on every call, e.g. how did you hear about us', qs) +
+      rcSec('tr', 'Transfers', 'emergency, sales, commercial… who and when', trs) +
+      rcSec('sched', 'Scheduling', 'earliest day, job types, arrival windows', sc) +
+      rcSec('cal', 'Live booking calendar', 'real open times from the GarageCo booking page', rcRow('Offer real open times', '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px">' + rcIn('live_calendar', { type: 'check' }) + ' Check the GarageCo booking calendar for open days and windows</label>', 'She looks up the same open times your team sees on the booking page, applies the earliest-day rules under Scheduling, and only offers what’s open.') + rcBookHtml(R, s)) +
+      rcSec('loc', 'Locations and service area', 'towns and zip codes each location covers', lc) +
+      rcSec('web', 'Website', 'pages she can look up to answer questions', wb) +
+      rcSec('beh', 'Call behavior', 'interruptions, silence, speed, call length', bh) +
+      rcSec('notes', 'Extra instructions', 'optional', nt) + '<div id="rclocs"></div><div id="rconcall"></div><div id="rcalerts"></div>' +
+      (R.can_edit ? '<div id="rcsavebar" style="position:sticky;bottom:12px;display:' + (RC.dirty ? 'flex' : 'none') + ';gap:10px;align-items:center;justify-content:flex-end;padding:12px 16px;background:#14302A;color:#fff;border-radius:12px;margin-top:10px"><span style="margin-right:auto;font-size:13.5px">Unsaved changes for ' + esc(short(brand)) + '</span><button class="sel" data-act="rcsreset" style="background:transparent;color:#fff;border-color:#fff">Discard</button><button class="sel btnd" data-act="rcssave"' + (RC.saving ? ' disabled' : '') + '>' + (RC.saving ? 'Saving…' : 'Save') + '</button></div>' : '');
+    var sb = $('rcsbrand'); if (sb) sb.addEventListener('change', function () { if (RC.dirty && !confirm('Discard unsaved changes?')) { sb.value = brand; return; } RC.brand = sb.value; rcLoadSettings(sb.value); });
+    [].forEach.call(el.querySelectorAll('[data-k]'), function (inp) {
+      inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'input', function () {
+        var v = inp.type === 'checkbox' ? inp.checked : inp.getAttribute('data-num') ? (inp.value === '' ? null : Number(inp.value)) : inp.value;
+        rcSet(inp.getAttribute('data-k'), v);
+        if (/greeting$/.test(inp.getAttribute('data-k')) || /^(agent_name|company_name)$/.test(inp.getAttribute('data-k'))) { clearTimeout(drawRcSettings.t); drawRcSettings.t = setTimeout(function () { var a = document.activeElement, k = a && a.getAttribute && a.getAttribute('data-k'), pos = a && a.selectionStart; drawRcSettings(); if (k) { var n = el.querySelector('[data-k="' + k + '"]'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } } }, 600); }
+      });
+    });
+    [].forEach.call(el.querySelectorAll('[data-zips]'), function (ta) { ta.addEventListener('input', function () { rcSet('locations.' + ta.getAttribute('data-zips') + '.zips', rcZips(ta.value)); }); ta.addEventListener('blur', function () { drawRcSettings(); }); });
+    [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
+    rcAlertsBox(brand); rcLocBox(brand); rcOncallBox(brand);
+  }
+  // ---------- One AI CSR per location (Becky 11/18) ----------
+  // Each location's AI CSR is a copy of the brand settings above plus what differs for that office. Edge function recep-locations.
+  var RL = { brand: null, d: null, err: null, open: null, busy: null, msg: {} };
+  function rlCall(body) {
+    var tok = vxTok(); if (!tok) return Promise.reject(new Error('Please sign in again.'));
+    if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/recep-locations', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach the location settings.'); return j; }); });
+  }
+  function rlLoad(brand, cb) {
+    RL.brand = brand; RL.d = null; RL.err = null;
+    rlCall({ op: 'list', brand: brand }).then(function (r) { if (RL.brand !== brand) return; RL.d = r; if (cb) cb(); else rcLocBox(brand); }).catch(function (e) { if (RL.brand !== brand) return; RL.err = e.message; rcLocBox(brand); });
+  }
+  var RL_ST = { draft: ['Draft', '#F3F1EC', '#5F6763'], ready: ['Ready', '#EEF2FB', '#2B3A67'], live: ['Live', '#E6F0EA', '#1F5A41'], off: ['Off', '#FDECEC', '#A61B1B'] };
+  function rcLocBox(brand) {
+    var el = $('rclocs'); if (!el) return;
+    if (RL.brand !== brand) { rlLoad(brand); }
+    var head = '<div class="oq-card"><h2 class="ttl" style="margin:0">Location AI CSRs</h2><p class="sub" style="margin:2px 0 0">Each location has its own AI CSR, copied from the brand settings above. Change only what’s different for that office here. Saving the brand settings updates every location.</p>';
+    if (RL.err) { el.innerHTML = head + '<div class="banner" style="margin-top:10px">' + esc(RL.err) + '</div></div>'; return; }
+    if (!RL.d) { el.innerHTML = head + '<div style="margin-top:10px">' + skel(16, 3) + '</div></div>'; return; }
+    var L = RL.d.locations || [], ed = RL.d.can_edit, dis = ed ? '' : ' disabled';
+    if (!L.length) { el.innerHTML = head + '<p class="mut" style="margin-top:10px">No locations set up for this brand yet.</p></div>'; return; }
+    var row = function (x) {
+      var st = RL_ST[x.status] || RL_ST.draft, open = RL.open === x.location, ok = /^ok/.test(x.last_sync_result || ''), wait = /^waiting/.test(x.last_sync_result || '');
+      var info = x.built && ok ? 'Built' : wait ? 'Waiting for the brand to be saved' : /^error/.test(x.last_sync_result || '') ? 'Build failed' : x.built ? 'Built' : 'Not built yet';
+      var h = '<div style="border:1px solid var(--line2);border-radius:12px;margin-top:10px;overflow:hidden"><button data-act="rltog" data-loc="' + esc(x.location) + '" style="all:unset;cursor:pointer;display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box;padding:12px 14px;background:#FAF8F4">' +
+        '<b style="font-size:14.5px">' + esc(x.location === 'Main' ? 'Main line' : x.location) + '</b><span class="pill" style="background:' + st[1] + ';color:' + st[2] + '">' + st[0] + '</span><span class="mut" style="font-size:12px">' + esc(info) + (x.last_sync_at ? ' · ' + esc(String(x.last_sync_at).slice(0, 16).replace('T', ' ')) : '') + '</span><span style="margin-left:auto">' + (open ? '▴' : '▾') + '</span></button>';
+      if (!open) return h + '</div>';
+      var f = function (k, lab, help, ta, ph) { var v = x[k] == null ? '' : (Array.isArray(x[k]) ? x[k].join(', ') : x[k]); return rcRow(lab, ta ? '<textarea class="oq-field" data-rl="' + k + '" rows="' + ta + '" style="width:100%;resize:vertical" placeholder="' + esc(ph || '') + '"' + dis + '>' + esc(v) + '</textarea>' : '<input type="text" class="oq-field" data-rl="' + k + '" value="' + esc(v) + '" placeholder="' + esc(ph || '') + '" style="width:100%"' + dis + '>', help); };
+      h += '<div style="padding:4px 14px 14px">' +
+        f('greeting', 'Greeting', 'Leave empty to use: “Thank you for calling {company}, our ' + esc(x.location) + ' office. This is {agent}, the digital assistant…”', 0, '') +
+        f('serves', 'Towns this office serves', 'Comma separated. She uses these to know the caller is in this office’s area.', 2, 'e.g. Salina, Abilene, Lindsborg') +
+        f('zips', 'Zip codes', 'Optional. Paste a list; ranges like 67401-67499 work.', 2, '') +
+        f('hours_note', 'Office hours, if different from the brand', 'e.g. Mon–Fri 7:30 AM–5 PM, Sat 8 AM–noon', 0, 'Same as the brand') +
+        f('notes', 'Extra instructions for this office', 'Optional', 2, '') +
+        rcRow('Status', '<select class="oq-field" data-rl="status" style="width:auto"' + dis + '>' + ['draft', 'ready', 'live', 'off'].map(function (k) { return '<option value="' + k + '"' + (x.status === k ? ' selected' : '') + '>' + RL_ST[k][0] + '</option>'; }).join('') + '</select>', 'Draft = still being reviewed. Off = not built or updated.') +
+        (x.last_sync_result && !ok ? '<div class="banner" style="margin-top:10px">' + esc(x.last_sync_result) + '</div>' : '') +
+        (RL.msg[x.location] ? '<div class="mut" style="margin-top:8px;font-size:12.5px">' + esc(RL.msg[x.location]) + '</div>' : '') +
+        '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' + (ed ? '<button class="sel btnd" data-act="rlsave" data-loc="' + esc(x.location) + '"' + (RL.busy ? ' disabled' : '') + '>' + (RL.busy === x.location ? 'Saving and building…' : 'Save and build') + '</button>' : '') +
+        '<button class="sel" data-act="rltest" data-loc="' + esc(x.location) + '"' + (x.built ? '' : ' disabled title="Save it first"') + '>☎ Test call</button></div></div>';
+      return h + '</div>';
+    };
+    el.innerHTML = head + L.map(row).join('') + '</div>';
+  }
+  function rlSave(loc) {
+    var box = $('rclocs'); if (!box || RL.busy) return; var patch = {};
+    [].forEach.call(box.querySelectorAll('[data-rl]'), function (n) { patch[n.getAttribute('data-rl')] = n.value; });
+    patch.zips = rcZips(patch.zips || '');
+    RL.busy = loc; RL.msg[loc] = ''; rcLocBox(RL.brand);
+    rlCall({ op: 'save', brand: RL.brand, location: loc, patch: patch }).then(function (r) {
+      RL.busy = null; RL.msg[loc] = /^ok/.test(r.result || '') ? 'Saved. This location’s AI CSR is up to date.' : (r.result || 'Saved.');
+      var L = RL.d.locations; for (var i = 0; i < L.length; i++) if (L[i].location === loc) L[i] = r.location; rcLocBox(RL.brand);
+    }).catch(function (e) { RL.busy = null; RL.msg[loc] = e.message; rcLocBox(RL.brand); });
+  }
+  // ---------- On-call technicians (Becky 11/16, rebuilt 11/23): a rolling 30-day schedule per brand. ----------
+  // Ava transfers emergencies to whoever is on call when the office's own Emergency transfer isn't available.
+  // Edge function ai-csr-oncall (ops get, tech_save, tech_remove, day, day_reset, rotation); a cron keeps the transfers current.
+  var OC = { brand: null, d: null, err: null, busy: false, edit: null, rot: null };
+  function ocCall(body) {
+    var tok = vxTok(); if (!tok) return Promise.reject(new Error('Please sign in again.'));
+    if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-oncall', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach the on-call schedule.'); return j; }); });
+  }
+  function ocDo(body, done) {
+    if (OC.busy) return; OC.busy = true; rcOncallBox(OC.brand);
+    ocCall(Object.assign({ brand: OC.brand }, body)).then(function (r) { OC.busy = false; OC.d = r; OC.rot = null; if (r.warning) toast('Saved, but the AI CSR line didn’t update: ' + r.warning); else if (done) toast(done); rcOncallBox(OC.brand); })
+      .catch(function (e) { OC.busy = false; toast(e.message); rcOncallBox(OC.brand); });
+  }
+  function ocWeekday(ymd) { return new Date(ymd + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); }
+  function ocPhone(p) { var d = String(p || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (p || ''); }
+  function rcOncallBox(brand) {
+    var el = $('rconcall'); if (!el) return;
+    if (OC.brand !== brand) {
+      OC.brand = brand; OC.d = null; OC.err = null; OC.edit = null; OC.rot = null;
+      ocCall({ op: 'get', brand: brand }).then(function (r) { if (OC.brand !== brand) return; OC.d = r; rcOncallBox(brand); }).catch(function (e) { if (OC.brand !== brand) return; OC.err = e.message; rcOncallBox(brand); });
+    }
+    var head = '<div class="oq-card" style="margin-top:10px"><h2 class="ttl" style="margin:0">On-call technicians</h2><p class="sub" style="margin:2px 0 0">Who she sends emergencies to when the office’s own Emergency transfer isn’t available (after hours, weekends). The schedule always runs 30 days ahead. If no one is on call, she takes an urgent callback instead.</p>';
+    if (OC.err && !OC.d) { el.innerHTML = head + '<div class="banner" style="margin-top:10px">' + esc(OC.err) + '</div></div>'; return; }
+    if (!OC.d) { el.innerHTML = head + '<div style="margin-top:10px">' + skel(18, 4) + '</div></div>'; return; }
+    var d = OC.d, can = d.can_edit, dis = can && !OC.busy ? '' : ' disabled', T2 = d.techs || [], byId = {};
+    T2.forEach(function (t) { byId[t.id] = t; });
+    var rot = OC.rot || { enabled: !!(d.rotation || {}).enabled, tech_ids: ((d.rotation || {}).tech_ids || []).slice(), every_days: (d.rotation || {}).every_days || 7, start_date: (d.rotation || {}).start_date || d.today, handoff: String((d.rotation || {}).handoff || '08:00').slice(0, 5), overwrite: false };
+    OC.rot = rot;
+    var now = d.now ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41">On call now: ' + esc(d.now.name) + ' · ' + esc(ocPhone(d.now.phone)) + '</span>' : '<span class="pill" style="background:#F3F1EC;color:#5F6763">No one on call right now</span>';
+    var h = head + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' + now + (d.office_emergency_now ? '<span class="mut" style="font-size:12.5px">The office Emergency transfer is covering right now.</span>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">Times are ' + esc(d.timezone || '') + '</span></div>';
+    if (!d.set_up) h += '<div class="banner" style="margin-top:10px">This brand’s AI CSR isn’t set up yet. You can add technicians now; they’re used once it is.</div>';
+    // roster
+    h += '<div style="margin-top:16px"><div style="font-size:13px;font-weight:600">Technicians</div>' +
+      (T2.length ? T2.map(function (t) {
+        if (OC.edit === t.id) return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><input id="ocen" class="oq-field" value="' + esc(t.name) + '" style="flex:1 1 180px" aria-label="Name"><input id="ocep" class="oq-field" value="' + esc(ocPhone(t.phone)) + '" style="flex:1 1 150px" aria-label="Phone"><button class="sel btnd" data-act="ocsavetech" data-id="' + t.id + '"' + dis + '>Save</button><button class="sel" data-act="occancel">Cancel</button></div>';
+        return '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);margin-top:6px"><b style="font-size:13.5px">' + esc(t.name) + '</b><span class="mut" style="font-size:13px">' + esc(ocPhone(t.phone)) + '</span>' +
+          (can ? '<span style="margin-left:auto;display:flex;gap:6px"><button class="sel" data-act="ocedit" data-id="' + t.id + '" style="padding:5px 10px;font-size:12px"' + dis + '>Edit</button><button class="sel" data-act="ocdel" data-id="' + t.id + '" style="padding:5px 10px;font-size:12px"' + dis + ' aria-label="Remove ' + esc(t.name) + '">Remove</button></span>' : '') + '</div>';
+      }).join('') : '<p class="mut" style="font-size:13px;margin:6px 0 0">No technicians yet.</p>') +
+      (can ? '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><input id="ocnn" class="oq-field" placeholder="Technician name" style="flex:1 1 180px" aria-label="New technician name"><input id="ocnp" class="oq-field" placeholder="Cell phone (10 digits)" style="flex:1 1 150px" aria-label="New technician phone"><button class="sel btnd" data-act="ocaddtech"' + dis + '>Add technician</button></div>' : '') + '</div>';
+    // rotation
+    if (T2.length) {
+      h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:13px;font-weight:600">Rotation</div><div class="mut" style="font-size:12px;margin:2px 0 8px">Fills the schedule automatically, in the order ticked. Days you change by hand below are kept unless you tick “Also replace days changed by hand”.</div>' +
+        '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px"><input type="checkbox" id="ocron"' + (rot.enabled ? ' checked' : '') + dis + '> Use a rotation</label>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + T2.map(function (t) { var ix = rot.tech_ids.indexOf(t.id); return '<label class="pill" style="cursor:pointer;background:' + (ix >= 0 ? '#E6F0EA;color:#1F5A41' : '#F3F1EC;color:#5F6763') + ';display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-ocrt="' + t.id + '"' + (ix >= 0 ? ' checked' : '') + dis + '>' + (ix >= 0 ? (ix + 1) + '. ' : '') + esc(t.name) + '</label>'; }).join('') + '</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">' +
+          '<div><div class="cap">Each person is on for</div><input type="number" id="ocrev" class="oq-field" min="1" max="31" value="' + esc(rot.every_days) + '" style="width:80px"' + dis + '> <span class="mut" style="font-size:13px">days</span></div>' +
+          '<div><div class="cap">Starting</div><input type="date" id="ocrst" class="oq-field" value="' + esc(rot.start_date) + '"' + dis + '></div>' +
+          '<div><div class="cap">Hand-off time' + itip('An on-call day runs from this time to the same time the next morning, in the brand’s time zone.') + '</div><input type="time" id="ocrho" class="oq-field" value="' + esc(rot.handoff) + '"' + dis + '></div></div>' +
+        '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;margin-top:10px"><input type="checkbox" id="ocrow"' + (rot.overwrite ? ' checked' : '') + dis + '> Also replace days changed by hand</label>' +
+        (can ? '<div style="margin-top:10px"><button class="sel btnd" data-act="ocrotsave"' + dis + '>' + (OC.busy ? 'Saving…' : 'Save rotation') + '</button></div>' : '') + '</div>';
+    }
+    // 30-day schedule
+    var days = (d.days || []).filter(function (x) { return x.day >= d.today; });
+    var opts = function (sel) { return '<option value="">No one on call</option>' + T2.map(function (t) { return '<option value="' + t.id + '"' + (t.id === sel ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join(''); };
+    h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:13px;font-weight:600">Next 30 days</div><div class="mut" style="font-size:12px;margin:2px 0 6px">Change any day by hand. “Back to rotation” undoes a hand change.</div>' +
+      (!days.length ? '<p class="mut" style="font-size:13px">' + (T2.length ? 'Nothing scheduled yet. Set up a rotation above, or pick people day by day once days appear.' : 'Add a technician to start the schedule.') + '</p>' :
+      '<div style="overflow-x:auto"><table class="tbl" style="font-size:13px;width:100%"><thead><tr><th>Day</th><th>On call</th><th>Set by</th><th></th></tr></thead><tbody>' +
+      days.map(function (x) { var man = x.source === 'manual'; return '<tr><td style="white-space:nowrap">' + esc(ocWeekday(x.day)) + (x.day === d.today ? ' <span class="pill" style="background:#EEF2FB;color:#2B3A67">Today</span>' : '') + '</td><td>' + (can ? '<select class="oq-field" data-ocday="' + x.day + '" style="width:auto"' + dis + ' aria-label="On call ' + esc(x.day) + '">' + opts(x.tech_id) + '</select>' : esc((byId[x.tech_id] || {}).name || 'No one')) + '</td><td class="mut">' + (man ? 'By hand' + (x.updated_by_name ? ' · ' + esc(x.updated_by_name) : '') : 'Rotation') + '</td><td>' + (can && man ? '<button class="sel" data-act="ocreset" data-day="' + x.day + '" style="padding:4px 9px;font-size:12px"' + dis + '>Back to rotation</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>') + '</div>';
+    el.innerHTML = h + '</div>';
+    [].forEach.call(el.querySelectorAll('[data-ocday]'), function (s2) { s2.addEventListener('change', function () { ocDo({ op: 'day', day: s2.getAttribute('data-ocday'), tech_id: s2.value || null }, 'On-call day updated'); }); });
+    [].forEach.call(el.querySelectorAll('[data-ocrt]'), function (cb) { cb.addEventListener('change', function () { var id = cb.getAttribute('data-ocrt'), ix = rot.tech_ids.indexOf(id); if (cb.checked && ix < 0) rot.tech_ids.push(id); if (!cb.checked && ix >= 0) rot.tech_ids.splice(ix, 1); ocRotRead(); rcOncallBox(OC.brand); }); });
+    ['ocron', 'ocrev', 'ocrst', 'ocrho', 'ocrow'].forEach(function (k) { var n = $(k); if (n) n.addEventListener('change', ocRotRead); });
+  }
+  function ocRotRead() {
+    var r = OC.rot; if (!r) return; var g = function (k) { return $(k); };
+    if (g('ocron')) r.enabled = g('ocron').checked; if (g('ocrev')) r.every_days = +g('ocrev').value || 7; if (g('ocrst')) r.start_date = g('ocrst').value || r.start_date;
+    if (g('ocrho')) r.handoff = g('ocrho').value || '08:00'; if (g('ocrow')) r.overwrite = g('ocrow').checked;
+  }
+  function ocAct(a, dd) {
+    if (a === 'ocaddtech') { var n = ($('ocnn') || {}).value, ph = ($('ocnp') || {}).value; if (!n || String(ph || '').replace(/\D/g, '').length < 10) { toast('Enter a name and a 10-digit phone number.'); return; } ocDo({ op: 'tech_save', name: n, phone: ph }, 'Technician added'); }
+    else if (a === 'ocedit') { OC.edit = dd.id; rcOncallBox(OC.brand); }
+    else if (a === 'occancel') { OC.edit = null; rcOncallBox(OC.brand); }
+    else if (a === 'ocsavetech') { OC.edit = null; ocDo({ op: 'tech_save', id: dd.id, name: ($('ocen') || {}).value, phone: ($('ocep') || {}).value }, 'Technician saved'); }
+    else if (a === 'ocdel') { if (!confirm('Remove this technician? Their scheduled days become “No one on call” until the rotation fills them.')) return; ocDo({ op: 'tech_remove', id: dd.id }, 'Technician removed'); }
+    else if (a === 'ocreset') { ocDo({ op: 'day_reset', day: dd.day }, 'Back on the rotation'); }
+    else if (a === 'ocrotsave') { ocRotRead(); var r = OC.rot; if (r.enabled && !r.tech_ids.length) { toast('Tick at least one technician for the rotation.'); return; } ocDo({ op: 'rotation', enabled: r.enabled, tech_ids: r.tech_ids, every_days: r.every_days, start_date: r.start_date, handoff: r.handoff, overwrite: r.overwrite }, 'Rotation saved'); }
+  }
+  // Call alert emails (2026-11-05): per-brand list of who gets the email after every AI CSR call.
+  // Stored in qa_receptionist_alerts through the ai-csr-alerts function, separate from the receptionist settings save.
+  var RA = { brand: null, d: null, err: null, busy: false, draft: null, dtest: null };
+  function raCall(body) {
+    var tok = null;
+    try { var raw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!raw) { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; } } } var j = raw && JSON.parse(raw); tok = j && (j.access_token || (j.currentSession && j.currentSession.access_token)); } catch (x) {}
+    if (!tok) return Promise.reject(new Error('Please sign in again.'));
+    if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-alerts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) { var e = new Error(j.error || 'Couldn’t reach the alert settings.'); e.status = r.status; throw e; } return j; }); });
+  }
+  function rcAlertsBox(brand) {
+    var el = $('rcalerts'); if (!el) return;
+    if (RA.brand !== brand) {
+      RA.brand = brand; RA.d = null; RA.err = null; RA.draft = null; RA.dtest = null;
+      raCall({ op: 'settings_get', brand: brand }).then(function (r) { if (RA.brand !== brand) return; RA.d = r; rcAlertsBox(brand); }).catch(function (e) { if (RA.brand !== brand) return; RA.err = e.message; rcAlertsBox(brand); });
+    }
+    var card = function (inner) { return '<div class="oq-card" style="margin-top:10px"><div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b style="font-size:15px">Call alert emails</b><span class="mut" style="font-size:12.5px;margin-left:8px">who gets an email after every call</span></div>' + inner; };
+    if (RA.err && !RA.d) { el.innerHTML = card('</div><div class="banner" style="margin-top:10px">' + esc(RA.err) + '</div></div>'); return; }
+    if (!RA.d) { el.innerHTML = card('</div><div style="margin-top:10px">' + skel(20, 2) + '</div></div>'); return; }
+    var d = RA.d, mode = d.mode || 'trial', on = mode !== 'off';
+    var emails = RA.draft != null ? RA.draft : (d.emails || []).join(', ');
+    var test = RA.dtest != null ? RA.dtest : !!d.test_calls;
+    var can = d.can_edit !== false;
+    var pill = !on ? '<span class="pill" style="background:#F3F1EC;color:#5F6763">Turned off</span>' : mode === 'live' ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41">Sending</span>' : '<span class="pill" style="background:#FFF4DB;color:#7A5300">Trial: Opsis CX only</span>';
+    var h = card(pill + '</div>') +
+      '<p class="mut" style="font-size:12.5px;margin:6px 0 0">After each call she sends one email: booked (with the appointment), not booked (with when to call back) or hang-up. Each one links to the recording, the transcript and HighLevel.</p>' +
+      (on && mode !== 'live' ? '<div class="banner" style="margin-top:10px">Trial mode: emails go to Opsis CX for review only. The list below starts receiving them once Opsis CX turns alerts on.</div>' : '') +
+      '<div style="margin-top:12px"><div class="cap">Send alerts to</div><textarea id="raem" class="oq-field" rows="2" style="width:100%;resize:vertical" placeholder="name@company.com, manager@company.com"' + (can ? '' : ' disabled') + '>' + esc(emails) + '</textarea><div class="mut" style="font-size:12px;margin-top:2px">Separate addresses with commas. Up to 20.</div></div>' +
+      '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px;margin-top:10px"><input type="checkbox" id="ratest"' + (test ? ' checked' : '') + (can ? '' : ' disabled') + '> Also send test calls made from this page</label>' +
+      (can ? '<div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button class="sel btnd" data-act="rasave"' + (RA.busy ? ' disabled' : '') + '>' + (RA.busy ? 'Saving…' : 'Save alert list') + '</button>' + (d.updated_by_name ? '<span class="mut" style="font-size:12.5px">Last saved by ' + esc(d.updated_by_name) + (d.updated_at ? ' · ' + fdate(String(d.updated_at).slice(0, 10)) : '') + '</span>' : '') + '</div>' : '<p class="mut" style="font-size:12.5px;margin-top:10px">Only admins can change this list.</p>') +
+      '</div>';
+    el.innerHTML = h;
+    var ta = $('raem'); if (ta) ta.addEventListener('input', function () { RA.draft = ta.value; });
+    var cb = $('ratest'); if (cb) cb.addEventListener('change', function () { RA.dtest = cb.checked; });
+  }
+  function rcAlertsSave() {
+    var brand = RA.brand; if (!brand || RA.busy) return;
+    var raw = ($('raem') || {}).value || '', list = raw.split(/[\s,;]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+    var bad = list.filter(function (x) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
+    if (bad.length) { toast('Check this address: ' + bad[0]); return; }
+    if (list.length > 20) { toast('Up to 20 addresses.'); return; }
+    var test = !!($('ratest') || {}).checked;
+    RA.busy = true; rcAlertsBox(brand);
+    raCall({ op: 'settings_set', brand: brand, emails: list, test_calls: test }).then(function (r) { RA.busy = false; RA.draft = null; RA.dtest = null; RA.d = Object.assign({}, RA.d, r || {}, { emails: (r && r.emails) || list, test_calls: r && r.test_calls != null ? r.test_calls : test }); toast('Alert list saved for ' + short(brand)); rcAlertsBox(brand); })
+      .catch(function (e) { RA.busy = false; toast(e.message || 'Couldn’t save the alert list.'); rcAlertsBox(brand); });
+  }
+  function rcBookHtml(R, s) {
+    if (!R.has_lc) return '';
+    var cals = RC.hlCals || null, calOpts = function (path) { var v = rcGet(path) || ''; if (!cals) return v ? '<code style="font-size:12px">' + esc(v) + '</code>' : '<span class="mut">—</span>'; return rcIn(path, { type: 'select', options: [['', 'Choose a calendar…']].concat(cals.map(function (c) { return [c.id, c.name + (c.type ? ' (' + c.type + ')' : '')]; })) }); };
+    var h = '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:13px;font-weight:600">Book appointments on the calendar</div><div class="mut" style="font-size:12px;margin:2px 0 6px">When this is on, she books the open time on the GarageCo calendar (the same as submitting the booking form), then tells the caller they’re booked and the technician calls 30 minutes ahead. No “someone will call you back”.</div>';
+    if (!R.has_hl_token) {
+      h += '<div class="banner" style="margin-top:6px">Needs GarageCo’s HighLevel access token (a Private Integration token for the GarageCo sub-account with contacts and calendar-events write access). The public booking form has bot protection, so booking goes through HighLevel’s official API instead.</div>' +
+        (R.staff ? '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input type="password" id="hltok" class="oq-field" placeholder="Paste the HighLevel token" style="flex:1 1 320px"><button class="sel btnd" data-act="rchltok">Save token</button></div>' : '');
+      return h + '</div>';
+    }
+    h += '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px">' + rcIn('book_live', { type: 'check' }) + ' Book the appointment during the call</label>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:flex-end"><div><div class="cap">Calendar for repair / maintenance</div>' + calOpts('lc_cal_repair') + '</div><div><div class="cap">Calendar for new door estimates</div>' + calOpts('lc_cal_install') + '</div>' + (cals ? '' : '<button class="sel" data-act="rchlcals">Load calendars</button>') + '</div>';
+    return h + '</div>';
+  }
+  function rcListAdd(list) {
+    var s = RC.s.settings, arr = rcGet(list);
+    var blank = { questions: { label: '', ask: '', required: true }, transfers: { reason: 'Emergency', detail: '', to_name: '', phone: '', days: ['mon', 'tue', 'wed', 'thu', 'fri'], from: '08:00', to: '17:00', otherwise: 'urgent_callback' }, 'sched.by_type': { type: 'Repair', n: 2, unit: 'business_days' }, 'sched.windows': { from: '08:00', to: '12:00' }, locations: { name: '', serves: '', zips: [] }, websites: { url: '', kb_id: null } }[list];
+    if (!arr) { rcSet(list, []); arr = rcGet(list); }
+    arr.push(JSON.parse(JSON.stringify(blank))); RC.dirty = true; drawRcSettings(); void s;
+  }
+  function rcSave() {
+    if (RC.saving || !RC.s) return; RC.saving = true; drawRcSettings();
+    api({ action: 'receptionist', op: 'save', brand: RC.sBrand, settings: RC.s.settings }).then(function (r) {
+      RC.saving = false; RC.dirty = false; RC.s.settings = r.settings; RC.s.updated_by_name = r.updated_by_name; RC.s.updated_at = r.updated_at; drawRcSettings(); toast('Saved. The ' + short(r.brand) + ' line is updated.');
+      vxCall({ op: 'recep_apply', brand: r.brand || RC.sBrand }).catch(function (e) { toast('Saved, but the voice didn’t re-apply: ' + e.message); });
+    }).catch(function (e) { RC.saving = false; drawRcSettings(); toast(e.message || 'Couldn’t save.'); });
+  }
+
+  // ---------- AI CSR · Reports ----------
+  var RC_COLS = [
+    ['date', 'Date', function (r) { return String(r.started_at).slice(0, 10); }],
+    ['time', 'Time', function (r) { return new Date(r.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }],
+    ['brand', 'Brand', function (r) { return r.brand; }],
+    ['location', 'Location', function (r) { return r.location || (r.lead || {}).location || 'Unknown'; }],
+    ['name', 'Caller name', function (r) { return (r.lead || {}).name; }],
+    ['phone', 'Phone', function (r) { return (r.lead || {}).phone; }],
+    ['email', 'Email', function (r) { return (r.lead || {}).email; }],
+    ['address', 'Address', function (r) { return (r.lead || {}).address; }],
+    ['city', 'City', function (r) { return (r.lead || {}).city; }],
+    ['zip', 'Zip', function (r) { return (r.lead || {}).zip; }],
+    ['home_or_business', 'Home or business', function (r) { return (r.lead || {}).home_or_business; }],
+    ['approver', 'Approves the work', function (r) { return (r.lead || {}).approver; }],
+    ['category', 'Job type', function (r) { return (r.lead || {}).category; }],
+    ['urgent', 'Urgent', function (r) { return (r.lead || {}).urgent ? 'Yes' : 'No'; }],
+    ['issue', 'Issue', function (r) { return (r.lead || {}).issue; }],
+    ['preferred_day', 'Preferred day', function (r) { return (r.lead || {}).preferred_day; }],
+    ['preferred_window', 'Preferred window', function (r) { return (r.lead || {}).preferred_window; }],
+    ['outcome', 'Outcome', function (r) { return r.outcome || (r.lead || {}).outcome; }],
+    ['in_area', 'In service area', function (r) { var v = (r.lead || {}).in_service_area; return v == null ? '' : v ? 'Yes' : 'No'; }],
+    ['transferred_to', 'Transferred to', function (r) { return r.transferred_to || (r.lead || {}).transferred_to; }],
+    ['callback_from', 'Wants callback from', function (r) { return (r.lead || {}).wants_callback_from; }],
+    ['summary', 'Summary', function (r) { return (r.lead || {}).summary; }],
+    ['next_step', 'Next step', function (r) { return (r.lead || {}).next_step; }],
+    ['captured_all', 'Captured all info', function (r) { var v = (r.review || {}).captured_all_info; return v == null ? '' : v ? 'Yes' : 'No'; }],
+    ['missing', 'Missing info', function (r) { return ((r.review || {}).missing || []).join('; '); }],
+    ['sentiment', 'Caller sentiment', function (r) { return (r.review || {}).caller_sentiment; }],
+    ['duration', 'Length (min)', function (r) { return r.duration_secs ? Math.round(r.duration_secs / 6) / 10 : ''; }],
+    ['agent', 'Assistant', function (r) { return r.agent_name || 'Ava'; }],
+    ['tested_by', 'Tested by', function (r) { return r.user_name; }]
+  ];
+  function rcRpInit() {
+    if (RC.rp) return RC.rp;
+    var cols = ['date', 'brand', 'location', 'name', 'phone', 'category', 'outcome'];
+    try { var sv = JSON.parse(localStorage.getItem('rcRpCols') || 'null'); if (Array.isArray(sv) && sv.length) cols = sv; } catch (e) {}
+    var end = new Date(), st = new Date(); st.setDate(st.getDate() - 29);
+    RC.rp = { brand: LOCK || '', loc: '', start: st.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10), cols: cols, g1: 'location', g2: '', data: null, busy: false, pick: false };
+    return RC.rp;
+  }
+  function rcAllCols(P) { var qs = (P.data && P.data.questions) || []; return RC_COLS.concat(qs.map(function (q) { return ['q:' + q, q, function (r) { var a = (r.lead || {}).answers || {}; return a[q]; }]; })); }
+  function rcColMap(P) { var m = {}; rcAllCols(P).forEach(function (c) { m[c[0]] = c; }); return m; }
+  function rcRpLoad() {
+    var P = rcRpInit(); P.busy = true; drawRcReport();
+    api({ action: 'receptionist', op: 'report', start: P.start, end: P.end, brands: P.brand ? [P.brand] : null, locations: P.loc ? [P.loc] : null }).then(function (r) {
+      P.busy = false; P.data = r;
+      if (!P.seeded) { P.seeded = true; (r.questions || []).forEach(function (q) { if (P.cols.indexOf('q:' + q) < 0) P.cols.push('q:' + q); }); }
+      drawRcReport();
+    }).catch(function (e) { P.busy = false; var el = $('rcrep'); if (el) el.innerHTML = errBox(e); });
+  }
+  function rcVal(c, r) { var v = c[2](r); return v == null || v === '' ? '' : String(v); }
+  function drawRcReport() {
+    var el = $('rcrep'); if (!el) return; var P = rcRpInit();
+    if (!P.data && !P.busy) { rcRpLoad(); return; }
+    var M = rcColMap(P), all = rcAllCols(P), rows = (P.data && P.data.rows) || [];
+    var locs = []; if (P.data) { var lm = P.data.locations || {}; (P.brand ? [P.brand] : Object.keys(lm)).forEach(function (b) { (lm[b] || []).forEach(function (l) { if (locs.indexOf(l) < 0) locs.push(l); }); }); rows.forEach(function (r) { if (r.location && locs.indexOf(r.location) < 0) locs.push(r.location); }); }
+    var gOpts = '<option value="">—</option>' + all.filter(function (c) { return ['date', 'time', 'name', 'phone', 'email', 'address', 'summary', 'next_step', 'issue', 'missing', 'duration'].indexOf(c[0]) < 0 || c[0] === 'date'; }).map(function (c) { return '<option value="' + esc(c[0]) + '">' + esc(c[1]) + '</option>'; }).join('');
+    var filt = '<div class="oq-card"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">' + rcBrandSel('rpbrand', P.brand, true) +
+      '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="rploc" class="oq-field" style="min-width:170px"><option value="">All locations</option>' + locs.map(function (l) { return '<option' + (P.loc === l ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
+      '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">From<input type="date" id="rpst" class="oq-field" value="' + P.start + '"></label><label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">To<input type="date" id="rpen" class="oq-field" value="' + P.end + '"></label>' +
+      '<button class="sel btnd" data-act="rcrprun">' + (P.busy ? 'Loading…' : 'Apply') + '</button><span class="mut" style="font-size:12.5px;margin-left:auto">' + (P.data ? rows.length + ' call' + (rows.length === 1 ? '' : 's') : '') + '</span></div></div>';
+    if (P.busy && !P.data) { el.innerHTML = filt + '<div class="oq-card">' + skel(30, 5) + '</div>'; return; }
+    // summary (group by)
+    var g1 = M[P.g1], g2 = M[P.g2], sum = '';
+    if (g1) {
+      var keys2 = [], tab = {}, tot = {};
+      rows.forEach(function (r) { var a = rcVal(g1, r) || '(blank)', b = g2 ? (rcVal(g2, r) || '(blank)') : 'Calls'; if (keys2.indexOf(b) < 0) keys2.push(b); tab[a] = tab[a] || {}; tab[a][b] = (tab[a][b] || 0) + 1; tot[a] = (tot[a] || 0) + 1; });
+      keys2.sort(function (x, y) { var sx = 0, sy = 0; Object.keys(tab).forEach(function (k) { sx += tab[k][x] || 0; sy += tab[k][y] || 0; }); return sy - sx; });
+      var keys1 = Object.keys(tab).sort(function (x, y) { return tot[y] - tot[x]; });
+      P.sum = { head: [g1[1]].concat(g2 ? keys2 : []).concat(['Total', '% of calls']), rows: keys1.map(function (k) { return [k].concat(g2 ? keys2.map(function (b) { return tab[k][b] || 0; }) : []).concat([tot[k], rows.length ? Math.round(tot[k] * 1000 / rows.length) / 10 + '%' : '']); }) };
+      sum = '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr>' + P.sum.head.map(function (h, i) { return '<th' + (i ? ' style="text-align:right"' : '') + '>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' + P.sum.rows.map(function (r) { return '<tr>' + r.map(function (v, i) { return '<td' + (i ? ' class="num" style="text-align:right"' : '') + '>' + (i === 0 ? esc(v) : (v === 0 ? '<span class="mut">0</span>' : esc(String(v)))) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+    }
+    var sumCard = '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><h2 class="ttl" style="margin:0">Summary</h2><p class="sub" style="margin:2px 0 0">Count calls by any field, and optionally split them by a second one (e.g. Location × Heard about us).</p></div><div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap"><label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Group by<select id="rpg1" class="oq-field">' + gOpts + '</select></label><label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Split by<select id="rpg2" class="oq-field">' + gOpts + '</select></label>' + (g1 && rows.length ? '<button class="sel" data-act="rcrpsum">⬇ Export summary</button>' : '') + '</div></div>' + (rows.length ? sum : '<p class="mut" style="margin-top:8px">No calls in this range.</p>') + '</div>';
+    var cols = P.cols.filter(function (k) { return M[k]; });
+    var picker = P.pick ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8">' + all.map(function (c) { var on = cols.indexOf(c[0]) >= 0; return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;padding:3px 8px;border:1px solid ' + (on ? '#1F5A41' : 'var(--line2)') + ';border-radius:999px;background:' + (on ? '#E6F0EA' : '#fff') + ';cursor:pointer"><input type="checkbox" data-rpcol="' + esc(c[0]) + '"' + (on ? ' checked' : '') + ' style="margin:0">' + esc(c[1]) + '</label>'; }).join('') + '</div>' : '';
+    var det = '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><h2 class="ttl" style="margin:0">Call details</h2><p class="sub" style="margin:2px 0 0">Choose the columns you want, then export. Click a row to open the call.</p></div><div style="display:flex;gap:8px"><button class="sel" data-act="rcrppick">' + (P.pick ? 'Done' : '☰ Columns (' + cols.length + ')') + '</button>' + (rows.length ? '<button class="sel btnd" data-act="rcrpcsv">⬇ Export CSV</button>' : '') + '</div></div>' + picker +
+      (rows.length ? '<div style="overflow-x:auto;margin-top:10px;max-height:560px;overflow-y:auto"><table class="tbl" style="font-size:12.5px"><thead><tr>' + cols.map(function (k) { return '<th style="white-space:nowrap">' + esc(M[k][1]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        rows.slice(0, 500).map(function (r) { return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(r.id) + '">' + cols.map(function (k) { var v = rcVal(M[k], r); return '<td' + (k === 'summary' || k === 'issue' || k === 'next_step' ? ' style="min-width:220px"' : ' style="white-space:nowrap"') + '>' + (v ? esc(k === 'date' ? fdate(v) : v) : '<span class="mut">—</span>') + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (rows.length > 500 ? '<p class="mut" style="font-size:12px">Showing the first 500. The export has all ' + rows.length + '.</p>' : '') : '') + '</div>';
+    el.innerHTML = filt + sumCard + det;
+    var g1s = $('rpg1'), g2s = $('rpg2'); if (g1s) { g1s.value = P.g1; g1s.addEventListener('change', function () { P.g1 = g1s.value; drawRcReport(); }); } if (g2s) { g2s.value = P.g2; g2s.addEventListener('change', function () { P.g2 = g2s.value; drawRcReport(); }); }
+    var rb = $('rpbrand'); if (rb) rb.addEventListener('change', function () { P.brand = rb.value; P.loc = ''; rcRpLoad(); });
+    var rl = $('rploc'); if (rl) rl.addEventListener('change', function () { P.loc = rl.value; rcRpLoad(); });
+    [].forEach.call(el.querySelectorAll('[data-rpcol]'), function (cb) { cb.addEventListener('change', function () { var k = cb.getAttribute('data-rpcol'), i = P.cols.indexOf(k); if (cb.checked && i < 0) { var order = all.map(function (c) { return c[0]; }); P.cols.push(k); P.cols.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); }); } if (!cb.checked && i >= 0) P.cols.splice(i, 1); try { localStorage.setItem('rcRpCols', JSON.stringify(P.cols)); } catch (e) {} drawRcReport(); }); });
+  }
+  function rcRpTag() { var P = RC.rp; return (P.brand ? '-' + short(P.brand).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + (P.loc ? '-' + P.loc.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + '-' + P.start + '-to-' + P.end; }
+  function rcRpCsv() {
+    var P = RC.rp, M = rcColMap(P), cols = P.cols.filter(function (k) { return M[k]; }), rows = P.data.rows || [];
+    var lines = [cols.map(function (k) { return csvCell(M[k][1]); }).join(',')].concat(rows.map(function (r) { return cols.map(function (k) { return csvCell(rcVal(M[k], r)); }).join(','); }));
+    saveBlob('ai-csr-calls' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+  }
+  function rcRpSumCsv() {
+    var P = RC.rp; if (!P.sum) return;
+    var lines = [P.sum.head.map(csvCell).join(',')].concat(P.sum.rows.map(function (r) { return r.map(csvCell).join(','); }));
+    saveBlob('ai-csr-summary' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+  }
+  function rcStart() {
+    if (RC.live) return; RC.err = null; RC.res = null;
+    var brand = (LOCK || RC.brand || 'Quality Overhead Door').replace(/\u2019/g, "'"), loc = RC.loc || '';
+    var L = RC.live = { brand: brand + (loc && loc !== 'Main' ? ' · ' + loc : ''), lines: [], state: 'connecting', mode: 'listening', secs: 0 }; drawRecep();
+    var fail = function (e) { if (L.timer) clearInterval(L.timer); if (RC.live !== L) return; RC.live = null; RC.err = (e && e.message) || String(e); drawRecep(); };
+    Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can’t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); })
+      .then(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'receptionist', op: 'start', brand: brand }), prSdk()]); })
+      .then(function (rr) { // a location's own AI CSR (Becky 11/18): same call record, that location's copy answers
+        if (!loc) return rr;
+        return rlCall({ op: 'test', brand: brand, location: loc, call_id: rr[0].call_id }).then(function (t) { rr[0].signed_url = t.signed_url; return rr; });
+      })
+      .then(function (rr) {
+        var st = rr[0], SDK = rr[1]; L.cid = st.call_id; L.agent = st.agent_name || 'Ava';
+        return SDK.Conversation.startSession({ signedUrl: st.signed_url, connectionType: 'websocket', dynamicVariables: st.dynamic_variables,
+          onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('rcclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 3660) rcEnd(); }, 1000); drawRecep(); },
+          onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (RC.live === L) drawRecep(); },
+          onModeChange: function (m) { L.mode = (m && m.mode) || m; if (RC.live === L) drawRecep(); },
+          onError: function (e) { console.warn('receptionist', e); },
+          onDisconnect: function () { if (RC.live === L) rcFinish(); }
+        }).then(function (conv) { L.conv = conv; });
+      }).catch(fail);
+  }
+  function rcEnd() { var L = RC.live; if (!L || L.state === 'ending') return; if (L.conv && L.conv.endSession) L.conv.endSession(); else rcFinish(); }
+  function rcFinish() {
+    var L = RC.live; if (!L || L.state === 'ending') return; L.state = 'ending'; if (L.timer) clearInterval(L.timer); drawRecep();
+    var conv = null; try { conv = L.conv && L.conv.getId ? L.conv.getId() : null; } catch (e) { }
+    if (!L.cid || !conv) { RC.live = null; RC.err = 'The call ended before it connected. Check your mic and try again.'; drawRecep(); return; }
+    var tries = 0, go = function () {
+      api({ action: 'receptionist', op: 'finish', call_id: L.cid, conversation_id: conv }).then(function (r) {
+        if (r.status === 'processing' && tries++ < 12) { setTimeout(go, 4000); return; }
+        RC.live = null; RC.res = r; api({ action: 'receptionist', op: 'list' }).then(function (d) { RC.d = d; drawRecep(); }).catch(function () { drawRecep(); });
+      }).catch(function (e) { RC.live = null; RC.err = e.message; drawRecep(); });
+    };
+    go();
   }
   // QA settings
   var QS = null, QSE = { ins: false, metric: false, req: false, del: null, busy: false };
@@ -983,7 +3394,7 @@ export function mountOpsisQA(ROOT, cfg) {
         (QSE.req ? '<div style="margin-top:12px"><label class="l" for="qreq">What would you like changed?</label><textarea id="qreq" class="oq-field" style="min-height:90px" maxlength="3000" placeholder="e.g. Don’t score card capture on warranty calls."></textarea><div class="mut" style="font-size:12px;margin-top:4px">This goes to your account admin.</div><div style="display:flex;gap:8px;margin-top:8px"><button class="sel btnd" data-act="qsreqsend"' + dis + '>' + (QSE.busy ? 'Sending…' : 'Send request') + '</button><button class="sel" data-act="qsreqcancel">Cancel</button></div></div>' : ''),
         IS_ADMIN ? (QSE.redit ? '' : '<button class="sel" data-act="rubedit">Edit call flow</button>') : (CAN_EDIT && !QSE.req ? '<button class="sel" data-act="qsreq">Request a change</button>' : '')) +
       '</div><div class="oq-card" style="flex:1 1 300px;align-self:flex-start"><h2 class="ttl">How this works</h2><p class="sub" style="line-height:1.6">Changes apply to calls scored after you save — past scores don’t change. Every change is logged with who made it.</p><p class="sub" style="line-height:1.6;margin-top:10px">Each Monday the tool also looks for corrections your team keeps making and suggests a rule. Your account admins decide whether to add it.</p>' + (IS_ADMIN ? '' : '<p class="sub" style="line-height:1.6;margin-top:10px">Only account admins can change instructions and metrics.</p>') + '</div></div>';
-    w.innerHTML = h + qsHistory(); drawRules();
+    w.innerHTML = h + '<div id="exnset"></div>' + qsHistory(); drawRules(); exnCard();
     var f = $('qins') || $('qmn') || $('qreq'); if (f) f.focus();
   }
   function qsWrite(body, done, after, btn) {
@@ -994,21 +3405,40 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // Team & access
   var TM = { list: null, inv: null, del: null, busy: false };
-  var ROLES = [['admin', 'Account admin', 'Everything, plus people, QA settings and the knowledge base', ['All brands', 'Change scores and add notes', 'Edit knowledge base + QA settings', 'Invite and remove people']], ['manager', 'Brand manager', 'Coach their brand — notes and score changes', ['One brand or all brands', 'Change scores and add notes', 'Ask the AI, play recordings']], ['viewer', 'Viewer', 'Read-only dashboards and call reviews', ['One brand or all brands', 'Play recordings, ask the AI', 'No changes']]];
-  var RNAME = { admin: 'Account admin', manager: 'Brand manager', viewer: 'Viewer', csr: 'CSR' };
+  // 11/20 Becky: the real portal roles. RM / GM / Coach are set through qa_team_set (CFG.teamSet); "Brand manager" is the older role,
+  // kept only on the people who still have it until an admin picks a new one.
+  var ROLES = [['admin', 'Account admin', 'Everything, plus people, QA settings and the knowledge base', ['All brands', 'Change scores and add notes', 'Edit knowledge base + QA settings', 'Invite and remove people']],
+    ['rm', 'Regional manager', 'Runs their brand — every page for it', ['One brand or all brands', 'Change scores and add notes', 'Phone setup, wallboard, workforce']],
+    ['gm', 'General manager', 'Runs one location', ['One brand and location', 'Change scores and add notes', 'Phone setup and wallboard for the location']],
+    ['coach', 'Coach', 'Coaching pages only', ['One or several brands — they switch at the top right', 'Coach view, Coaching hub, CSRs, calls', 'Change scores and add notes']],
+    ['viewer', 'Viewer', 'Read-only dashboards and call reviews', ['One brand or all brands', 'Play recordings, ask the AI', 'No changes']]];
+  var RNAME = { admin: 'Account admin', rm: 'Regional manager', gm: 'General manager', coach: 'Coach', manager: 'Brand manager (older role)', viewer: 'Viewer', csr: 'CSR' };
+  var NEWROLE = { rm: 1, gm: 1, coach: 1 };
+  function roleOpts(cur) { return ROLES.concat(cur === 'manager' ? [['manager', RNAME.manager]] : []).map(function (r) { return '<option value="' + r[0] + '"' + (cur === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join(''); }
+  function locSel(id, brand, cur, dis, trow) { var L = (TM.locs || {})[brand] || []; return '<select id="' + id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto"' + (trow != null ? ' data-trow="' + trow + '"' : '') + (dis ? ' disabled' : '') + '><option value="">Pick a location</option>' + L.concat(cur && L.indexOf(cur) < 0 ? [cur] : []).map(function (l) { return '<option' + (cur === l ? ' selected' : '') + ' value="' + esc(l) + '">' + esc(l) + '</option>'; }).join('') + '</select>'; }
+  // merge the real role / location (qa_team_list) over the edge list, which only knows admin / manager / viewer
+  function teamMerge(people) { return (CFG.teamList ? CFG.teamList().then(function (x) { TM.locs = (x && x.locations) || {}; var m = {}; ((x && x.people) || []).forEach(function (q) { m[q.id] = q; }); return people.map(function (u) { var q = m[u.id]; return q ? Object.assign({}, u, { role: q.role, brand: q.brand, location: q.location, brands: q.brands || null }) : u; }); }).catch(function () { return people; }) : Promise.resolve(people)); }
   function vTeam(tok) {
     if (!IS_ADMIN) { setMain(crumb([['Team & access']]) + noRights('Team & access')); return; }
     setMain(crumb([['Team & access']]) + '<div id="tmwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
-    Promise.all([api({ action: 'team' }), KNOWN.brands.length ? null : loadReport().then(noteKnown).catch(function () {})]).then(function (r) { if (tok !== T) return; TM.list = r[0].people || []; drawTeam(); })
+    Promise.all([api({ action: 'team' }).then(function (x) { return teamMerge(x.people || []); }), KNOWN.brands.length ? null : loadReport().then(noteKnown).catch(function () {})]).then(function (r) { if (tok !== T) return; TM.list = r[0] || []; drawTeam(); })
       .catch(function (e) { if (tok === T && $('tmwrap')) $('tmwrap').innerHTML = errBox(e); });
   }
   function brandSel(id, cur, dis) { return '<select id="' + id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto"' + (dis ? ' disabled' : '') + '><option value="">All brands</option>' + KNOWN.brands.slice().sort().map(function (b) { return '<option' + (cur === b ? ' selected' : '') + ' value="' + esc(b) + '">' + esc(short(b)) + '</option>'; }).join('') + (cur && KNOWN.brands.indexOf(cur) < 0 ? '<option selected value="' + esc(cur) + '">' + esc(short(cur)) + '</option>' : '') + '</select>'; }
+  // Coach: tick every brand they coach (Becky 11/20). None ticked = all brands.
+  function coachBoxes(u, i, dis) {
+    var cur = u.brands || (u.brand ? [u.brand] : []), all = KNOWN.brands.slice().sort();
+    cur.forEach(function (b) { if (all.indexOf(b) < 0) all.push(b); });
+    return '<div style="display:flex;flex-direction:column;gap:4px;max-height:170px;overflow:auto;padding-right:6px">' + all.map(function (b) { return '<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;white-space:nowrap"><input type="checkbox" data-tcb="' + i + '" value="' + esc(b) + '"' + (cur.indexOf(b) >= 0 ? ' checked' : '') + (dis ? ' disabled' : '') + '>' + esc(short(b)) + '</label>'; }).join('') +
+      '</div><div class="mut" style="font-size:11.5px;margin-top:4px">' + (cur.length ? cur.length + ' brand' + (cur.length > 1 ? 's' : '') + ' · they switch at the top right' : 'None ticked = all brands') + '</div>';
+  }
   function drawTeam() {
     var w = $('tmwrap'); if (!w || !TM.list) return;
     var I = TM.inv, dis = TM.busy ? ' disabled' : '';
     var form = I ? '<div style="margin-top:14px;padding:18px;border:1px solid var(--line);border-radius:14px;background:#FAF8F4"><div style="font-weight:600;font-size:15px">Invite someone</div><div class="mut" style="font-size:12.5px;margin-top:3px">We’ll create their login and open an email from you with their sign-in link, ready to send from your own mailbox. They only ever see ' + esc(CLIENT) + ' call quality.</div>' +
-      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px"><div><label class="l" for="ivn">Full name</label><input id="ivn" class="oq-field" placeholder="e.g. Jordan Smith" value="' + esc(I.name) + '"></div><div><label class="l" for="ive">Email</label><input id="ive" class="oq-field" type="email" placeholder="name@company.com" value="' + esc(I.email) + '"></div><div><label class="l" for="ivr">Role</label><select id="ivr" class="oq-field" data-invrole="1">' + ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (I.role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></div>' +
-      (I.role !== 'admin' ? '<div><label class="l" for="ivb">Brand</label>' + brandSel('ivb', I.brand, false).replace('style="padding:6px 10px;font-size:13px;width:auto"', '') + '</div>' : '') + '</div>' +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px"><div><label class="l" for="ivn">Full name</label><input id="ivn" class="oq-field" placeholder="e.g. Jordan Smith" value="' + esc(I.name) + '"></div><div><label class="l" for="ive">Email</label><input id="ive" class="oq-field" type="email" placeholder="name@company.com" value="' + esc(I.email) + '"></div><div><label class="l" for="ivr">Role</label><select id="ivr" class="oq-field" data-invrole="1">' + roleOpts(I.role) + '</select></div>' +
+      (I.role !== 'admin' ? '<div><label class="l" for="ivb">Brand</label>' + brandSel('ivb', I.brand, false).replace('<select ', '<select data-invrole="1" ').replace('style="padding:6px 10px;font-size:13px;width:auto"', '') + '</div>' : '') +
+      (I.role === 'gm' ? '<div><label class="l" for="ivl">Location</label>' + locSel('ivl', I.brand, I.location, !I.brand).replace('style="padding:6px 10px;font-size:13px;width:auto"', '') + '</div>' : '') + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:16px"><button class="sel btnd" data-act="invsend"' + dis + '>' + (TM.busy ? 'Creating…' : 'Create invite') + '</button><button class="sel" data-act="invcancel">Cancel</button></div></div>' : '';
     var mailBox = TM.mail ? inviteBox(TM.mail) : '';
     var rows = TM.list.map(function (u, i) {
@@ -1016,8 +3446,8 @@ export function mountOpsisQA(ROOT, cfg) {
       var st = !u.active ? ['Removed', 'background:#F3F1EC;color:#56605B'] : u.invited ? ['Invited', 'background:#FFF4DE;color:#8A5A00'] : ['Active', 'background:#E6F0EA;color:#1F5A41'];
       var lock = !u.active || me || TM.busy;
       return '<tr><td><div style="display:flex;align-items:center;gap:10px"><span class="av">' + esc(String(u.name || '?').split(' ').map(function (x) { return x[0]; }).join('').slice(0, 2).toUpperCase()) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="mut" style="font-weight:400">(you)</span>' : '') + '</div><div class="mut" style="font-size:12px">' + esc(u.email || '') + '</div></div></div></td>' +
-        '<td><label class="sr" for="tr-' + u.id + '">Role for ' + esc(u.name) + '</label><select id="tr-' + u.id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto" data-trow="' + i + '"' + (lock ? ' disabled' : '') + '>' + ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (u.role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></td>' +
-        '<td>' + (u.role === 'admin' ? '<span class="mut" style="font-size:12.5px">All brands</span>' : '<label class="sr" for="tb-' + u.id + '">Brand for ' + esc(u.name) + '</label>' + brandSel('tb-' + u.id, u.brand, lock).replace('<select ', '<select data-trow="' + i + '" ')) + '</td>' +
+        '<td><label class="sr" for="tr-' + u.id + '">Role for ' + esc(u.name) + '</label><select id="tr-' + u.id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto" data-trow="' + i + '"' + (lock ? ' disabled' : '') + '>' + roleOpts(u.role) + '</select></td>' +
+        '<td>' + (u.role === 'admin' ? '<span class="mut" style="font-size:12.5px">All brands</span>' : u.role === 'coach' ? coachBoxes(u, i, lock) : '<label class="sr" for="tb-' + u.id + '">Brand for ' + esc(u.name) + '</label>' + brandSel('tb-' + u.id, u.brand, lock).replace('<select ', '<select data-trow="' + i + '" ') + (u.role === 'gm' ? '<div style="margin-top:6px"><label class="sr" for="tl-' + u.id + '">Location for ' + esc(u.name) + '</label>' + locSel('tl-' + u.id, u.brand, u.location, lock || !u.brand, i) + '</div>' : '')) + '</td>' +
         '<td><span class="pill" style="' + st[1] + '">' + st[0] + '</span></td><td class="mut" style="font-size:12.5px">' + (u.last ? ago(u.last) : '—') + '</td>' +
         '<td style="text-align:right;white-space:nowrap">' + (me ? '' : !u.active ? '<button class="sel" data-act="prestore" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Restore</button>' : TM.del === i ? '<span class="mut" style="font-size:12px;margin-right:6px">Remove access?</span><button class="sel" data-act="pdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F"' + dis + '>Remove</button> <button class="sel" data-act="pdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
           : (u.invited ? '<button class="sel" data-act="presend" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Resend invite</button> ' : '') + '<button class="sel" data-act="pdel" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button>') + '</td></tr>';
@@ -1034,15 +3464,128 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="row" style="gap:8px;margin-top:12px"><a class="sel btnd" href="' + esc(owa) + '" target="_blank" rel="noopener" style="text-decoration:none">Open draft in Outlook</a><a class="sel" href="' + esc(mt) + '" style="text-decoration:none">Open in my email app</a><button class="sel" data-act="mailcopy">Copy email text</button></div>' +
       '<pre style="white-space:pre-wrap;font-family:inherit;font-size:12.5px;line-height:1.5;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;margin-top:12px"><b>Subject:</b> ' + esc(M.subject) + '\n\n' + esc(M.body) + '</pre></div>';
   }
-  function keepInv() { if (!TM.inv) return; var n = $('ivn'), e = $('ive'), b = $('ivb'); if (n) TM.inv.name = n.value; if (e) TM.inv.email = e.value; if (b) TM.inv.brand = b.value; }
+  function keepInv() { if (!TM.inv) return; var n = $('ivn'), e = $('ive'), b = $('ivb'), r = $('ivr'), l = $('ivl'); if (n) TM.inv.name = n.value; if (e) TM.inv.email = e.value; if (r) TM.inv.role = r.value; if (b) { if (b.value !== TM.inv.brand) TM.inv.location = ''; TM.inv.brand = b.value; } if (l) TM.inv.location = l.value; }
   function teamWrite(body, done, btn) {
     if (TM.busy) return; TM.busy = true; busyBtn(btn, true);
-    api(Object.assign({ action: 'team' }, body)).then(function (r) { TM.busy = false; TM.list = r.people || []; TM.del = null; if (body.op === 'invite') TM.inv = null; drawTeam(); toast(done); })
+    var call = body.op === 'update' && CFG.teamSet ? CFG.teamSet(body).then(function () { return api({ action: 'team' }); }) : api(Object.assign({ action: 'team' }, body));
+    call.then(function (r) { return teamMerge(r.people || []); }).then(function (pl) { TM.busy = false; TM.list = pl; TM.del = null; if (body.op === 'invite') TM.inv = null; drawTeam(); toast(done); })
       .catch(function (e) { TM.busy = false; busyBtn(btn, false); drawTeam(); toast(e.message || 'Couldn’t save. Try again.'); });
+  }
+
+
+  // ---------- Tasks (Becky 11/20, scope doc "Product catalog + Task dashboard") ----------
+  // Every customer follow-up the platform creates (AI CSR messages and requests, queue callbacks, callers who hung up
+  // waiting, CSR callbacks), each assigned to a person, closed with a one-line outcome. RPCs: cx_task_* (CFG.tasks).
+  var TK = { view: 'open', d: null, busy: false, close: null, set: null, showSet: false };
+  var TK_KIND = { ai_csr: 'AI CSR message', billing: 'Billing / collections', phone_callback: 'Queue callback', abandoned: 'Hung up waiting', csr_callback: 'CSR callback', s2l: 'Speed to lead', manual: 'Added by hand' };
+  var TK_KINDS = ['phone_callback', 'abandoned', 'ai_csr', 'billing', 'csr_callback', 's2l'];
+  function tkDue(t) {
+    var ms = new Date(t.due).getTime() - Date.now(), m = Math.round(Math.abs(ms) / 60000);
+    var span = m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd';
+    if (t.status === 'done' || t.status === 'cant_reach') return '<span class="mut">' + esc(ago(t.closed_at)) + '</span>';
+    if (ms < 0) return '<span class="pill" style="background:#FBE9E4;color:#9A3412">Overdue ' + span + '</span>';
+    return ms < 86400000 ? 'in ' + span : esc(new Date(t.due).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }));
+  }
+  // Becky 11/20: a rule or task for Apple only offers Apple's people (and that location's, when one is picked)
+  function tkBrandOk(p, brand) { return !brand || (p.brand && String(p.brand).toLowerCase().split(' ')[0] === String(brand).toLowerCase().split(' ')[0]); }
+  function tkPeople(brand, loc) { return ((TK.d && TK.d.people) || []).filter(function (p) { return p.brand && tkBrandOk(p, brand) && (!loc || !p.location || String(p.location).toLowerCase() === String(loc).toLowerCase()); }); }
+  function tkPhone(p) { p = String(p || ''); return p.length === 10 ? '(' + p.slice(0, 3) + ') ' + p.slice(3, 6) + '-' + p.slice(6) : p; }
+  function vTasks(tok) {
+    setMain(crumb([['Tasks']]) + '<div id="tkwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
+    tkLoad(tok);
+  }
+  function tkLoad(tok) {
+    var brands = LOCK ? [LOCK] : (S.brands.length ? S.brands : null), locs = S.locs && S.locs.length ? S.locs : null;
+    CFG.tasks.list({ view: TK.view === 'mine' ? 'open' : TK.view, brands: brands, locations: locs, mine: TK.view === 'mine' }).then(function (d) {
+      if (tok != null && tok !== T) return; TK.d = d; drawTasks();
+      if (TK.showSet && d.can_settings && !TK.set) tkLoadSet();
+    }).catch(function (e) { var w = $('tkwrap'); if (w) w.innerHTML = errBox(e); });
+  }
+  function tkLoadSet() { CFG.tasks.settings().then(function (x) { TK.set = x; drawTasks(); }).catch(function (e) { toast(e.message || 'Couldn’t load task settings.'); }); }
+  function drawTasks() {
+    var w = $('tkwrap'), d = TK.d; if (!w || !d) return;
+    var c = d.counts || {}, dis = TK.busy ? ' disabled' : '';
+    var stat = function (l, v, warn) { return '<div style="min-width:110px"><div class="cap" style="font-size:11px">' + l + '</div><div style="font-size:26px;font-weight:600;letter-spacing:-0.02em;' + (warn && v ? 'color:#9A3412' : '') + '">' + fmt(v || 0) + '</div></div>'; };
+    var tabs = [['open', 'Open'], ['overdue', 'Overdue'], ['mine', 'Mine'], ['done', 'Done (14 days)']].map(function (t) { return '<button class="sel' + (TK.view === t[0] ? ' btnd' : '') + '" data-tkview="' + t[0] + '">' + t[1] + '</button>'; }).join('');
+    var people = d.people || [];
+    var rows = (d.tasks || []).map(function (t, i) {
+      var owner = d.can_manage && t.status !== 'done' && t.status !== 'cant_reach'
+        ? '<label class="sr" for="tko-' + i + '">Owner</label><select id="tko-' + i + '" class="oq-field" style="padding:5px 8px;font-size:12.5px;width:auto;max-width:180px" data-tkown="' + i + '"' + dis + '><option value="">Unassigned</option>' + tkPeople(t.brand, t.location).concat(people.filter(function (p) { return p.id === t.assigned_to && !(p.brand && tkBrandOk(p, t.brand)); })).map(function (p) { return '<option value="' + p.id + '"' + (p.id === t.assigned_to ? ' selected' : '') + '>' + esc(p.name || '') + '</option>'; }).join('') + '</select>'
+        : esc(t.assignee || 'Unassigned');
+      var open = t.status === 'open' || t.status === 'in_progress';
+      var act = !open ? '<div style="font-size:12.5px"><b>' + (t.status === 'done' ? 'Done' : 'Couldn’t reach') + '</b> · ' + esc(t.outcome || '') + (t.closed_by ? '<div class="mut">' + esc(t.closed_by) + '</div>' : '') + '</div>'
+        : TK.close && TK.close.i === i ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="sr" for="tkout">Outcome</label><input id="tkout" class="oq-field" style="padding:6px 8px;font-size:12.5px;min-width:200px" placeholder="' + (TK.close.st === 'done' ? 'What happened? e.g. booked Tue 9–12' : 'Tried how many times?') + '"><button class="sel btnd" data-tkdo="1"' + dis + '>Save</button><button class="sel" data-tkcancel="1">Cancel</button></div>'
+        : '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (t.status === 'open' ? '<button class="sel" data-tkst="in_progress" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Start</button>' : '<span class="pill" style="background:#E8F0FC;color:#1E4E9C">In progress</span>') +
+          '<button class="sel btnd" data-tkclose="done" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Done</button><button class="sel" data-tkclose="cant_reach" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Can’t reach</button></div>';
+      return '<tr><td style="white-space:nowrap">' + tkDue(t) + (t.urgent ? '<div><span class="pill" style="background:#FBE9E4;color:#9A3412">Urgent</span></div>' : '') + '</td>' +
+        '<td><b style="font-weight:600">' + esc(t.name || 'Unknown caller') + '</b>' + (t.phone ? '<div><a href="tel:+1' + esc(t.phone) + '" style="font-size:12.5px">' + esc(tkPhone(t.phone)) + '</a></div>' : '') + '<div class="mut" style="font-size:12px">' + esc(short(t.brand || '') + (t.location ? ' · ' + t.location : '')) + '</div></td>' +
+        '<td><div style="font-size:12px" class="mut">' + esc(TK_KIND[t.kind] || t.kind) + (t.calls > 1 ? ' · ' + t.calls + ' calls' : '') + '</div><div style="font-weight:500">' + esc(t.reason || '') + '</div>' + (t.summary ? '<div class="mut" style="font-size:12.5px;max-width:420px">' + esc(t.summary) + '</div>' : '') + '</td>' +
+        '<td>' + owner + '</td><td>' + act + '</td></tr>';
+    }).join('');
+    var empty = '<div class="mut" style="padding:28px 4px;text-align:center">' + (TK.view === 'done' ? 'Nothing closed in the last 14 days.' : TK.view === 'mine' ? 'Nothing assigned to you right now.' : 'No open tasks. New ones appear here as calls come in.') + '</div>';
+    w.innerHTML = '<div style="display:flex;flex-direction:column;gap:16px"><div class="oq-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">Tasks</h2><p class="sub">Callbacks and follow-ups from AI CSR, the phone queue and CSR calls. Each has an owner and closes with an outcome.</p></div>' +
+      (d.can_settings ? '<button class="sel" data-tkset="1">' + (TK.showSet ? 'Hide settings' : 'Settings') + '</button>' : '') + '</div>' +
+      '<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:14px">' + stat('Open', c.open) + stat('Overdue', c.overdue, true) + stat('Unassigned', c.unassigned, true) + stat('Closed today', c.done_today) + '</div></div>' +
+      (TK.showSet ? '<div class="oq-card" id="tkset">' + (TK.set ? tkSetHtml() : skel(30, 4)) + '</div>' : '') +
+      '<div class="oq-card"><div class="row" style="gap:8px;flex-wrap:wrap">' + tabs + '</div>' +
+      ((d.tasks || []).length ? '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px;text-align:left"><thead><tr><th style="text-align:left">Due</th><th style="text-align:left">Customer</th><th style="text-align:left">Why</th><th style="text-align:left">Owner</th><th style="text-align:left"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' : empty) + '</div></div>';
+    if (TK.close) { var o = $('tkout'); if (o) o.focus(); }
+  }
+  function tkSetHtml() {
+    var X = TK.set, d = TK.d || {}, people = d.people || [];
+    var due = (X.due || []).map(function (r) {
+      return '<tr><td>' + esc(TK_KIND[r.kind]) + '</td><td><label class="sr" for="tkm-' + r.kind + '">Minutes</label><input id="tkm-' + r.kind + '" class="oq-field" type="number" min="1" max="10080" value="' + r.minutes + '" style="width:90px;padding:5px 8px"' + (X.can_due ? '' : ' disabled') + '> min</td>' +
+        '<td><label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" id="tkb-' + r.kind + '"' + (r.business_hours ? ' checked' : '') + (X.can_due ? '' : ' disabled') + '> Business hours only</label></td>' +
+        '<td>' + (X.can_due ? '<button class="sel" data-tkdue="' + r.kind + '" style="padding:5px 10px;font-size:12px">Save</button>' : '') + '</td></tr>';
+    }).join('');
+    var rules = (X.rules || []).map(function (r, i) { return '<tr><td>' + esc(short(r.brand)) + '</td><td>' + esc(r.location || 'Every location') + '</td><td>' + esc(r.kind ? TK_KIND[r.kind] : 'Every kind') + '</td><td>' + esc(r.name || '—') + '</td><td><button class="sel" data-tkrdel="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button></td></tr>'; }).join('');
+    var brands = X.brand ? [X.brand] : KNOWN.brands.slice().sort();
+    if (!TK.rb || brands.indexOf(TK.rb) < 0) TK.rb = brands[0] || '';
+    var locs = {}; people.forEach(function (p) { if (p.location && p.brand && tkBrandOk(p, TK.rb)) locs[p.location] = 1; }); (d.tasks || []).forEach(function (t) { if (t.location && tkBrandOk({ brand: t.brand }, TK.rb)) locs[t.location] = 1; });
+    var locList = X.location ? [X.location] : Object.keys(locs).sort();
+    if (TK.rl && locList.indexOf(TK.rl) < 0) TK.rl = '';
+    var who = tkPeople(TK.rb, X.location || TK.rl);
+    return '<h2 class="ttl">Task settings</h2>' +
+      '<div class="cap" style="margin-top:12px">Who gets each kind of task</div><p class="mut" style="font-size:12.5px;margin:4px 0 8px">The most specific match wins: a location and kind beats a location, which beats the whole brand. New tasks with no match stay unassigned.</p>' +
+      (rules ? '<div style="overflow-x:auto"><table class="tbl" style="font-size:13px;text-align:left"><thead><tr><th style="text-align:left">Brand</th><th style="text-align:left">Location</th><th style="text-align:left">Kind</th><th style="text-align:left">Goes to</th><th></th></tr></thead><tbody>' + rules + '</tbody></table></div>' : '<p class="mut" style="font-size:12.5px">No owners set yet.</p>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">' +
+      '<div><label class="l" for="tkrb">Brand</label><select id="tkrb" class="oq-field" style="padding:6px 8px;width:auto" data-tkrf="1">' + brands.map(function (b) { return '<option value="' + esc(b) + '"' + (b === TK.rb ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrl">Location</label><select id="tkrl" class="oq-field" style="padding:6px 8px;width:auto" data-tkrf="1">' + (X.location ? '' : '<option value="">Every location</option>') + locList.map(function (l) { return '<option value="' + esc(l) + '"' + (l === TK.rl ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrk">Kind</label><select id="tkrk" class="oq-field" style="padding:6px 8px;width:auto"><option value="">Every kind</option>' + TK_KINDS.map(function (k) { return '<option value="' + k + '">' + esc(TK_KIND[k]) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrp">Goes to</label><select id="tkrp" class="oq-field" style="padding:6px 8px;width:auto">' + (who.length ? who.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name || '') + (p.location && !(X.location || TK.rl) ? ' · ' + esc(p.location) : '') + '</option>'; }).join('') : '<option value="">No one at ' + esc(short(TK.rb) + ((X.location || TK.rl) ? ' · ' + (X.location || TK.rl) : '')) + '</option>') + '</select></div>' +
+      '<button class="sel btnd" data-tkradd="1"' + (who.length ? '' : ' disabled') + '>Add</button></div>' +
+      '<div class="cap" style="margin-top:20px">How fast each kind is due</div>' + (X.can_due ? '' : '<p class="mut" style="font-size:12.5px;margin:4px 0">Only account admins can change these.</p>') +
+      '<div style="overflow-x:auto;margin-top:6px"><table class="tbl" style="font-size:13px;text-align:left"><tbody>' + due + '</tbody></table></div>' +
+      '<p class="mut" style="font-size:12px;margin-top:6px">Business hours are Monday–Friday, 8 am–5 pm Central.</p>';
+  }
+  function tkAct(el) {
+    var d = el.dataset, D = TK.d; if (!D) return false;
+    if (d.tkview) { TK.view = d.tkview; TK.close = null; tkLoad(); return true; }
+    if (d.tkset) { TK.showSet = !TK.showSet; drawTasks(); if (TK.showSet && !TK.set) tkLoadSet(); return true; }
+    if (d.tkcancel) { TK.close = null; drawTasks(); return true; }
+    if (d.tkclose) { TK.close = { i: +d.i, st: d.tkclose }; drawTasks(); return true; }
+    var save = function (p, msg) { if (TK.busy) return; TK.busy = true; CFG.tasks.set(p).then(function () { TK.busy = false; TK.close = null; toast(msg); tkLoad(); }).catch(function (e) { TK.busy = false; toast(e.message || 'Couldn’t save.'); drawTasks(); }); };
+    if (d.tkst) { save({ id: D.tasks[+d.i].id, status: d.tkst }, 'Started'); return true; }
+    if (d.tkdo) { var o = $('tkout'), v = o ? o.value.trim() : ''; if (!v) { toast('Add a one-line outcome'); return true; } save({ id: D.tasks[TK.close.i].id, status: TK.close.st, outcome: v }, TK.close.st === 'done' ? 'Task closed' : 'Marked can’t reach'); return true; }
+    var setSave = function (pr, msg) { pr.then(function (x) { TK.set = x; toast(msg); drawTasks(); tkLoad(); }).catch(function (e) { toast(e.message || 'Couldn’t save.'); }); };
+    if (d.tkdue) { var k = d.tkdue, m = $('tkm-' + k), b = $('tkb-' + k); setSave(CFG.tasks.dueSet({ kind: k, minutes: +(m && m.value), business_hours: !!(b && b.checked) }), 'Due time saved'); return true; }
+    if (d.tkradd) { setSave(CFG.tasks.ruleSet({ brand: $('tkrb').value, location: $('tkrl').value || null, kind: $('tkrk').value || null, assignee: $('tkrp').value || null }), 'Owner saved'); return true; }
+    if (d.tkrdel) { var r = TK.set.rules[+d.tkrdel]; setSave(CFG.tasks.ruleSet({ brand: r.brand, location: r.location, kind: r.kind, assignee: null }), 'Owner removed'); return true; }
+    return false;
+  }
+  function tkOwn(el) {
+    var t = TK.d && TK.d.tasks[+el.dataset.tkown]; if (!t) return;
+    TK.busy = true; CFG.tasks.set(el.value ? { id: t.id, assign: el.value } : { id: t.id, unassign: true }).then(function () { TK.busy = false; toast('Owner changed'); tkLoad(); }).catch(function (e) { TK.busy = false; toast(e.message || 'Couldn’t save.'); drawTasks(); });
   }
 
   // CSR scorecards (the existing Command Center scorecard, mounted inside this shell)
   var EXT = null;
+  // Workforce (Erlang C) + AI Speed to Lead (2026-11-09): Command Center pages mounted inside this shell (CFG.mountExt).
+  function vExt(kind) {
+    setMain(crumb([[({ wfm: 'Workforce', supervisor: 'Supervisor', wallboard: 'Wallboard', myphone: 'Phone', phonesetup: 'Phone setup', trends: 'Call trends', coachclips: 'Coaching clips', mycoach: 'My coaching', intraday: 'Intraday', callflow: 'Call flow' })[kind] || 'AI Speed to Lead']]) + '<div id="extmount" style="min-height:300px"></div>');
+    // the top bar's brand / location picks go along (Becky 11/20: Apple picked, wallboard still showed every brand)
+    if (CFG.mountExt) EXT = CFG.mountExt(kind, $('extmount'), { brands: LOCK ? [LOCK] : (S.brands || []).slice(), locations: (S.locs || []).slice() });
+  }
   function vScorecards() {
     setMain(crumb([['CSR scorecards']]) + '<div class="oq-card" style="padding:0;overflow:hidden"><div id="csrmount" style="min-height:300px"></div></div>');
     if (CFG.mountCsr) EXT = CFG.mountCsr($('csrmount'));
@@ -1055,7 +3598,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var RP_COLS = ['call_date', 'call_time', 'brand', 'agent', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state', 'direction', 'duration_sec', 'call_type',
     'call_leg', 'leg_no', 'legs', 'transferred', 'journey', 'customer_type', 'commercial', 'opportunity', 'outcome', 'not_booked_reason', 'fcr', 'first_person_resolution', 'sentiment', 'sentiment_score',
     'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
-    'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_offer', 'sell_ask', 'sell_card', 'sell_objection', 'sell_expert', 'sell_appointment', 'confirm_thank', 'steps_missed',
+    'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_expert', 'sell_offer', 'sell_ask', 'sell_card', 'sell_objection', 'sell_appointment', 'confirm_thank', 'steps_missed',
     'job_type', 'missed_type', 'missed_why', 'summary', 'coaching_note', 'strengths', 'improvements', 'risk_flags', 'manager_adjusted', 'reviewed', 'review_id', 'call_id'];
   function rpWin() { return { start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }; }
   function rpTag() { return (S.brands.length === 1 ? '-' + String(S.brands[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-') : S.brands.length ? '-multi-brand' : '') + '-' + S.start + '-to-' + S.end; }
@@ -1092,6 +3635,120 @@ export function mountOpsisQA(ROOT, cfg) {
     pdfShell(w, title, sub, sheets.map(function (s) { return '<h2>' + esc(s.title || '') + '</h2><table><thead><tr>' + s.cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       s.rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + esc(c == null ? '' : c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>'; }).join(''));
   }
+  // ---------- Export what's on screen (Becky 11/5): every page gets an Export button (Excel, CSV, PDF) ----------
+  // Each page's data is what it loaded from the server for the current page + filters, plus any tables drawn on screen.
+  var EXP = { sig: '', data: {}, order: [], bodies: {} };
+  var EXP_SKIP = { me: 1, ask: 1, audio: 1, hubaudio: 1, branding: 1, call: 1, export: 1, rulesugs: 1, scorereq: 1, calledit: 1 };
+  var EXP_LISTS = { calls: 1, bucketcalls: 1, factcalls: 1, xfercalls: 1, qaextras: 1 };
+  function expSig() { return [S.view, S.start, S.end, (S.brands || []).join(','), S.brand || '', S.agent || '', S.view === 'calls' ? JSON.stringify(S.calls || {}).replace(/"offset":\d+,?/, '') + (S.callsAgent || '') : ''].join('|'); }
+  function expRec(body, pr) {
+    if (!body || EXP_SKIP[body.action] || !pr || !pr.then) return;
+    var sig = expSig(); if (EXP.sig !== sig) EXP = { sig: sig, data: {}, order: [], bodies: {} };
+    var key = body.action + (body.op ? ':' + body.op : '') + (body.kind ? ':' + body.kind : '') + (EXP_LISTS[body.action] && body.limit ? ':l' + body.limit : '');
+    pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; EXP.bodies[key] = body; if (EXP_LISTS[body.action] && body.op !== 'why' && (body.limit || 0) >= 20) EXP.list = key; }, function () {});
+  }
+  var EXP_NAMES = { agent: 'CSR', agents: 'CSRs', avg: 'Avg QA score %', pavg: 'Previous avg QA score %', prev_avg: 'Previous avg QA score %', n: 'Calls', opps: 'Opportunities', xfer_out: 'Transferred out', xfer_in: 'Transferred in', xfer: 'Transfer', tta: 'Avg seconds to answer', tab: 'Avg seconds to abandon', per_wd: 'Calls per weekday', ai_score: 'AI score', asked_for_cc: 'Asked for card', collected_cc: 'Card collected', review_id: 'Review ID', call_id: 'Call ID', pn: 'Previous count', prev_rate: 'Previous rate', ivr: 'Hung up in IVR', kpis: 'KPIs', prev: 'Previous period', csr: 'CSR', csrs: 'CSRs', qa: 'QA', cc: 'Card', id: 'ID', url: 'Link', receptionist: 'AI CSR', focus: 'Details', cardcap: 'Card capture', pricetalk: 'Price talk', ai: 'Human vs AI', kb: 'Knowledge base', report: 'Report', calls: 'Calls', phone: 'Phone', repeat: 'Repeat callers', practice: 'Practice', scorecards: 'Scorecards', settings: 'QA settings', team: 'Team' };
+  function expHum(k) { k = String(k); if (EXP_NAMES[k]) return EXP_NAMES[k]; var t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
+  function expVal(v) { if (v == null) return ''; if (typeof v === 'object') { if (Array.isArray(v) && v.every(function (x) { return x == null || typeof x !== 'object'; })) return v.join(', '); var j = JSON.stringify(v); return j.length > 2000 ? j.slice(0, 2000) + '…' : j; } if (typeof v === 'string' && v.length > 32000) return v.slice(0, 32000) + '…'; return v; }
+  function expIsScalar(v) { return v == null || typeof v !== 'object'; }
+  function expArr(name, arr) {
+    if (!arr.length) return null;
+    if (arr.every(expIsScalar)) return { sheet: name, title: name, cols: [name], rows: arr.slice(0, 20000).map(function (x) { return [x]; }) };
+    var cols = []; arr.slice(0, 500).forEach(function (o) { if (o && typeof o === 'object') Object.keys(o).forEach(function (k) { if (cols.indexOf(k) < 0) cols.push(k); }); });
+    return { sheet: name, title: name, cols: cols.map(expHum), rows: arr.slice(0, 20000).map(function (o) { return cols.map(function (k) { return expVal(o && typeof o === 'object' ? o[k] : o); }); }) };
+  }
+  function expFlat(obj, name, out, depth) {
+    if (Array.isArray(obj)) { var a = expArr(name, obj); if (a) out.push(a); return; }
+    if (!obj || typeof obj !== 'object') return;
+    var sum = [], kids = [];
+    Object.keys(obj).forEach(function (k) {
+      var v = obj[k];
+      if (expIsScalar(v)) { if (v !== '' && v != null) sum.push([expHum(k), v]); }
+      else if (Array.isArray(v)) { if (v.every(expIsScalar)) { if (v.length) sum.push([expHum(k), v.join(', ')]); } else kids.push([k, v]); }
+      else if (Object.keys(v).every(function (sk) { return expIsScalar(v[sk]); })) Object.keys(v).forEach(function (sk) { if (v[sk] !== '' && v[sk] != null) sum.push([expHum(k) + ' – ' + expHum(sk), v[sk]]); });
+      else if (depth < 3) kids.push([k, v]);
+    });
+    if (sum.length) out.push({ sheet: name, title: name, cols: ['Field', 'Value'], rows: sum });
+    kids.forEach(function (kv) { expFlat(kv[1], name + ' – ' + expHum(kv[0]), out, depth + 1); });
+  }
+  function expPageName() {
+    var n = null; (NAV || []).forEach(function (sec) { (sec[1] || []).forEach(function (x) { if (x[0] === S.view) n = String(x[1]).replace(/<[^>]*>/g, '').trim(); }); });
+    if (S.view === 'brand') return 'Brand – ' + (S.brand || '');
+    if (S.view === 'csr') return 'CSR – ' + (S.agent || '');
+    return n || expHum(S.view || 'Page');
+  }
+  function expTables(root) {
+    var out = [];
+    Array.prototype.forEach.call((root || document).querySelectorAll('table'), function (t, i) {
+      if (t.closest('.pop') || !t.offsetParent) return;
+      var rows = Array.prototype.map.call(t.rows, function (tr) { return Array.prototype.map.call(tr.cells, function (td) { return (td.innerText || td.textContent || '').replace(/\s+/g, ' ').trim(); }); }).filter(function (r) { return r.join('') !== ''; });
+      if (rows.length < 2) return;
+      var card = t.closest('.oq-card'), h = card && card.querySelector('.cap, h2, h3, b');
+      var title = (h ? (h.innerText || h.textContent || '') : '').replace(/\s+/g, ' ').trim().slice(0, 60) || ('Table ' + (i + 1));
+      out.push({ sheet: title, title: title, cols: rows[0], rows: rows.slice(1) });
+    });
+    return out;
+  }
+  function expName(label) { return String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'export'; }
+  function expRun(fmt, label, sheets, pdfSheets, filters) {
+    if (!sheets.length) { toast('Nothing to export yet. Wait for the page to finish loading and try again.'); return; }
+    var info = { sheet: 'About', title: label, cols: ['About this export', ''], rows: [['Export', label], ['Dates', rangeLabel() + ' (' + S.start + ' to ' + S.end + ')'], ['Brands', S.brands.length ? S.brands.join(', ') : (LOCK || 'All brands')]].concat(filters && filters.length ? [['Filters', filters.join(' · ')]] : []).concat(sheets[0] && sheets[0].sheet === 'Calls' ? [['Calls', sheets[0].rows.length]] : []).concat([['Exported', new Date().toLocaleString('en-US')]]) };
+    var all = [info].concat(sheets), name = expName(label) + '-' + S.start + '-to-' + S.end;
+    if (fmt === 'csv') { sheetsCsv(name, all); return; }
+    if (fmt === 'pdf') { var ps = (pdfSheets || sheets).map(function (s) { return { title: s.title, cols: s.cols, rows: s.rows.slice(0, 400) }; }); sheetsPdf(pdfWin(), label, rpFilterText(), ps); return; }
+    toast('Preparing your Excel file…');
+    sheetsXlsx(name, all).catch(function (e) { toast((e && e.message) || 'Couldn’t build the Excel file. Try CSV.'); });
+  }
+  // A page's main call list (25 per page on screen) is re-fetched in full for the export, 100 at a time, as a clean sheet.
+  function expIsCallList(key, r) { var b = EXP.bodies[key]; return !!(b && EXP_LISTS[b.action] && b.op !== 'why' && (b.limit || 0) >= 20 && r && Array.isArray(r.rows)); }
+  function expAllCalls(body, total) {
+    var all = [], cap = Math.min(total || 2000, 2000);
+    var page = function (off) {
+      return apiRaw(Object.assign({}, body, { limit: 100, offset: off })).then(function (r) {
+        var rows = (r && r.rows) || []; all = all.concat(rows);
+        if (rows.length === 100 && all.length < cap) { toast('Gathering calls… ' + all.length + (total ? ' of ' + total : '')); return page(off + 100); }
+        return total ? all.slice(0, total) : all;
+      });
+    };
+    return page(0);
+  }
+  function expCallSheet(rows) {
+    var base = location.origin + location.pathname + location.search + '#v=calls&call=';
+    var hr = function (h) { if (h == null || h === '') return ''; h = +h; return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM'); };
+    var len = function (x) { x = +x; return x ? Math.floor(x / 60) + ':' + String(Math.round(x % 60)).padStart(2, '0') : ''; };
+    var cols = ['Date', 'Time', 'CSR', 'Brand', 'Customer phone', 'Length', 'QA score %', 'Outcome', 'Topic', 'Transfer', 'Summary', 'Open call in portal'];
+    return { sheet: 'Calls', title: 'Calls', cols: cols, rows: rows.map(function (r) {
+      var x = r.xfer_out ? 'Transferred out' + (r.xfer_to ? ' to ' + r.xfer_to : '') : r.xfer_in ? 'Transferred in' + (r.xfer_from ? ' from ' + r.xfer_from : '') : '';
+      return [r.date || r.call_date || '', hr(r.hour), r.agent || '', r.brand || '', r.phone || '', len(r.secs || r.length), r.score == null ? 'Not scored' : r.score, r.outcome || '', r.topic || r.category || '', x, r.summary || '', r.id ? base + encodeURIComponent(r.id) : ''];
+    }) };
+  }
+  function expByCsr(cs) {
+    var m = {}; cs.rows.forEach(function (r) { var k = r[2] || 'Unknown'; var x = m[k] || (m[k] = { n: 0, sum: 0, sc: 0 }); x.n++; if (typeof r[6] === 'number') { x.sum += r[6]; x.sc++; } });
+    return { sheet: 'By CSR', title: 'Calls by CSR', cols: ['CSR', 'Calls', 'Avg QA score %'], rows: Object.keys(m).sort(function (a, b) { return m[b].n - m[a].n; }).map(function (k) { return [k, m[k].n, m[k].sc ? Math.round(m[k].sum / m[k].sc * 10) / 10 : '']; }) };
+  }
+  function pageExport(fmt) {
+    var label = expPageName(), shown = expTables($('main')), data = [], lists = [];
+    var filters = Array.prototype.map.call(($('main') || document).querySelectorAll('.chip.on'), function (c) { return (c.innerText || c.textContent || '').replace(/[✕×]/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+    if (EXP.sig === expSig()) EXP.order.forEach(function (k) { var r = EXP.data[k]; if (expIsCallList(k, r)) { if (k === EXP.list) lists.push([k, r]); } else if (!EXP_LISTS[k.split(':')[0]]) expFlat(r, expHum(k.split(':')[0]), data, 0); });
+    data = data.filter(function (s) { return !(s.cols[0] === 'Field' && s.rows.every(function (r) { return /^(Total|Can decide|Ok|Allowed)$/i.test(r[0]); })); });
+    var finish = function (callSheets) {
+      callSheets = callSheets.reduce(function (acc, cs) { return acc.concat([cs, expByCsr(cs)]); }, []);
+      var sheets = callSheets.concat(shown.map(function (s) { s.sheet = 'Shown – ' + s.sheet; return s; })).concat(data);
+      var pdf = callSheets.map(function (cs) { return cs.sheet !== 'Calls' ? cs : { title: cs.title, cols: cs.cols.slice(0, 11), rows: cs.rows.map(function (r) { return r.slice(0, 11); }) }; }).concat(shown).concat(data.filter(function (s) { return s.cols[0] === 'Field'; }));
+      expRun(fmt, label, sheets, pdf, filters);
+    };
+    if (!lists.length) return finish([]);
+    toast('Gathering every call for the export…');
+    Promise.all(lists.map(function (kr) { return expAllCalls(EXP.bodies[kr[0]], kr[1].total).then(expCallSheet); }))
+      .then(finish).catch(function (e) { toast((e && e.message) || 'Couldn’t gather the calls. Try again.'); });
+  }
+  function callExport(fmt) {
+    var c = S.cur; if (!c) return;
+    var label = 'Call review – ' + (c.agent || 'CSR') + ' – ' + (c.call_date || c.date || '');
+    var sheets = []; expFlat(c, 'Call', sheets, 0);
+    expRun(fmt, label, sheets);
+  }
+  function expButtons(act) { return '<span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="' + act + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join(''); }
   // Reports open in an in-page preview (2026-10-27): a pop-up window's print dialog froze the portal until it was closed and reopened.
   // pdfWin() hands back a window-like object; whatever is written to it is shown in a full-screen frame with Save as PDF / Print and Close.
   function pdfWin() {
@@ -1141,7 +3798,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function bTeam(sc, brand) { var b = (sc.brands || []).filter(function (x) { return x.brand === brand; })[0] || {};
     var ag = (sc.agents || []).filter(function (a) { return a.brand === brand; }).sort(function (a, b2) { return (b2.avg || -1) - (a.avg || -1); });
     return [{ title: brand + ' — summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [['Calls scored', b.calls || 0], ['Average QA score %', v1(b.avg)], ['Booking rate %', v1(b.conv)], ['Card asked %', v1(b.card_rate)], ['Not booked', b.missed || 0], ['CSRs', b.agents || 0]] },
-      { title: 'CSR leaderboard', sheet: 'CSRs', cols: ['#', 'CSR', 'AI receptionist', 'Calls', 'Avg QA %', 'Booking rate %', 'Asked for booking %', 'Card asked %', 'Coaching focus'],
+      { title: 'CSR leaderboard', sheet: 'CSRs', cols: ['#', 'CSR', 'AI CSR', 'Calls', 'Avg QA %', 'Booking rate %', 'Asked for booking %', 'Card asked %', 'Coaching focus'],
         rows: ag.map(function (a, i) { return [i + 1, a.name, a.ai ? 'yes' : '', a.calls, v1(a.avg), v1(a.conv), v1(a.ask_rate), v1(a.card_rate), a.focus || '']; }) },
       { title: 'Team coaching focus', sheet: 'Coaching', cols: ['Coaching focus', 'CSRs with this as #1'], rows: rpGaps(sc, brand) }];
   }
@@ -1155,7 +3812,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var L = Object.keys(m).sort().map(function (k) { return m[k]; }), T = { h: [0, 0, 0, 0], a: [0, 0, 0, 0] };
     L.forEach(function (o) { for (var i = 0; i < 4; i++) { T.h[i] += o.h[i]; T.a[i] += o.a[i]; } });
     var avg = function (t) { return t[0] ? t[1] / t[0] : null; }, cl = function (t) { return t[2] ? 100 * t[3] / t[2] : null; }, df = function (x, y) { return x == null || y == null ? '' : v1(y - x); };
-    return [{ title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Human CSRs', 'AI receptionists', 'AI difference'], rows: [['Avg QA %', v1(avg(T.h)), v1(avg(T.a)), df(avg(T.h), avg(T.a))], ['Scored calls', T.h[0], T.a[0], ''], ['Booking rate %', v1(cl(T.h)), v1(cl(T.a)), df(cl(T.h), cl(T.a))], ['Decided opportunities', T.h[2], T.a[2], ''], ['Booked', T.h[3], T.a[3], '']] },
+    return [{ title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Human CSRs', 'AI CSRs', 'AI difference'], rows: [['Avg QA %', v1(avg(T.h)), v1(avg(T.a)), df(avg(T.h), avg(T.a))], ['Scored calls', T.h[0], T.a[0], ''], ['Booking rate %', v1(cl(T.h)), v1(cl(T.a)), df(cl(T.h), cl(T.a))], ['Decided opportunities', T.h[2], T.a[2], ''], ['Booked', T.h[3], T.a[3], '']] },
       { title: 'By brand', sheet: 'By brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'Human booking %', 'AI calls', 'AI avg QA %', 'AI booking %'],
         rows: L.map(function (o) { return [o.brand, o.h[0], v1(avg(o.h)), v1(cl(o.h)), o.a[0], v1(avg(o.a)), v1(cl(o.a))]; }) }];
   }
@@ -1187,12 +3844,40 @@ export function mountOpsisQA(ROOT, cfg) {
       row(LOCK ? 'Executive summary' : 'Executive summary', 'One page: the headline, booking rate, QA score, controllable misses and upset customers vs the period before, why opportunities didn’t book, the CSRs leading and lagging, and the one thing to coach' + (LOCK ? '' : ', plus every brand side by side') + '.', '', 'exec') +
       (brands.length ? row('Brand one-pager', 'The executive summary for one brand, plus its call flow step by step and what callers wanted.', brands.length > 1 ? '<select class="oq-field" data-rpteam aria-label="Brand" style="margin-top:8px;max-width:280px">' + brands.map(function (b) { return '<option' + (RP.team === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '', 'team') : '') +
       (agents.length ? row('CSR scorecard', 'One CSR’s roll-up: headline numbers, the call flow step by step and what to coach. Excel and CSV also list every call.', '<select class="oq-field" data-rpcsr aria-label="CSR" style="margin-top:8px;max-width:280px">' + agents.map(function (a) { var k = a.name + '|||' + a.brand; return '<option value="' + esc(k) + '"' + (RP.csr === k ? ' selected' : '') + '>' + esc(a.name) + (LOCK ? '' : ' — ' + esc(a.brand)) + '</option>'; }).join('') + '</select>', 'csr') : '') +
-      row('Human vs AI receptionists', 'Your CSRs next to the AI receptionists, by brand.', '', 'hai') +
+      row('Human vs AI CSRs', 'Your CSRs next to the AI CSRs, by brand.', '', 'hai') +
       '<div style="padding:14px 0;border-top:1px solid var(--line2)"><b>Weekly call-flow scorecard</b><div class="mut" style="font-size:12.5px;margin-top:2px">Every CSR on every call-flow step for one week, colour-coded, with the change vs the week before. Pick the Monday the week starts.</div>' +
       '<div class="row" style="gap:8px;margin-top:8px;align-items:center"><label class="sr" for="rpwk">Week starting</label><input id="rpwk" type="date" class="oq-field" style="max-width:170px" value="' + esc(RP.week || lastMon()) + '">' + (brands.length > 1 ? '<select class="oq-field" id="rpwkb" aria-label="Brand" style="max-width:240px"><option value="">Every brand</option>' + brands.map(function (b) { return '<option' + (RP.wkb === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '') + '<button class="sel" data-act="rpweek"' + (RP.busy ? ' disabled' : '') + '>Preview PDF</button></div></div>' +
       '<div class="mut" style="font-size:12.5px;padding-top:14px;border-top:1px solid var(--line2)">Need one call? Open it in Call reviews and choose <b>Print / save PDF</b>.</div></div></div>';
     var bc = null; // billing statement removed from the client portal (Becky, 2026-10-26)
-    w.innerHTML = '<div class="row" style="align-items:flex-start">' + exp + reps + '</div>' + (bc ? '<div class="row" style="margin-top:16px">' + bc + '</div>' : '');
+    w.innerHTML = '<div class="row" style="align-items:flex-start">' + exp + reps + '</div>' + (bc ? '<div class="row" style="margin-top:16px">' + bc + '</div>' : '') + '<div id="exaudit"></div>';
+    exAuditCard();
+  }
+  // Ask-panel downloads (2026-11-05): the AI returns { report, format, brand, agent, scope, start, end }; the file is built here
+  // with the Reporting page's own builders, for the date range at the top of the page (the AI is told to use that range).
+  function askDownload(dl) {
+    if (!dl || RP.busy) return;
+    if (dl.start !== S.start || dl.end !== S.end) { toast('The dates at the top changed. Ask again for a download of the new range.'); return; }
+    var bset = dl.report === 'brand' && dl.brand && !S.brands.length ? [dl.brand] : (S.brands.length ? S.brands : null);
+    var key = S.start + '|' + S.end + '|' + (bset || []).join(',');
+    toast('Preparing your download…');
+    var ready = RP.sc && RP.key === key ? Promise.resolve(RP.sc) : api({ action: 'scorecards', start: S.start, end: S.end, brands: bset }).then(function (r) { RP.sc = r || {}; RP.key = key; return RP.sc; });
+    ready.then(function (sc) {
+      var low = function (v) { return String(v || '').toLowerCase().trim(); };
+      var brands = (sc.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; });
+      var findBrand = function (b) { return brands.filter(function (x) { return low(x) === low(b); })[0] || brands.filter(function (x) { return low(b) && (low(x).indexOf(low(b)) >= 0 || low(b).indexOf(low(short(x))) >= 0); })[0]; };
+      if (dl.report === 'brand') {
+        var tb = findBrand(dl.brand); if (!tb) { toast('No scored calls for ' + (dl.brand || 'that brand') + ' in this date range'); return; }
+        RP.team = tb; rpDownload('team', dl.format); return;
+      }
+      if (dl.report === 'csr') {
+        var ag = (sc.agents || []).filter(function (a) { return low(a.name) === low(dl.agent) && (!dl.brand || !findBrand(dl.brand) || a.brand === findBrand(dl.brand)); });
+        if (!ag.length) ag = (sc.agents || []).filter(function (a) { return low(a.name).indexOf(low(dl.agent)) === 0; });
+        if (!ag.length) { toast('No scored calls for ' + dl.agent + ' in this date range'); return; }
+        RP.csr = ag[0].name + '|||' + ag[0].brand; rpDownload('csr', dl.format); return;
+      }
+      if (dl.report === 'calls') { RP.scope = dl.scope || 'notbooked'; RP.agent = dl.agent || ''; RP.allTypes = false; RP.trans = false; rpExport(); return; }
+      rpDownload(dl.report === 'human_vs_ai' ? 'hai' : 'exec', dl.format);
+    }).catch(function (e) { toast(e.message || 'Couldn’t build that download. Try again.'); });
   }
   function rpExport() {
     if (RP.busy) return; RP.busy = 'export'; RP.n = 0; drawReporting();
@@ -1309,12 +3994,12 @@ export function mountOpsisQA(ROOT, cfg) {
       var rep = r[0] || {}, f = r[1] || {}, X = r[2] || {}, M = (r[3] || {}).totals || {}, why = r[4], k = rep.kpis || {}, B = X.base || {};
       var an = askNb((X.asknb || {}).by_brand, brand), fc = ((X.fcr || {}).overall) || {}, so = ((X.sentiment || {}).overall) || {}, vn = (+M.booked || 0) - (+M.booked_unvalued || 0);
       var kp = function (l, v, i) { return '<div><span>' + l + '</span><b>' + v + '</b>' + (i ? '<i>' + i + '</i>' : '') + '</div>'; };
-      var tiles = '<div class="kp">' + kp('Inbound calls handled', fmt((rep.funnel || {}).conversations || 0), fmt((rep.funnel || {}).calls || 0) + ' calls in all') + kp('Avg QA score', k.avg != null ? k.avg.toFixed(1) : '—', 'call flow, 0–100') + kp('Booking rate', p1(k.booking_rate), fmt(k.booked || 0) + ' of ' + fmt(k.decided || 0) + ' customers') +
+      var tiles = '<div class="kp">' + kp('Inbound calls handled', fmt((rep.funnel || {}).conversations || 0), fmt((rep.funnel || {}).calls || 0) + ' calls in all') + kp('Avg QA score', k.avg != null ? k.avg.toFixed(1) + '%' : '—', 'call flow, as a percent') + kp('Booking rate', p1(k.booking_rate), fmt(k.booked || 0) + ' of ' + fmt(k.decided || 0) + ' customers') +
         kp('Ask rate · not booked', an ? an.pct.toFixed(0) + '%' : '—', an ? an.asked + ' of ' + an.nb + ' not booked' : '') + kp('First contact resolution', fc.contacts ? Math.round(100 * fc.fcr / fc.contacts) + '%' : '—', fc.contacts ? fmt(fc.contacts) + ' contacts' : '') + kp('Customer sentiment', so.n ? (+so.avg).toFixed(1) + ' / 5' : '—', so.n ? Math.round(100 * so.neg / so.n) + '% left upset' : '') + kp('Avg order value', vn > 0 && +M.booked_value ? '$' + Math.round(M.booked_value / vn).toLocaleString() : '—', vn > 0 ? vn + ' booked jobs' : '') + '</div>';
       var ag = agentRows(rep, null, 1).filter(function (a) { return a.brand === brand || !a.brand; }).sort(function (a, b) { return b.calls - a.calls; });
       var foc = {}; (rep.agents || []).forEach(function (a) { foc[a.name] = a.focus || a.top_miss || ''; });
       var csrT = '<h2>Roll-up by CSR</h2><table><thead><tr><th>CSR</th><th>Inbound calls</th><th>Avg QA</th><th>Booking rate</th><th>Ask rate · not booked</th><th>Transferred out</th></tr></thead><tbody>' +
-        ag.map(function (a) { var x = askNb((X.asknb || {}).by_agent, brand, a.name); return '<tr><td><b>' + esc(a.name) + '</b></td><td>' + fmt(a.calls) + '</td><td>' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + (a.rate != null ? Math.round(a.rate) + '%' : '—') + '</td><td>' + (x ? Math.round(x.pct) + '% <span style="color:#8A918D">(' + x.nb + ')</span>' : '—') + '</td><td>' + (a.calls ? Math.round(100 * a.xo / a.calls) + '%' : '—') + '</td></tr>'; }).join('') + '</tbody></table>';
+        ag.map(function (a) { var x = askNb((X.asknb || {}).by_agent, brand, a.name); return '<tr><td><b>' + esc(a.name) + '</b></td><td>' + fmt(a.calls) + '</td><td>' + (a.avg != null ? a.avg.toFixed(1) + '%' : '—') + '</td><td>' + (a.rate != null ? Math.round(a.rate) + '%' : '—') + '</td><td>' + (x ? Math.round(x.pct) + '% <span style="color:#8A918D">(' + x.nb + ')</span>' : '—') + '</td><td>' + (a.calls ? Math.round(100 * a.xo / a.calls) + '%' : '—') + '</td></tr>'; }).join('') + '</tbody></table>';
       var stepT = '<h2>Call flow, step by step</h2><table><thead><tr><th>Step</th><th>Done</th><th>vs before</th><th>Missed on</th></tr></thead><tbody>' + (f.steps || []).map(function (st) { var d = st.prev_rate == null ? null : st.rate - st.prev_rate; return '<tr><td>' + esc(String(st.label || st.key).split(':')[0]) + '</td><td><b>' + (st.rate != null ? st.rate + '%' : '—') + '</b></td><td class="' + (d == null ? '' : d >= 0 ? 'up' : 'dn') + '">' + (d == null ? 'new' : (d >= 0 ? '▲' : '▼') + Math.abs(d) + ' pts') + '</td><td>' + fmt(st.missed || 0) + ' calls</td></tr>'; }).join('') + '</tbody></table>';
       var cats = (X.categories || []).filter(function (c) { return c.k !== 'Internal / staff call' && c.k !== 'No conversation'; }), ct = cats.reduce(function (t, c) { return t + c.n; }, 0);
       var catT = '<h2>What callers wanted</h2><table><tbody>' + cats.slice(0, 8).map(function (c) { return '<tr><td>' + esc(c.k) + '</td><td style="text-align:right"><b>' + pctTxt(c.n, ct) + '</b> <span style="color:#8A918D">' + fmt(c.n) + '</span></td></tr>'; }).join('') + '</tbody></table>';
@@ -1395,7 +4080,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function rpDownload(id, fmt) {
     var sc = RP.sc; if (!sc || RP.busy) return;
-    var title = id === 'exec' ? (LOCK ? LOCK + ' — Brand scorecard' : 'Executive scorecard') : id === 'team' ? RP.team + ' — Brand one-pager' : id === 'csr' ? RP.csr.split('|||')[0] + ' — CSR scorecard' : 'Human vs AI receptionists';
+    var title = id === 'exec' ? (LOCK ? LOCK + ' — Brand scorecard' : 'Executive scorecard') : id === 'team' ? RP.team + ' — Brand one-pager' : id === 'csr' ? RP.csr.split('|||')[0] + ' — CSR scorecard' : 'Human vs AI CSRs';
     var file = 'opsis-qa-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + S.start + '-to-' + S.end, sub = rpFilterText();
     var w = fmt === 'pdf' ? pdfWin() : null; if (fmt === 'pdf' && !w) return;
     var go = function (sheets) { if (fmt === 'pdf') sheetsPdf(w, title, sub, sheets); else if (fmt === 'csv') sheetsCsv(file, sheets); else return sheetsXlsx(file, sheets); };
@@ -1462,7 +4147,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (d.by_job || []).map(function (j) { return '<tr class="click" tabindex="0" data-ffk="jobtype" data-ffv="' + esc(j.job_type) + '" title="Hear these calls"><td><b style="font-weight:600">' + esc(j.job_type) + '</b></td><td class="num">' + n0(j.residential) + '</td><td class="num">' + n0(j.commercial) + '</td><td class="num">' + pc(j.rate) + '</td><td class="num">' + n0(j.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (j.ctrl_n && !+j.ctrl_value ? '<span class="mut">needs value</span>' : usd(j.ctrl_value)) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
     var top = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Biggest Controllable Misses</h2><p class="sub">Click a call to listen and see what the CSR could have done.</p>' +
       ((d.top || []).length ? (d.top || []).map(function (c) {
-        return '<button class="click" data-call="' + c.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + fdate(c.date) + '</span><span class="mut" style="display:block;font-size:12px">' + esc(c.job_type) + (c.segment === 'Commercial' ? ' · Commercial' : '') + ' · ' + esc(c.why) + '</span></span><span class="num" style="font-weight:600;color:#A8441A">' + (c.value != null ? usd(c.value) : '') + '</span><span class="pill num" style="' + chipScore(c.score) + ';font-size:12.5px">' + (c.score == null ? '—' : c.score) + '</span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No controllable misses in this range.</div>') + '</div>';
+        return '<button class="click" data-call="' + c.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + fdate(c.date) + '</span><span class="mut" style="display:block;font-size:12px">' + esc(c.job_type) + (c.segment === 'Commercial' ? ' · Commercial' : '') + ' · ' + esc(c.why) + '</span></span><span class="num" style="font-weight:600;color:#A8441A">' + (c.value != null ? usd(c.value) : '') + '</span><span class="pill num" style="' + chipScore(c.score) + ';font-size:12.5px">' + (c.score == null ? '—' : c.score + '%') + '</span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No controllable misses in this range.</div>') + '</div>';
     // why calls were excused
     var B = ex.buckets || [], bmax = Math.max.apply(null, B.map(function (b) { return +b.n || 0; }).concat([1]));
     var exc = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Calls that weren’t revenue opportunities</h2><p class="sub">' + n0(ex.excused) + ' of ' + n0(ex.total) + ' calls (' + (ex.total ? Math.round(100 * ex.excused / ex.total) : 0) + '%). Click a row for example calls.</p>' +
@@ -1488,7 +4173,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var medal = function (i) { var c = ['#C9A227', '#9AA3A8', '#B0703A'][i]; return i < 3 ? '<span style="display:inline-flex;width:22px;height:22px;border-radius:99px;background:' + c + ';color:#fff;font-size:11.5px;font-weight:700;align-items:center;justify-content:center">' + (i + 1) + '</span>' : '<span class="mut num" style="display:inline-block;width:22px;text-align:center">' + (i + 1) + '</span>'; };
     return '<div class="oq-card" style="flex:1 1 100%"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">Revenue Leaderboard</h2><p class="sub">' + (csr ? 'CSRs with 10+ revenue opportunities' : 'Every brand') + ', ranked by booked revenue in this date range. Booked revenue uses each brand’s average ticket for the job type (see Average Ticket by Brand below). Click a header to sort.</p></div>' +
       (LOCK ? '' : '<div class="seg"><button data-mnlb="brands" class="' + (!csr ? 'on' : '') + '">Brands</button><button data-mnlb="csrs" class="' + (csr ? 'on' : '') + '">CSRs</button></div>') + '</div>' +
-      (shown.length ? '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th style="width:34px">#</th>' + th('name', csr ? 'CSR' : 'Brand') + th('bv', 'Booked revenue', 1) + th('booked', 'Bookings', 1) + th('rate', 'Booking rate', 1) + th('aov', 'Avg ticket', 1) + th('ctrl', 'Controllable misses $', 1) + '</tr></thead><tbody>' +
+      (shown.length ? '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl lbtbl" style="margin-top:10px;font-size:13px"><thead><tr><th style="width:34px">#</th>' + th('name', csr ? 'CSR' : 'Brand') + th('bv', 'Booked revenue', 1) + th('booked', 'Bookings', 1) + th('rate', 'Booking rate', 1) + th('aov', 'Avg ticket', 1) + th('ctrl', 'Controllable misses $', 1) + '</tr></thead><tbody>' +
         shown.map(function (r) { var i = rank.indexOf(r.name); return '<tr' + (csr ? ' class="click" tabindex="0" data-agent="' + esc(r.name) + '"' : ' class="click" tabindex="0" data-brand="' + esc(r.brand) + '"') + '><td>' + medal(i) + '</td><td><span style="display:inline-flex;gap:8px;align-items:center">' + bbadge(r.brand) + '<b style="font-weight:600">' + esc(csr ? r.name : short(r.name)) + '</b>' + (csr && !LOCK ? ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>' : '') + '</span></td>' +
           '<td class="num" style="text-align:right;font-weight:600;color:#1F5A41">' + usd(r.bv) + '</td><td class="num" style="text-align:right">' + n0(r.bk) + '</td><td class="num" style="text-align:right">' + (r.rate == null ? '—' : r.rate.toFixed(1) + '%') + '</td><td class="num" style="text-align:right">' + (r.aov == null ? '—' : usd(r.aov)) + '</td><td class="num" style="text-align:right;color:#A8441A">' + (r.cv ? usd(r.cv) + ' <span class="mut" style="font-size:11.5px">(' + n0(r.cn) + ')</span>' : '—') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
         (csr && rows.length > 15 ? '<button class="more" data-mnlb="more">' + (LB.all ? 'Show top 15' : 'Show all ' + rows.length) + '</button>' : '')
@@ -1638,9 +4323,17 @@ export function mountOpsisQA(ROOT, cfg) {
   function sayFill(t) { return String(t || '').replace(/\{day1\}/g, 'Thursday at 9').replace(/\{day2\}/g, 'Friday at 1').replace(/\{day\}/g, 'Thursday').replace(/\{window\}/g, '8 and 12').replace(/\{problem\}/g, 'won’t open').replace(/\{when\}/g, 'this morning'); }
   function greet() { var h = +new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
   function tile(label, val, sub) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:10px 12px;min-width:0"><div class="cap">' + label + '</div><div class="num" style="font-weight:700;font-size:19px;margin-top:2px">' + val + '</div><div class="mut" style="font-size:11.5px">' + (sub || '&nbsp;') + '</div></div>'; }
+  // Multi-part calls (Becky 11/23): play the linked follow-up parts one after another.
+  function hubNextPart(rid) { var a = HUB.audio[rid]; if (!a || !(a.parts || []).length || (a.pi || 0) >= a.parts.length) return; a.pi = (a.pi || 0) + 1; a.at = 0;
+    document.querySelectorAll('[data-hubslot="' + rid + '"]').forEach(function (s) { s.innerHTML = playBtn(rid, '#14302A'); }); }
+  var hubEnded = function (e) { var el = e.target; if (el && el.getAttribute && el.getAttribute('data-hubchain')) hubNextPart(el.getAttribute('data-hubchain')); };
+  document.addEventListener('ended', hubEnded, true); LISTENERS.push([document, 'ended', hubEnded, true]);
   function playBtn(rid, color, label) {
     var a = HUB.audio[rid];
-    if (a && a.url) return '<audio controls autoplay src="' + esc(a.url + (a.at ? '#t=' + Math.max(0, a.at - 2) : '')) + '" style="width:min(460px,72vw);height:48px"></audio>';
+    if (a && a.url) { var np = (a.parts || []).length, pi = a.pi || 0, cur = pi ? a.parts[pi - 1].url : a.url;
+      var mmss = function (x) { x = Math.round(+x || 0); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); };
+      var chips = np ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="cap" style="font-size:10.5px">Whole call · ' + (np + 1) + ' parts</span>' + [{ l: 'First call' }].concat(a.parts.map(function (p, k) { return { l: (k === 0 ? 'Callback' : 'Callback ' + (k + 1)) + (p.secs ? ' · ' + mmss(p.secs) : '') }; })).map(function (c, k) { var on = k === pi; return '<button data-hubpart="' + rid + '|' + k + '" style="all:unset;cursor:pointer;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid ' + (on ? '#14302A' : 'var(--line2)') + ';background:' + (on ? '#14302A' : 'transparent') + ';color:' + (on ? '#fff' : 'inherit') + '">' + (on ? '▶ ' : '') + esc(c.l) + '</button>'; }).join('') + '</div><div class="mut" style="font-size:11.5px">The customer was cut off or put on hold and the CSR picked back up. The parts play one after another.</div>' : '';
+      return '<div style="display:flex;flex-direction:column;gap:6px">' + chips + '<audio controls autoplay data-hubchain="' + rid + '" src="' + esc(cur + (!pi && a.at ? '#t=' + Math.max(0, a.at - 2) : '')) + '" style="width:min(460px,72vw);height:48px"></audio></div>'; }
     return '<button class="hubplay" data-hubplay="' + rid + '" aria-label="' + esc(label || 'Play call') + '" style="width:44px;height:44px;border-radius:999px;border:0;background:' + color + ';display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">' + (a && a.busy ? '<span class="dots"><span></span><span></span><span></span></span>' : PLAY) + '</button>';
   }
 
@@ -1657,21 +4350,34 @@ export function mountOpsisQA(ROOT, cfg) {
     var paint = function () {
       var el = $('hubr'); if (!el || tok !== T) return; var R = HUB.roster;
       var ALLN = R.rows.length; R = Object.assign({}, R, { rows: S.brands.length ? R.rows.filter(function (r) { return S.brands.indexOf(r.brand) >= 0; }) : R.rows });
+      // Location filter (Becky 11/18, PORT-05): same picker as the dashboard (S.locs) — GMs start on their own location and can
+      // switch to another location or all locations. Location comes from the CSR roster (brand + name).
+      if (!S.locs) S.locs = CFG.portalRole === 'gm' && CFG.portalLocation ? [CFG.portalLocation] : [];
+      var LM = HUB.locs, locOf = function (r) { return LM ? LM.map[r.brand + '|' + String(r.name).toLowerCase().trim()] || null : null; };
+      var BRN = R.rows.length, locList = [];
+      if (LM) { R.rows.forEach(function (r) { var l = locOf(r); if (l && locList.indexOf(l) < 0) locList.push(l); }); locList.sort(); }
+      if (LM && S.locs.length) R = Object.assign({}, R, { rows: R.rows.filter(function (r) { var l = locOf(r); return l && S.locs.map(function (x) { return x.toLowerCase(); }).indexOf(l.toLowerCase()) >= 0; }) });
+      var cur0 = S.locs[0] || '';
+      var locBar = locList.length > 1 || (cur0 && locList.length) ? '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 4px"><label class="cap" for="hubloc" style="font-size:11px;letter-spacing:.14em">Location</label><select id="hubloc" class="sel" style="min-width:180px"><option value="">All locations</option>' + locList.map(function (l) { return '<option value="' + esc(l) + '"' + (l.toLowerCase() === cur0.toLowerCase() ? ' selected' : '') + '>' + esc(l) + (LM.mine && LM.mine.toLowerCase() === l.toLowerCase() ? ' (yours)' : '') + '</option>'; }).join('') + '</select></div>' : '';
+      if (!R.rows.length && BRN) { el.innerHTML = locBar + '<div class="oq-card"><b>No CSRs at this location</b><p class="sub">Pick another location above, or choose All locations.</p></div>'; bindLoc(); return; }
       if (!R.rows.length && ALLN) { el.innerHTML = '<div class="oq-card"><b>No CSRs for the brands picked above</b><p class="sub">Pick other brands at the top, or <button class="more" data-act="huballbrands">show all brands</button>.</p></div>'; return; }
       if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">Add the people who answer your phones.</p>' + (LOCK ? '<button class="sel btnd" data-hubpeople="' + esc(LOCK) + '">Add CSRs</button>' : '') + '</div>'; return; }
       var brands = {}; R.rows.forEach(function (r) { (brands[r.brand_short] = brands[r.brand_short] || []).push(r); });
       var dl = function (v, l) { if (v == null || l == null) return ''; var x = v - l; return x === 0 ? '<span class="mut">even</span>' : '<span style="color:' + (x > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + (x > 0 ? '▲ ' : '▼ ') + Math.abs(x) + '</span>'; };
-      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs' + (R.rows.length < ALLN ? ' of ' + ALLN + ' (filtered by brand)' : '') + ' · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
+      el.innerHTML = locBar + '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs' + (R.rows.length < ALLN ? ' of ' + ALLN + (R.rows.length < BRN ? ' (filtered by location)' : ' (filtered by brand)') : '') + ' · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
         Object.keys(brands).sort().map(function (b) {
           return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="cap">' + esc(b) + ' · ' + brands[b].length + '</span>' + (LOCK ? '' : '<button class="more" data-hubpeople="' + esc(brands[b][0].brand) + '">Edit list</button>') + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
             return '<button class="oq-card click" data-hubcsr="' + r.id + '" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:16px;font:inherit;color:inherit">' +
               '<span style="display:flex;align-items:center;gap:10px;width:100%"><span class="av">' + esc(r.name.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span><span style="flex:1;min-width:0"><b style="font-weight:600;display:block">' + esc(r.name) + '</b><span class="mut" style="font-size:12px">' + r.n + ' scored calls this week</span></span>' +
               (r.requests ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + r.requests + ' to review</span>' : '') + '</span>' +
-              '<span style="display:flex;gap:16px;align-items:baseline;width:100%"><span><span class="num" style="font-size:22px;font-weight:700">' + (r.score == null ? '—' : r.score) + '</span> <span class="mut" style="font-size:12px">score</span></span><span style="font-size:12px">' + dl(r.score, r.last) + '</span><span class="mut" style="font-size:12px;margin-left:auto">' + (r.opps ? r.booked + '/' + r.opps + ' booked' : '') + '</span></span>' +
+              '<span style="display:flex;gap:16px;align-items:baseline;width:100%"><span><span class="num" style="font-size:22px;font-weight:700">' + (r.score == null ? '—' : r.score + '%') + '</span> <span class="mut" style="font-size:12px">score</span></span><span style="font-size:12px">' + dl(r.score, r.last) + '</span><span class="mut" style="font-size:12px;margin-left:auto">' + (r.opps ? r.booked + '/' + r.opps + ' booked' : '') + '</span></span>' +
               '<span class="mut" style="font-size:12px;line-height:1.4;width:100%">' + (r.focus ? '<b style="color:var(--ink);font-weight:600">Focus:</b> ' + esc(r.focus) : 'Focus set when you open them') + (r.kudos ? ' · ♥ ' + r.kudos : '') + '</span></button>';
           }).join('') + '</div></div>';
         }).join('');
+      bindLoc();
     };
+    var bindLoc = function () { var x = $('hubloc'); if (x) x.addEventListener('change', function () { S.locs = this.value ? [this.value] : []; paint(); }); };
+    if (!HUB.locs && CFG.csrLocations) CFG.csrLocations().then(function (d) { var m = {}; (d.rows || []).forEach(function (r) { m[r.brand + '|' + String(r.name).toLowerCase().trim()] = r.location; }); HUB.locs = { map: m, mine: d.my_location || null }; if (HUB.roster) paint(); }).catch(function () {});
     if (HUB.roster) { setTimeout(paint, 0); }
     api({ action: 'hubroster', week: HUB.week || null }).then(function (r) { HUB.roster = r; paint(); }).catch(function (e) { var el = $('hubr'); if (el && !HUB.roster) el.innerHTML = errBox(e); });
   }
@@ -1705,13 +4411,15 @@ export function mountOpsisQA(ROOT, cfg) {
     var delta = sc.delta == null ? '' : sc.delta === 0 ? '<span class="mut" style="font-size:13px">Same as last week</span>' : '<span style="color:' + (sc.delta > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600;font-size:13px">' + (sc.delta > 0 ? '▲ ' : '▼ ') + Math.abs(sc.delta) + ' vs last week</span>';
     var col = sc.now == null ? '#EEEBE4' : sc.now >= 80 ? '#2F7D5B' : sc.now >= 60 ? '#E8A06A' : '#E0662A';
     var week = '<section class="oq-card" aria-label="This week" style="display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="cap">This week</span>' + (d.streak && d.streak.now ? '<span class="pill" style="background:#FFF4E8;color:#8A3D0C">' + FLAME + ' ' + d.streak.now + '-day streak</span>' : '') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:16px"><div style="position:relative;width:100px;height:100px;flex-shrink:0"><svg width="100" height="100" viewBox="0 0 120 120" role="img" aria-label="Score ' + (sc.now == null ? 'not yet' : sc.now) + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc.now || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:27px;font-weight:700">' + (sc.now == null ? '—' : sc.now) + '</span><span class="mut" style="font-size:10.5px">call score</span></div></div>' +
+      '<div style="display:flex;align-items:center;gap:16px"><div style="position:relative;width:100px;height:100px;flex-shrink:0"><svg width="100" height="100" viewBox="0 0 120 120" role="img" aria-label="Score ' + (sc.now == null ? 'not yet' : sc.now) + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc.now || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:27px;font-weight:700">' + (sc.now == null ? '—' : sc.now + '%') + '</span><span class="mut" style="font-size:10.5px">call score</span></div></div>' +
       '<div style="display:flex;flex-direction:column;gap:6px">' + delta + '<span class="mut" style="font-size:12.5px">' + sc.n + ' scored call' + (sc.n === 1 ? '' : 's') + '</span></div></div>' +
       '<div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">' + tile('Personal best', sc.best_week == null ? '—' : sc.best_week, 'best week') + tile('Booked', sc.opps ? sc.booked + ' of ' + sc.opps : '—', 'booking chances') + '</div>' +
       (sc.best_week != null && sc.now != null ? '<button class="more" data-hubtab="wins">' + (sc.now >= sc.best_week ? 'New personal best pace!' : (sc.best_week - sc.now) + ' points from your personal best') + ' →</button>' : '') + '</section>';
     h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">' + focus + week + '</div>';
     // coaching calls
     var good = (d.picks || []).filter(function (p) { return p.kind === 'good'; }), grow = (d.picks || []).filter(function (p) { return p.kind === 'grow'; });
+    // Rob 11/23 (item 16): keep the CSR's own view short — two strengths and one call to learn from.
+    good = good.slice(0, 2); grow = grow.slice(0, 1);
     var pickRow = function (p, i) {
       var g = p.kind === 'good';
       return '<div class="hubpick" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;background:' + (g ? '#F3F8F5' : '#FFF8F1') + ';border:1px solid ' + (g ? '#D5E6DC' : '#F6DCC4') + ';border-radius:14px;padding:14px"' + (g && i === 0 ? ' id="hubgood0"' : '') + '>' +
@@ -1741,14 +4449,14 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="display:flex;flex-wrap:wrap;gap:8px">' + ['Why did my last low call score that way?', 'Customer wants a price over the phone', 'How do we handle warranty calls?'].map(function (q, i) { return '<button class="chip" data-hubtab="ask" data-hubmode="' + (i ? 'brand' : 'score') + '" data-hubq="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div></section>' +
       '<section class="oq-card" aria-label="Call of the week" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:center;gap:10px">' + badgeSvg('cotw', true, 34) + '<h2 class="ttl" style="font-size:16px">' + esc(d.csr.brand_short) + ' call of the week</h2></div>' +
       (c ? '<div style="display:flex;gap:12px;align-items:center"><div data-hubslot="' + c.review_id + '">' + playBtn(c.review_id, '#14302A', 'Play call of the week') + '</div><div><b style="font-weight:600">' + esc(c.agent) + '</b><div class="mut" style="font-size:12px">' + fwhen(c.date) + ' · ' + fsecs(c.secs) + ' · ' + esc(c.title) + '</div></div></div>' +
-        (c.why ? '<p style="margin:0;font-size:13px;line-height:1.55;color:#3B4541">' + esc(c.why) + '</p>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (c.score != null ? '<span class="pill" style="background:#FFF4DB;color:#7A5410">Score ' + c.score + '</span>' : '') + (c.saved ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">Booked after push-back</span>' : '') + (c.by ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">Picked by ' + esc(c.by) + '</span>' : '') + '</div>'
+        (c.why ? '<p style="margin:0;font-size:13px;line-height:1.55;color:#3B4541">' + esc(c.why) + '</p>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (c.score != null ? '<span class="pill" style="background:#FFF4DB;color:#7A5410">Score ' + c.score + '%</span>' : '') + (c.saved ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">Booked after push-back</span>' : '') + (c.by ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">Picked by ' + esc(c.by) + '</span>' : '') + '</div>'
         : '<p class="mut" style="font-size:13px;margin:0">The call of the week is picked from last week’s best booked calls. Check back Monday.</p>') + '</section>' +
       '<section class="oq-card" aria-label="Kudos" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2551F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><h2 class="ttl" style="font-size:16px">' + (SELF ? 'Kudos for you' : 'Kudos') + '</h2>' + ((d.kudos || []).filter(function (k) { return k.isNew; }).length ? '<span class="pill" style="margin-left:auto;background:#FCEBDD;color:#8A3D0C">' + d.kudos.filter(function (k) { return k.isNew; }).length + ' new</span>' : '') + '</div>' +
       ((d.kudos || []).length ? d.kudos.slice(0, 3).map(function (k) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:12px 14px">' + (k.tag ? '<span class="pill" style="background:#FCEBDD;color:#8A3D0C;margin-bottom:6px">' + esc(k.tag) + '</span>' : '') + (k.body ? '<div style="font-size:13.5px;line-height:1.5">“' + esc(k.body) + '”</div>' : '') + '<div class="mut" style="font-size:12px;margin-top:6px">' + esc(k.from || '') + ' · ' + fwhen(k.at) + '</div></div>'; }).join('')
         : '<p class="mut" style="font-size:13px;margin:0">' + (SELF ? 'When your manager spots a great call, their kudos show up here.' : 'No kudos yet. ') + '</p>' + (mg ? '<button class="sel" data-hubact="kudos" style="align-self:flex-start">♥ Send ' + esc(first) + ' kudos</button>' : '')) + '</section></div>';
     if (mg && (d.questions || []).length) h += '<section class="oq-card" aria-label="Questions" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2 class="ttl" style="font-size:16px">What ' + esc(first) + ' asked the coach</h2><button class="more" data-hubqcsr="' + d.csr.id + '">See all →</button></div>' +
       d.questions.map(function (q) { return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line2)"><span class="pill" style="background:' + (q.mode === 'brand' ? '#EEF2FB;color:#2B3A67' : '#F3F1EC;color:#3B4541') + ';flex-shrink:0">' + esc(q.topic && q.topic !== 'Other' ? q.topic : 'How-to & process') + '</span><span style="flex:1;font-size:13.5px;line-height:1.45">' + esc(q.question) + (q.by_manager ? ' <span class="mut" style="font-size:12px">(asked by a manager)</span>' : '') + '</span><span class="mut" style="font-size:12px;white-space:nowrap">' + fwhen(q.at) + '</span></div>'; }).join('') + '</section>';
-    if (!SELF && (d.calls || []).length) h += '<section class="oq-card" aria-label="Calls this week"><h2 class="ttl" style="font-size:16px">' + (d.past ? 'Calls that week' : 'Calls this week') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + d.calls.length + ' scored</span></h2>' + d.calls.slice(0, 25).map(function (c) { return '<button class="click" data-call="' + esc(c.id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:13px"><span class="mut num" style="width:58px">' + fdate(c.d) + '</span><span class="num" style="width:34px;font-weight:600">' + (c.score == null ? '—' : c.score) + '</span><span style="flex:1">' + esc(c.outcome || '') + '</span>' + (c.opp ? '<span class="pill" style="' + (c.ab ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FCEBDD;color:#A8441A') + '">' + (c.ab ? 'Asked to book' : 'Didn’t ask') + '</span>' : '') + '</button>'; }).join('') + (d.calls.length > 25 ? '<p class="mut" style="font-size:12px;margin-top:8px">Showing the latest 25 of ' + d.calls.length + '.</p>' : '') + '</section>';
+    if (!SELF && (d.calls || []).length) h += '<section class="oq-card" aria-label="Calls this week"><h2 class="ttl" style="font-size:16px">' + (d.past ? 'Calls that week' : 'Calls this week') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + d.calls.length + ' scored</span></h2>' + d.calls.slice(0, 25).map(function (c) { return '<button class="click" data-call="' + esc(c.id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:13px"><span class="mut num" style="width:58px">' + fdate(c.d) + '</span><span class="num" style="width:40px;font-weight:600">' + (c.score == null ? '—' : c.score + '%') + '</span><span style="flex:1">' + esc(c.outcome || '') + '</span>' + (c.opp ? '<span class="pill" style="' + (c.ab ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FCEBDD;color:#A8441A') + '">' + (c.ab ? 'Asked to book' : 'Didn’t ask') + '</span>' : '') + '</button>'; }).join('') + (d.calls.length > 25 ? '<p class="mut" style="font-size:12px;margin-top:8px">Showing the latest 25 of ' + d.calls.length + '.</p>' : '') + '</section>';
     el.innerHTML = h;
   }
   function improvedCard(list, brand) {
@@ -1786,7 +4494,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ----- What CSRs are asking (managers) -----
-  var HQ = { days: 30, brand: LOCK || '', topic: null, csr: null, data: null, themes: {}, key: '' };
+  var HQ = { days: 7, brand: LOCK || '', topic: null, csr: null, data: null, themes: {}, key: '' };
   var TOPIC_COL = { 'Pricing & fees': ['#FFF1E6', '#8A3D0C'], 'Card & payment': ['#E8F3EC', '#1F5A41'], 'Warranty': ['#EEF2FB', '#2B3A67'], 'Scheduling': ['#F1ECFB', '#52308F'], 'Objections': ['#FDECEC', '#A61B1B'], 'Commercial': ['#EAF4F6', '#1E5F6B'], 'Products & repairs': ['#F6F1E3', '#6B5410'], 'My score': ['#F3F1EC', '#3B4541'], 'How-to & process': ['#F3F1EC', '#56605B'], 'Other': ['#F3F1EC', '#56605B'] };
   function tpill(t) { var c = TOPIC_COL[t] || TOPIC_COL.Other; return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(t) + '</span>'; }
   function vHubQs(tok) {
@@ -1910,7 +4618,7 @@ export function mountOpsisQA(ROOT, cfg) {
     hubModal(d.csr.brand_short + ' call of the week', '<p class="sub" style="margin:0">The best booked calls from last week. Nominated calls are listed first.</p><div id="hubco">' + skel(60, 3) + '</div>', 'Make it call of the week');
     api({ action: 'hubcotw', op: 'options', brand: d.csr.brand }).then(function (r) {
       var el = $('hubco'); if (!el) return; var o = r.options || [];
-      el.innerHTML = o.length ? o.map(function (x, i) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer;margin-bottom:8px"><input type="radio" name="hubcw" value="' + x.review_id + '"' + (i ? '' : ' checked') + ' style="margin-top:3px;width:18px;height:18px"><span style="min-width:0"><b style="font-weight:600">' + esc(x.agent) + '</b> <span class="mut" style="font-size:12px">· ' + esc(x.title) + ' · ' + fsecs(x.secs) + ' · score ' + x.score + (x.nominated ? ' · ♥ nominated' : '') + '</span><span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541">' + esc(x.why || '') + '</span></span></label>'; }).join('') : '<p class="mut">No booked calls from last week qualify yet.</p>';
+      el.innerHTML = o.length ? o.map(function (x, i) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer;margin-bottom:8px"><input type="radio" name="hubcw" value="' + x.review_id + '"' + (i ? '' : ' checked') + ' style="margin-top:3px;width:18px;height:18px"><span style="min-width:0"><b style="font-weight:600">' + esc(x.agent) + '</b> <span class="mut" style="font-size:12px">· ' + esc(x.title) + ' · ' + fsecs(x.secs) + ' · score ' + x.score + '%' + (x.nominated ? ' · ♥ nominated' : '') + '</span><span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541">' + esc(x.why || '') + '</span></span></label>'; }).join('') : '<p class="mut">No booked calls from last week qualify yet.</p>';
     }).catch(function (e) { var el = $('hubco'); if (el) el.innerHTML = errBox(e); });
   }
   function reqModal(kind) {
@@ -2019,11 +4727,12 @@ export function mountOpsisQA(ROOT, cfg) {
       HUB.pendingAt = HUB.pendingAt || {}; HUB.pendingAt[rid0] = at0;
       var pb0 = document.querySelector('[data-hubslot="' + rid0 + '"] [data-hubplay]'); if (pb0) pb0.click(); return;
     }
+    if ((x = t.closest('[data-hubpart]'))) { var hp = x.getAttribute('data-hubpart').split('|'), ha = HUB.audio[hp[0]]; if (ha) { ha.pi = +hp[1]; ha.at = 0; document.querySelectorAll('[data-hubslot="' + hp[0] + '"]').forEach(function (sl) { sl.innerHTML = playBtn(hp[0], '#14302A'); }); } return; }
     if ((x = t.closest('[data-hubplay]'))) {
       var rid = x.getAttribute('data-hubplay'); if (HUB.audio[rid] && HUB.audio[rid].busy) return;
       HUB.audio[rid] = { busy: true }; var slot = function () { document.querySelectorAll('[data-hubslot="' + rid + '"]').forEach(function (s) { s.innerHTML = playBtn(rid, s.querySelector('[data-hubplay]') ? s.querySelector('[data-hubplay]').style.background : '#14302A'); }); };
       slot();
-      api({ action: 'hubaudio', id: rid }).then(function (r) { if (!r || !r.url) { delete HUB.audio[rid]; slot(); toast('No recording is available for this call.'); return; } HUB.audio[rid] = { url: r.url, at: (HUB.pendingAt || {})[rid] || 0 }; if (HUB.pendingAt) delete HUB.pendingAt[rid]; slot(); })
+      api({ action: 'hubparts', id: rid }).catch(function () { return api({ action: 'hubaudio', id: rid }); }).then(function (r) { if (!r || !r.url) { delete HUB.audio[rid]; slot(); toast('No recording is available for this call.'); return; } HUB.audio[rid] = { url: r.url, parts: r.parts || [], pi: 0, at: (HUB.pendingAt || {})[rid] || 0 }; if (HUB.pendingAt) delete HUB.pendingAt[rid]; slot(); })
         .catch(function (e2) { delete HUB.audio[rid]; slot(); toast((e2 && e2.message) || 'Couldn’t load the recording.'); }); return;
     }
     if ((x = t.closest('[data-hubswap]'))) { x.disabled = true; x.textContent = 'Swapping…'; api(Object.assign({ action: 'hubswap', pick: x.getAttribute('data-hubswap') }, hubBody())).then(function () { toast('Swapped in another call'); render(); }).catch(function (e3) { x.disabled = false; x.textContent = 'Swap'; toast(e3.message || 'Couldn’t swap that call.'); }); return; }
@@ -2052,7 +4761,9 @@ export function mountOpsisQA(ROOT, cfg) {
       var rate = phonePct(k.abandoned, k.calls), prate = phonePct(pv.abandoned, pv.calls);
       var note = (cov.first && S.start < cov.first) ? '<div class="banner" style="margin:0 0 12px;background:#F3F1EC;border-color:#E2DDD2;color:#3B4541">Phone data from LightSpeed starts <b>' + fdate(cov.first) + '</b>, so this range only covers ' + fdate(cov.first) + ' onward' + (cov.last ? ' (latest ' + fdate(cov.last) + ')' : '') + '.</div>' : '';
       var card = function (label, val, sub, d) { return '<div class="oq-card" style="flex:1 1 190px;padding:16px 18px 14px"><span class="cap">' + label + '</span><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (d || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>'; };
-      $('phtop').innerHTML = note + '<div class="row">' +
+      var cvA = cov.first && cov.first > S.start ? cov.first : S.start, cvB = k.data_last && String(k.data_last).slice(0, 10) < S.end ? String(k.data_last).slice(0, 10) : S.end;
+      var cvLine = (k.calls ? '<p style="font-size:12.5px;margin:0 0 10px;color:#3B4541">These numbers cover <b>' + esc(fdate(cvA)) + ' – ' + esc(fdate(cvB)) + '</b>' + (cvA !== S.start || cvB !== S.end ? ' (you picked ' + esc(fdate(S.start)) + ' – ' + esc(fdate(S.end)) + ')' : '') + '.</p>' : '');
+      $('phtop').innerHTML = note + cvLine + '<div class="row">' +
         card('Inbound CSR calls', fmt(k.calls || 0), (k.wd_days ? fmt(Math.round(k.wd_calls / k.wd_days)) + ' per weekday on average' : 'No weekday data in range'), '') +
         card('Abandoned calls', rate != null ? rate.toFixed(1) + '%' : '—', fmt(k.abandoned || 0) + ' callers hung up in the CSR queue before anyone answered' + (k.wd_days ? ' · ' + (k.wd_ab / k.wd_days).toFixed(1) + ' per weekday on average' : ''), delta(rate, prate, ' pts', false)) +
         card('Avg time to answer', k.tta != null ? k.tta + 's' : '—', 'From the call reaching the CSR queue to pickup', delta(k.tta, pv.tta, 's', false)) +
@@ -2184,7 +4895,7 @@ export function mountOpsisQA(ROOT, cfg) {
         '<div class="oq-card" style="padding:6px 16px">' + (r.rows || []).map(function (x) {
           var open = !!x.id;
           return '<div ' + (open ? 'class="click" data-call="' + x.id + '" role="button" tabindex="0" ' : '') + 'style="padding:12px 0;border-bottom:1px solid var(--line2);' + (open ? 'cursor:pointer' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-weight:600;display:flex;align-items:center;gap:8px">' + (open ? '<span data-autoplay="' + x.id + '" title="Play recording" style="width:30px;height:30px;border-radius:999px;border:1px solid #E1DCD2;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 24 24" fill="#1C2421" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></span>' : '') + esc(x.agent || 'Unknown') + (x.ai ? ' <span class="pill" style="background:#E8EAF4;color:#3A4380">AI agent</span>' : '') + ' <span class="mut" style="font-weight:400">· ' + (x.direction === 'outbound' ? 'Outbound' : 'Inbound') + '</span></span><span class="mut num" style="font-size:12px">' + fdate(x.date) + ' ' + fhour(x.hour) + ' · ' + fsecs(x.secs) + '</span></div>' +
-            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(CLS[x.class] || x.class) + '</span>' + (x.outcome && x.outcome !== 'Internal' ? '<span class="pill" style="' + chipOut(x.outcome) + '">' + esc(x.outcome) + '</span>' : '') + (x.topic ? '<span class="mut" style="font-size:12px">' + esc(x.topic) + '</span>' : '') + (open && x.score != null ? '<span class="pill" style="' + chipScore(x.score) + '">' + x.score + '</span>' : '') + '</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(CLS[x.class] || x.class) + '</span>' + (x.outcome && x.outcome !== 'Internal' ? '<span class="pill" style="' + chipOut(x.outcome) + '">' + esc(x.outcome) + '</span>' : '') + (x.topic ? '<span class="mut" style="font-size:12px">' + esc(x.topic) + '</span>' : '') + (open && x.score != null ? '<span class="pill" style="' + chipScore(x.score) + '">' + x.score + '%' + '</span>' : '') + '</div>' +
             (x.summary ? '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;margin-top:6px">' + esc(x.summary) + '</div>' : '') + '</div>';
         }).join('') + '</div>';
       el.innerHTML = h;
@@ -2214,7 +4925,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var ca = (r.csr_after || []).slice(0, 5);
       if (ca.length) h += '<div class="cap" style="margin-top:14px">Who takes calls outside their brand’s hours</div>' + ca.map(function (a) { var rt = a.decided ? Math.round(a.booked / a.decided * 100) : null; return '<button class="click" data-agent="' + esc(a.agent) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;gap:8px;align-items:center">' + avatar(a.agent, 22) + esc(a.agent) + '</span><span class="num mut">' + fmt(a.calls) + ' calls · ' + (rt != null ? rt + '% booked' : 'no decisions') + '</span></button>'; }).join('');
       var ai = (r.agents || []).reduce(function (t, a) { return t + (a.calls || 0); }, 0);
-      if (ai) h += '<p class="mut" style="font-size:11.5px;margin-top:10px">AI receptionists handled ' + fmt(ai) + ' recorded call' + (ai === 1 ? '' : 's') + ' in this period (not included above).</p>';
+      if (ai) h += '<p class="mut" style="font-size:11.5px;margin-top:10px">AI CSRs handled ' + fmt(ai) + ' recorded call' + (ai === 1 ? '' : 's') + ' in this period (not included above).</p>';
       var DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], hr = function (x) { x = +x; var a = x >= 12 ? 'p' : 'a', v = x % 12 || 12; return v + a; };
       var hrsTxt = function (days) { var g = []; (days || []).forEach(function (d) { var k = hr(d.open) + '–' + hr(d.close), last = g[g.length - 1]; if (last && last.k === k && last.to === d.dow - 1) last.to = d.dow; else g.push({ k: k, from: d.dow, to: d.dow }); }); return g.map(function (x) { return DN[x.from] + (x.to !== x.from ? '–' + DN[x.to] : '') + ' ' + x.k; }).join(', '); };
       var known = (r.hours || []).filter(function (b) { return b.days && b.days.length; }), dflt = (r.hours || []).filter(function (b) { return !b.days || !b.days.length; });
@@ -2224,6 +4935,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   function crumb(parts) {
+    if (S.tileFrom && TILE_VIEWS.indexOf(S.view) >= 0 && parts.length && parts[0][1] !== S.tileFrom[0]) parts = [[S.tileFrom[1], S.tileFrom[0]]].concat(parts);
     return '<div class="oq-crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
   }
 
@@ -2463,14 +5175,15 @@ export function mountOpsisQA(ROOT, cfg) {
     var c = S.cur; if (!c || !$('cd')) return;
     var steps = c.steps || [], changed = !!c.adjusted && c.ai_score != null;
     var who = steps.filter(function (s) { return s.adj; }).map(function (s) { return s.adj.by; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
-    var sc = c.score, col = sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
-    var h = '' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
+    var noq = !OPSIS && c.counted === false, sc = noq ? null : c.score, col = sc == null ? '#CFC9BE' : (sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O)), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
+    var h = '<div class="row" style="justify-content:flex-end;align-items:center;gap:6px">' + expButtons('callexp') + '</div>' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><div style="display:flex;gap:8px;flex-shrink:0"><button class="sel" data-act="copycall" data-v="' + esc(c.id || S.callId) + '" title="Copy a link that opens this call review" style="min-height:44px;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Share</button><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div></div>' +
       '<div class="oq-card" id="plr" style="position:sticky;top:-22px;z-index:3;padding:12px 14px;box-shadow:0 4px 14px rgba(20,48,42,.08)">' + playerInner() + '</div>' +
-      '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
+      '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="' + (sc == null ? 'Not scored' : 'Score ' + sc) + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:' + (sc == null ? '15' : '24') + 'px;font-weight:600">' + (sc == null ? 'Not scored' : sc + '%') + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.category ? [c.category] : (c.topics || []).filter(function (t) { return t !== 'General Inquiry'; }).slice(0, 3).map(tLab)).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score updated' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '.</div>' : '') + '</div>';
     h += factsBar(c);
+    if (noq) h += '<div class="banner" style="background:#F3F1EC;border-color:#E1DCD2;color:#3B4541"><b>Not counted in QA scores.</b> This wasn\u2019t a new sales or service opportunity (e.g. asking for a person, a job follow-up, billing or a status check), so it isn\u2019t scored and doesn\u2019t count toward the CSR\u2019s or brand\u2019s QA score. The steps below are for reference only. It still counts for customer sentiment.</div>';
     h += legsNote(c);
     if (CFG.showMetrics) h += metCard(c);
     h += ccCard(c);
@@ -2481,7 +5194,7 @@ export function mountOpsisQA(ROOT, cfg) {
           : esc(c.agent || 'This CSR') + ' received this call' + (leg ? ' from <b>' + esc(leg.agent || 'a colleague') + '</b>' : '') + '.') +
         '</div>' + (leg && leg.id ? '<button class="sel" data-call="' + leg.id + '" style="margin-top:10px">Open the ' + (c.xfer_out ? 'receiving' : 'original') + ' call' + (leg.score != null ? ' (score ' + leg.score + ')' : '') + ' →</button>' : '') + '</div>';
     }
-    h += '<div class="oq-card" style="background:#FFF8F0;border-color:#F6D9B8"><b style="color:#7A3A08">Revenue &amp; conversion</b><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));margin-top:10px;font-size:13px"><div><div class="cap" style="color:#7A5A3A">Asked to book</div>' + yn(c.asked_for_booking) + '</div><div><div class="cap" style="color:#7A5A3A">Info before price</div>' + yn(c.info_before_pricing) + '</div><div><div class="cap" style="color:#7A5A3A">Fee expectations</div>' + yn(c.set_fee_expectations) + '</div><div><div class="cap" style="color:#7A5A3A">Card asked</div>' + yn(c.asked_for_cc) + '</div></div>' + (c.revenue_tip ? '<div style="font-size:13px;line-height:1.5;margin-top:10px"><b>Biggest revenue lever:</b> ' + esc(c.revenue_tip) + '</div>' : '') + '</div>';
+    h += '<div class="oq-card" style="background:#FFF8F0;border-color:#F6D9B8"><b style="color:#7A3A08">Revenue &amp; conversion</b><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));margin-top:10px;font-size:13px"><div><div class="cap" style="color:#7A5A3A">Asked to book</div>' + yn(c.asked_for_booking) + '</div><div><div class="cap" style="color:#7A5A3A">Info before price</div>' + yn(c.info_before_pricing) + '</div><div><div class="cap" style="color:#7A5A3A">Card asked</div>' + (steps.some(function (x) { return (x.key === 'sell_card' || x.key === 'capture_payment') && x.answer === 'na'; }) ? '<b style="color:#56605B" title="Card on file doesn\u2019t apply to this call (sales estimate, maintenance, warranty, return visit, commercial, PDQ or Dan\u2019s)">N/A</b>' : yn(c.asked_for_cc)) + '</div></div>' + (c.revenue_tip ? '<div style="font-size:13px;line-height:1.5;margin-top:10px"><b>Biggest revenue lever:</b> ' + esc(c.revenue_tip) + '</div>' : '') + '</div>';
     if ((c.risk_flags || []).length) h += '<div class="oq-card" style="background:#FDF0F0;border-color:#F3C9C9"><b style="color:#8A1515">Risk flags</b><ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.5">' + c.risk_flags.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul></div>';
     if (c.summary) h += '<div class="oq-card"><b>Summary</b><div style="line-height:1.6;margin-top:6px;font-size:13.5px">' + esc(c.summary) + '</div></div>';
     if (c.coaching) h += '<div class="oq-card" style="background:#EEF6F2;border-color:#CFE3D8"><b style="color:#1F5A41">Coaching note</b><div style="line-height:1.6;margin-top:6px;font-size:13.5px">' + esc(c.coaching) + '</div></div>';
@@ -2741,17 +5454,38 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------- Ask panel ----------
+  // Respectful wording on every AI answer (Becky 11/2): never label a person ("drag", "weakest", "underperformer").
+  function soften(t) {
+    var adj = '(?:the |a )?(?:one )?(?:clearest |clear |biggest |main |real |single |largest )?';
+    return String(t || '')
+      .replace(/\bdragging (?:down|on) /gi, 'holding back ')
+      .replace(new RegExp('\\b(is|are) ' + adj + 'drags?\\b(?: on [^.,;\\n*]+)?', 'gi'), function (m, v) { return v + ' the biggest coaching opportunity'; })
+      .replace(new RegExp('\\b' + adj + 'drags?\\b on (?:the )?(?:team|brand|location)(?: average| score| numbers)?', 'gi'), 'the biggest coaching opportunity')
+      .replace(/\bweak(?:est)? links?\b/gi, 'biggest opportunity')
+      .replace(/\bunderperformers\b/gi, 'CSRs with the most room to grow').replace(/\bunderperformer\b/gi, 'CSR with the most room to grow').replace(/\bunderperforming\b/gi, 'below target')
+      .replace(/\bweakest\b/gi, 'lowest-scoring').replace(/\bworst\b/gi, 'lowest')
+      .replace(/\bstruggling\b/gi, 'working to improve').replace(/\bstruggles\b/gi, 'has room to grow');
+  }
   function md(t) {
-    var s = esc(t || '');
+    var s = esc(soften(t));
     s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
     s = s.replace(/\[call:([0-9a-f-]{36})\]/gi, '<span class="lnk" data-call="$1" role="button" tabindex="0">open call ↗</span>');
-    var lines = s.split(/\n/), out = '', inList = false;
+    // Lists (Becky 11/2): indented "  - " lines become sub-bullets under the bullet above them.
+    var lines = s.split(/\n/), out = '', depth = 0, liOpen = [];
+    var closeTo = function (d) { while (depth > d) { if (liOpen[depth]) out += '</li>'; liOpen[depth] = false; out += '</ul>'; depth--; } };
     lines.forEach(function (l) {
-      var m = l.match(/^\s*[-•*]\s+(.*)$/);
-      if (m) { if (!inList) { out += '<ul>'; inList = true; } out += '<li>' + m[1] + '</li>'; }
-      else { if (inList) { out += '</ul>'; inList = false; } if (l.trim()) out += '<p style="margin:6px 0">' + l + '</p>'; }
+      if (!l.trim()) return;
+      var hd = l.match(/^\s*(#{1,4})\s+(.*)$/);
+      if (hd) { closeTo(0); out += '<div class="' + (hd[1].length <= 2 ? 'mdh2' : 'mdh3') + '">' + hd[2].replace(/<\/?b>/g, '') + '</div>'; return; }
+      var m = l.match(/^(\s*)(?:[-•*]|\d+[.)])\s+(.*)$/);
+      if (m) {
+        var lvl = m[1].replace(/\t/g, '    ').length >= 2 && depth >= 1 ? 2 : 1;
+        if (lvl > depth) { while (depth < lvl) { depth++; out += '<ul' + (depth > 1 ? ' class="sub"' : '') + '>'; liOpen[depth] = false; } }
+        else { closeTo(lvl); if (liOpen[lvl]) out += '</li>'; }
+        out += '<li>' + m[2]; liOpen[lvl] = true;
+      } else { closeTo(0); if (l.trim()) out += '<p style="margin:6px 0">' + l + '</p>'; }
     });
-    if (inList) out += '</ul>';
+    closeTo(0);
     // link known brands and CSRs
     var names = Object.keys(SHORT).concat(KNOWN.brands).filter(function (v, i, a) { return a.indexOf(v) === i; });
     names.sort(function (a, b) { return b.length - a.length; }).forEach(function (b) { out = out.replace(new RegExp('(^|[^\\w"=])(' + b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?![\\w<])', 'g'), '$1<span class="lnk" data-brand="' + esc(b) + '" role="button" tabindex="0">$2</span>'); });
@@ -2763,9 +5497,10 @@ export function mountOpsisQA(ROOT, cfg) {
   function askPanel() {
     var A = S.ask, h = '<div class="overlay" data-close="1"><div class="drawer" role="dialog" aria-modal="true" aria-label="Ask your call data" style="background:#fff"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div style="display:flex;gap:10px;align-items:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><div><b style="font-size:16px">Ask your call data</b><div class="mut" style="font-size:12px">' + (S.brands.length ? S.brands.map(short).join(', ') : 'All brands') + ' · ' + fdate(S.start) + ' – ' + fdate(S.end) + '</div></div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div><div id="convo" style="display:flex;flex-direction:column;gap:12px;flex:1">';
     if (!A.msgs.length) h += '<p class="mut" style="font-size:13px">Ask anything about your calls, brands and CSRs. Answers are built from your live call data.</p><div style="display:flex;flex-direction:column;gap:6px">' + suggestList().map(function (q) { return '<button class="chip" data-ask="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
-    A.msgs.forEach(function (m) {
+    A.msgs.forEach(function (m, mi) {
       if (m.role === 'user') h += '<div style="align-self:flex-end;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;max-width:85%;font-size:13.5px">' + esc(m.content) + '</div>';
-      else h += '<div class="ai" style="max-width:100%"><div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div></div>';
+      else h += '<div class="ai" style="max-width:100%"><div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div>' +
+        ((m.downloads || []).length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">' + m.downloads.map(function (d, di) { return '<button class="sel btnd" data-act="askdl" data-mi="' + mi + '" data-di="' + di + '" style="justify-content:flex-start;gap:8px;text-align:left"' + (RP.busy ? ' disabled' : '') + '><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Download ' + esc(d.label) + ' (' + (d.format === 'xlsx' ? 'Excel' : String(d.format || 'pdf').toUpperCase()) + ')</button>'; }).join('') + '<span class="mut" style="font-size:12px">' + fdate(m.downloads[0].start) + ' – ' + fdate(m.downloads[0].end) + '</span></div>' : '') + '</div>';
     });
     if (A.busy) h += '<div class="ai"><span class="dots"><span></span><span></span><span></span></span> <span class="mut" style="font-size:13px">Looking through your calls…</span></div>';
     h += '</div><form id="askform2" style="display:flex;gap:8px;position:sticky;bottom:0;background:#fff;padding-top:8px"><label class="sr" for="askq2">Follow-up question</label><input id="askq2" class="oq-field" placeholder="Ask a follow-up…" autocomplete="off"' + (A.busy ? ' disabled' : '') + '><button class="sel btnd" type="submit"' + (A.busy ? ' disabled' : '') + '>Ask</button></form></div></div>';
@@ -2778,10 +5513,11 @@ export function mountOpsisQA(ROOT, cfg) {
     q = (q || '').trim(); if (!q) return;
     if (phoneQ(q)) { openCalls({ q: q }); return; }
     var A = S.ask; A.open = true; S.callId = null;
-    var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6);
+    var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6).map(function (m) { return { role: m.role, content: m.content }; });
     A.msgs.push({ role: 'user', content: q }); A.busy = true; askPanel();
-    api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }).then(function (r) {
-      A.msgs.push({ role: 'assistant', content: r.answer }); A.busy = false; if (A.open) askPanel();
+    var pg = S.view === 'brand' || S.view === 'csr' ? { view: S.view, brand: S.brand || null, agent: S.view === 'csr' ? (S.agent || null) : null } : null;
+    api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null, page: pg, dl: 1 }).then(function (r) {
+      A.msgs.push({ role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [] }); A.busy = false; if (A.open) askPanel();
     }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message, error: true }); A.busy = false; if (A.open) askPanel(); });
   }
 
@@ -2864,7 +5600,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function drawAuditPage() {
     var it = CAL.item, c = it.call, d = CAL.data || {}, items = d.items || [];
-    var head = '<div class="oq-card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">' + bbadge(c.brand) + '<div style="flex:1 1 260px;min-width:0"><div style="font-weight:600;font-size:16px">' + esc(c.agent || 'Unknown CSR') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + esc(c.brand || '') + '</span></div><div class="mut" style="font-size:12.5px;margin-top:3px">' + esc(fday(c.date)) + (calTime(c) ? ' · ' + calTime(c) : '') + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + ' · call ' + it.slot + (items.length ? ' of ' + items.length : '') + '</div></div>' +
+    var head = '<div class="oq-card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">' + bbadge(c.brand) + '<div style="flex:1 1 260px;min-width:0"><div style="font-weight:600;font-size:16px">' + esc(c.agent || 'Unknown CSR') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + esc(c.brand || '') + '</span></div><div class="mut" style="font-size:12.5px;margin-top:3px">' + esc(fday(c.date)) + (calTime(c) ? ' · ' + calTime(c) : '') + ' · ' + esc(c.direction || '') + ' · <span title="Talk time from the phone system. The recording below also includes the ring and the recorded greeting before the CSR picks up, so it runs a few seconds longer.">' + fsecs(c.secs) + ' talk time</span> · call ' + it.slot + (items.length ? ' of ' + items.length : '') + '</div></div>' +
       (it.status === 'open' ? '<span class="pill" style="background:#E8EAF4;color:#3A4380">Blind audit · AI score hidden</span>' : '') + '<button class="sel" data-cal="back">Back to the list</button></div>';
     setMain(crumb([['Calibration', 'calib'], ['Call ' + it.slot]]) + head +
       '<div class="row" style="align-items:flex-start"><div style="flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:14px"><div class="oq-card" id="plr">' + playerInner() + '</div>' + trCard(S.cur) + '</div>' +
@@ -3023,6 +5759,12 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (a === 'sdays') { CAL.sdays = +v; CAL.stats = null; CAL.why = {}; $('calwrap').innerHTML = '<div class="oq-card">' + skel(36, 6) + '</div>'; calLoadStats(T); }
     else if (a === 'why') calWhy(k);
   });
+  on(document, 'change', function (e) {
+    var vr = e.target && e.target.closest && e.target.closest('[data-vxrecep]'); if (!vr) return;
+    var b0 = RC.sBrand || RC.brand, vid0 = vr.value; vr.disabled = true;
+    vxCall({ op: 'recep_set', brand: b0, voice_id: vid0 }).then(function () { VX.recep[b0] = vid0; vr.disabled = false; toast((vxName(vid0) || 'New voice') + ' is now the ' + short(b0) + ' AI CSR voice.'); })
+      .catch(function (er) { vr.disabled = false; toast(er.message); drawRcSettings(); });
+  });
   on(document, 'change', function (e) { if (e.target && e.target.id === 'calout' && CAL.form) { CAL.form.outcome = e.target.value; calSync(); drawCalForm(); } });
 
   // ---------- First contact resolution + sentiment (Overview, 2026-10-22) ----------
@@ -3032,6 +5774,16 @@ export function mountOpsisQA(ROOT, cfg) {
   function loadExtras() { return api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { EXTRAS = x || {}; return EXTRAS; }); }
   function askNb(list, brand, agent) { var r = (list || []).filter(function (x) { return (!brand || x.brand === brand) && (!agent || x.agent === agent); }); var nb = 0, a = 0; r.forEach(function (x) { nb += +x.nb || 0; a += +x.asked || 0; }); return nb ? { pct: 100 * a / nb, nb: nb, asked: a } : null; }
   function pctOf(n, d) { return d ? (100 * n / d) : null; }
+  // 11/18 (PORT-09): fixed one-decimal percents, and a largest-remainder version for lists that should add to 100.0%.
+  function pct1(n, d) { return d ? (100 * n / d).toFixed(1) + '%' : '—'; }
+  // named pct100k so it doesn't replace pct100(ns) above (same name made 'Every call, identified' show "undefined" — Becky 11/20)
+  function pct100k(rows, d) {
+    var out = {}; if (!d) { (rows || []).forEach(function (r) { out[r.k] = '—'; }); return out; }
+    var tenths = (rows || []).map(function (r) { var x = 1000 * (+r.n || 0) / d; return { k: r.k, f: Math.floor(x), rem: x - Math.floor(x) }; });
+    var sum = tenths.reduce(function (t, x) { return t + x.f; }, 0), want = Math.round(1000 * tenths.reduce(function (t, x, i) { return t + (+rows[i].n || 0); }, 0) / d);
+    tenths.slice().sort(function (a, b) { return b.rem - a.rem; }).slice(0, Math.max(0, want - sum)).forEach(function (x) { x.f += 1; });
+    tenths.forEach(function (x) { out[x.k] = (x.f / 10).toFixed(1) + '%'; }); return out;
+  }
   function pctTxt(n, d) { var v = pctOf(n, d); return v == null ? '—' : (v >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)) + '%'; }
   var TEMPS = ['', 'Angry', 'Frustrated', 'Neutral', 'Positive', 'Delighted'];
   var TCOL = ['', '#A61B1B', '#E0662A', '#8C7A1E', '#2F7D5B', '#1F5A41'];
@@ -3064,12 +5816,12 @@ export function mountOpsisQA(ROOT, cfg) {
     // brands: always every brand; CSRs: first 15, then Show all
     var shown = !csrT || SENT.all ? rows : rows.slice(0, 15);
     var sh = function (k, lbl, st) { var on = SENT.k === k; return '<button data-oqsentk="' + k + '" title="Sort" style="all:unset;cursor:pointer;white-space:nowrap;' + st + (on ? ';color:var(--ink)' : '') + '">' + lbl + ' <span style="font-size:9px;opacity:' + (on ? 1 : .35) + '">' + (on && SENT.dir > 0 ? '▲' : '▼') + '</span></button>'; };
-    var hdr = '<div class="cap" style="display:flex;gap:10px;align-items:center;margin-top:12px;padding:0 0 6px">' + sh('name', csrT ? 'CSR' : 'Brand', 'flex:1') + sh('avg', 'Sentiment', 'width:192px;text-align:center') + sh('neg', 'Upset', 'width:58px;text-align:center') + sh('n', 'Calls', 'width:52px;text-align:center') + '</div>';
+    var hdr = '<div class="cap" style="display:flex;gap:10px;align-items:center;margin-top:12px;padding:0 0 6px">' + sh('name', csrT ? 'CSR' : 'Brand', 'flex:1') + sh('avg', 'Sentiment', 'width:192px;text-align:center') + sh('neg', 'Unhappy', 'width:58px;text-align:center') + sh('n', 'Calls', 'width:52px;text-align:center') + '</div>';
     el.innerHTML = head + '<div style="display:flex;gap:18px;align-items:flex-end;margin-top:10px;flex-wrap:wrap"><div><div class="cap">Average</div><div class="num" style="font-size:26px;font-weight:600;color:' + t.col + '">' + (+o.avg).toFixed(1) + ' <span style="font-size:14px">' + t.label + '</span></div></div><button class="click" data-ffk="sentiment" data-ffv="pos" title="Hear the calls where the customer left happy" style="all:unset;cursor:pointer"><div class="cap">Positive</div><div class="num" style="font-size:18px;font-weight:600;color:#1F5A41;text-decoration:underline dotted">' + Math.round(100 * o.pos / o.n) + '%</div></button><button class="click" data-ffk="sentiment" data-ffv="neg" title="Hear the calls where the customer left upset" style="all:unset;cursor:pointer"><div class="cap">Negative</div><div class="num" style="font-size:18px;font-weight:600;color:#A8441A;text-decoration:underline dotted">' + Math.round(100 * o.neg / o.n) + '%</div></button><div class="mut" style="font-size:12px">' + fmt(o.n) + ' calls</div></div>' +
       '<div class="seg" style="margin-top:12px">' + (LOCK ? '' : '<button data-oqsent="brands" class="' + (SENT.tab === 'brands' ? 'on' : '') + '">Brands</button>') + '<button data-oqsent="csrs" class="' + (SENT.tab === 'csrs' || LOCK ? 'on' : '') + '">CSRs</button></div>' +
       (shown.length ? hdr + shown.map(function (r) { var nm = SENT.tab === 'csrs' || LOCK ? r.agent : r.brand;
         var dk = (SENT.tab === 'csrs' || LOCK) ? ' data-ffagent="' + esc(r.agent || '') + '" data-ffbrand="' + esc(r.brand || '') + '"' : ' data-ffbrand="' + esc(r.brand || '') + '"';
-        return '<button class="click" data-ffk="sentiment" data-ffv="' + (r.neg ? 'neg' : 'pos') + '"' + dk + ' title="' + (r.neg ? 'Hear the ' + r.neg + ' calls where the customer left upset' : 'Hear the calls where the customer left happy') + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)"><span style="flex:1 0 auto;white-space:nowrap;font-weight:500">' + esc(nm || '—') + (SENT.tab === 'csrs' && !LOCK ? ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>' : '') + '</span><span style="display:inline-flex;gap:10px;align-items:center;margin-left:auto">' + tempBar(r.avg) + tempPill(r.avg) + '<span class="mut num" style="font-size:12px;width:58px;text-align:center;white-space:nowrap">' + (r.neg ? '<span style="color:#A8441A">' + r.neg + ' upset</span>' : '0 upset') + '</span><span class="mut num" style="font-size:12px;width:52px;text-align:center">' + fmt(r.n) + '</span></span></button>'; }).join('') : '<div class="mut" style="padding:8px 0;font-size:13px">Not enough calls yet.</div>') +
+        return '<button class="click" data-ffk="sentiment" data-ffv="' + (r.neg ? 'neg' : 'pos') + '"' + dk + ' title="' + (r.neg ? 'Hear the ' + r.neg + ' calls where the customer left frustrated or angry' : 'Hear the calls where the customer left happy') + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)"><span style="flex:1 0 auto;white-space:nowrap;font-weight:500">' + esc(nm || '—') + (SENT.tab === 'csrs' && !LOCK ? ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>' : '') + '</span><span style="display:inline-flex;gap:10px;align-items:center;margin-left:auto">' + tempBar(r.avg) + tempPill(r.avg) + '<span class="mut num" style="font-size:12px;width:58px;text-align:center;white-space:nowrap">' + (r.neg ? '<span style="color:#A8441A">' + r.neg + ' upset</span>' : '0 upset') + '</span><span class="mut num" style="font-size:12px;width:52px;text-align:center">' + fmt(r.n) + '</span></span></button>'; }).join('') : '<div class="mut" style="padding:8px 0;font-size:13px">Not enough calls yet.</div>') +
       (csrT && rows.length > 15 ? '<button class="more" data-oqsent="more">' + (SENT.all ? 'Show less' : 'Show all ' + rows.length) + '</button>' : '');
   }
   // Temper shift (2026-10-23, going forward only): customer temperature in the first 30 seconds vs at the end.
@@ -3080,11 +5832,11 @@ export function mountOpsisQA(ROOT, cfg) {
     escalated: 'Came in calm or happy (3-5) and left upset (1-2): the call made things worse. % is of the calls where the customer came in calm or happy.' };
   function drawTemper() {
     var el = $('tempcard'); if (!el || !EXTRAS) return; var tp = EXTRAS.temper || {}, o = tp.overall || {};
-    var tipi = function (k) { return '<span aria-hidden="true" data-tip="' + esc(TMP_TIP[k]) + '" style="margin-left:6px;cursor:help;width:16px;height:16px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle">i</span>'; };
+    var tipi = function (k) { return '<span aria-hidden="true" data-tip="' + esc(TMP_TIP[k]) + '" style="margin-left:auto;cursor:help;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;text-transform:none;letter-spacing:0">i</span>'; };
     var head = '<h2 class="ttl">Temper Shift</h2><p class="sub">How the customer sounded in the first 30 seconds compared with how they sounded at the end, so you can see who calmed an upset caller down and which calls got worse. Tracked on calls scored from Oct 23, 2026 on.</p>';
     if (!o.n) { el.innerHTML = head + '<div class="mut" style="margin-top:10px;font-size:13px">No calls with a start and end temper in this range yet. It fills in as new calls are scored.</div>'; return; }
     var ok = (o.n || 0) - (o.upset_in || 0);
-    var tile = function (k, cap, n, d, col) { return '<button class="click" data-ffk="temper" data-ffv="' + k + '" title="Hear these calls" style="all:unset;cursor:pointer;min-width:96px"><div class="cap" style="display:flex;align-items:center">' + cap + tipi(k) + '</div><div class="num" style="font-size:22px;font-weight:600;color:' + col + ';text-decoration:underline dotted">' + (d == null ? fmt(n) : pctTxt(n, d)) + '</div><div class="mut num" style="font-size:11.5px">' + (d == null ? 'of ' + fmt(o.n) + ' calls' : fmt(n) + ' of ' + fmt(d)) + '</div></button>'; };
+    var tile = function (k, cap, n, d, col) { return '<button class="click" data-ffk="temper" data-ffv="' + k + '" title="Hear these calls" style="all:unset;cursor:pointer;min-width:130px"><div style="display:flex;align-items:center;gap:8px"><span class="cap">' + cap + '</span>' + tipi(k) + '</div><div class="num" style="font-size:22px;font-weight:600;color:' + col + ';text-decoration:underline dotted">' + (d == null ? fmt(n) : pctTxt(n, d)) + '</div><div class="mut num" style="font-size:11.5px">' + (d == null ? 'of ' + fmt(o.n) + ' calls' : fmt(n) + ' of ' + fmt(d)) + '</div></button>'; };
     var csr = TMP.tab === 'csrs' || LOCK, rows = csr ? (tp.by_agent || []).filter(function (r) { return r.upset_in || r.escalated; }) : (tp.by_brand || []);
     var tv = function (r) { var k = TMP.k; if (k === 'name') return String((csr ? r.agent : short(r.brand)) || '').toLowerCase(); if (k === 'n') return +r.n || 0; if (k === 'upset_in') return +r.upset_in || 0; if (k === 'calmed') return (+r.calmed || 0) + (+r.settled || 0); if (k === 'stayed') return +r.stayed || 0; if (k === 'escalated') return +r.escalated || 0; return (+r.upset_in || 0) + (+r.escalated || 0); };
     rows = rows.slice().sort(function (a, b) { var x = tv(a), y = tv(b); return (x < y ? -1 : x > y ? 1 : 0) * TMP.dir || b.n - a.n; });
@@ -3092,7 +5844,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var shown = TMP.all ? rows : rows.slice(0, 8);
     var lnk = function (r, k, n, col, word) { if (!n) return '<span class="mut">0 ' + word + '</span>'; return '<button class="more" data-ffk="temper" data-ffv="' + k + '"' + (csr ? ' data-ffagent="' + esc(r.agent || '') + '"' : '') + ' data-ffbrand="' + esc(r.brand || '') + '" title="Hear these calls" style="font-size:12.5px;color:' + col + '">' + n + ' ' + word + '</button>'; };
     el.innerHTML = head + '<div style="display:flex;gap:20px;align-items:flex-start;margin-top:10px;flex-wrap:wrap">' +
-      tile('upset_in', 'Came in upset', o.upset_in, null, '#A8441A') + tile('calmed', 'Calmed down', o.calmed, o.upset_in, '#1F5A41') + tile('settled', 'Settled', o.settled, o.upset_in, '#8C7A1E') + tile('stayed', 'Stayed upset', o.stayed, o.upset_in, '#A61B1B') + tile('escalated', 'Escalated', o.escalated, ok, '#A61B1B') + '</div>' +
+      tile('upset_in', 'Came in unhappy', o.upset_in, null, '#A8441A') + tile('calmed', 'Calmed down', o.calmed, o.upset_in, '#1F5A41') + tile('settled', 'Settled', o.settled, o.upset_in, '#8C7A1E') + tile('stayed', 'Stayed unhappy', o.stayed, o.upset_in, '#A61B1B') + tile('escalated', 'Escalated', o.escalated, ok, '#A61B1B') + '</div>' +
       '<div class="seg" style="margin-top:14px">' + (LOCK ? '' : '<button data-oqtmp="brands" class="' + (!csr ? 'on' : '') + '">Brands</button>') + '<button data-oqtmp="csrs" class="' + (csr ? 'on' : '') + '">CSRs</button></div>' +
       (shown.length ? '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:8px"><thead><tr>' + tth('name', csr ? 'CSR' : 'Brand') + tth('n', 'Calls', 1) + tth('upset_in', 'Came in upset', 1) + tth('calmed', 'Calmed or settled') + tth('stayed', 'Stayed upset') + tth('escalated', 'Escalated') + '</tr></thead><tbody>' +
         shown.map(function (r) { return '<tr><td>' + (csr ? esc(r.agent || '—') + (LOCK ? '' : ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>') : '<span style="display:inline-flex;gap:8px;align-items:center">' + bbadge(r.brand) + esc(short(r.brand)) + '</span>') + '</td><td class="num" style="text-align:right">' + fmt(r.n) + '</td><td class="num" style="text-align:right">' + fmt(r.upset_in) + '</td><td class="num">' + (r.upset_in ? lnk(r, 'calmed', r.calmed, '#1F5A41', 'calmed') + (r.settled ? ' · ' + lnk(r, 'settled', r.settled, '#8C7A1E', 'settled') : '') : '<span class="mut">—</span>') + '</td><td class="num">' + (r.upset_in ? lnk(r, 'stayed', r.stayed, '#A61B1B', 'upset') : '<span class="mut">—</span>') + '</td><td class="num">' + lnk(r, 'escalated', r.escalated, '#A61B1B', 'escalated') + '</td></tr>'; }).join('') + '</tbody></table></div>'
@@ -3111,6 +5863,13 @@ export function mountOpsisQA(ROOT, cfg) {
     LASTH = h; BACKING = false;
   }
   function goBack() {
+    // React pages inside the portal (Phone setup etc.) can step back inside themselves first — e.g. a campaign form → the campaign list (2026-11-10, Becky).
+    if (typeof window.__oqExtBack === 'function') { try { if (window.__oqExtBack()) { window.scrollTo(0, 0); return; } } catch (x) {} }
+    if (S.view === 'receptionist' && RC.res && !RC.live) { RC.res = null; drawRecep(); window.scrollTo(0, 0); return; }
+    // Practice (Becky 11/18): Back during a call hangs up (ringing = cancel, connected = end and score) instead of leaving the page
+    // with the call still running; Back on a debrief returns to the scenario list straight away.
+    if (S.view === 'practice' && PR.live) { if (PR.live.state === 'ringing') prCancel(); else prFinish(); window.scrollTo(0, 0); return; }
+    if (S.view === 'practice' && (PR.result || PR.err)) { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); window.scrollTo(0, 0); return; }
     if (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib') { calLeave(); EXT = null; S.pop = null; window.scrollTo(0, 0); render(); return; }
     var h = HIST.pop(); saveHist(); if (!h) return;
     if ($('layer') && $('layer').innerHTML) closeLayer();
@@ -3146,9 +5905,9 @@ export function mountOpsisQA(ROOT, cfg) {
     var h = '#' + Object.keys(o).map(function (k) { return k + '=' + encodeURIComponent(o[k]); }).join('&');
     if (location.hash !== h) history.replaceState(null, '', h);
   }
-  function readHash() {
+  function readHash(first) {
     var q = {}; location.hash.replace(/^#/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
-    if (q.v) S.view = q.v; if (q.k) S.kpi = q.k; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
+    if (q.v) S.view = q.v; if (q.k) S.kpi = q.k; if (q.r && !first) S.range = q.r; if (q.s && q.e && !first) { S.start = q.s; S.end = q.e; }  // fresh page load always opens at 7 days (Becky 11/17)
     if (q.bucket && /^(upset|low|ctrl|other)$/.test(q.bucket)) { S.calls.bucket = q.bucket; S.calls.offset = 0; }
     if (q.v === 'calls' && !q.bucket) { if (q.q) S.calls.q = q.q.slice(0, 120); if (q.out && OUTCOMES.some(function (o) { return o[0] === q.out; })) S.calls.outcome = q.out; if (q.step && STEPNAMES[q.step]) S.calls.step = q.step; S.calls.offset = 0; }
     if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
@@ -3156,11 +5915,118 @@ export function mountOpsisQA(ROOT, cfg) {
     applyRange();
   }
   function render() {
+    // Coaching clips + My coaching removed from the portal (Becky 11/23: unused; coaching notes, Coaching Hub and Call reviews cover it).
+    if (S.view === 'coachclips') S.view = 'overview'; if (S.view === 'mycoach') S.view = 'hub';
+    prCheckAccess();
+    if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
-    T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, callbacks: vCallbacks, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var gk = GATE[S.view];
+    if (gk && CFG.features && !(FEAT && FEAT[gk])) {
+      if (!FEAT) { setMain('<div class="oq-card">' + skel(30, 4) + '</div>'); featLoad().then(function () { if (tok === T) render(); }); return; }
+      vLocked(S.view, gk); setTimeout(function () { obTick(); }, 0); return;
+    }
     v(tok);
+    setTimeout(function () { obTick(); }, 0);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
+  }
+  // Turn-it-on pages (Becky 11/23): no GarageCo-only pages. Every company sees every page; pages that
+  // need a data source they haven't connected yet explain what it does and how to turn it on.
+  var FEAT = null, FEAT_AT = 0;
+  var GATE = { money: 'revenue', leadtime: 'leadtime', cardcap: 'card', aistl: 's2l', supervisor: 'lines', wallboard: 'lines', myphone: 'lines', wfm: 'lines', intraday: 'lines', callflow: 'lines', coachclips: 'lines', trends: 'lines' };
+  var GATE_TXT = {
+    lines: ['Runs on Opsis phone lines', 'This page shows live call activity — who’s on a call, who’s waiting, staffing and coaching clips. It works when your calls ring through Opsis phone lines, which also gives your team a softphone and an AI receptionist.', 'Calls you upload or pull from your own phone system are still scored on every other page.'],
+    revenue: ['Connect your job or CRM system', 'Revenue shows how much money your calls booked — and how much walked away — by location and by CSR.', 'It needs your job data (your CRM or field-service system) so we can match each call to what it was worth.'],
+    leadtime: ['Connect your job or CRM system', 'Booking lead time shows how far out customers are booked, so you can spot when the schedule is too full to win new work.', 'It needs appointment dates from your CRM or field-service system.'],
+    s2l: ['Connect a lead source', 'AI Speed to Lead calls every new web lead within seconds, day or night, and books them or hands them to your team.', 'It needs your web leads (website forms, Angi, Google, Facebook and similar) sent to us.'],
+    card: ['Turn on card capture', 'Card capture tracks whether your team asks for a card or deposit when booking, and how often they get one.', 'Turn it on if your business takes a card or deposit when booking. Scoring starts with the next calls.']
+  };
+  function featLoad() {
+    if (!CFG.features) return Promise.resolve(null);
+    if (FEAT && Date.now() - FEAT_AT < 60000) return Promise.resolve(FEAT);
+    return CFG.features().then(function (f) { FEAT = f || {}; FEAT_AT = Date.now(); return FEAT; }).catch(function () { FEAT = FEAT || {}; return FEAT; });
+  }
+  function vLocked(view, key) {
+    var t = GATE_TXT[key], nm = ((NAV.map(function (s) { return s[1]; }).reduce(function (a, b) { return a.concat(b); }, []).filter(function (n) { return n[0] === view; })[0]) || [view, view])[1];
+    var mail = 'mailto:support@opsiscx.com?subject=' + encodeURIComponent('Turn on ' + nm + ' for ' + CLIENT);
+    var btn = key === 'card' ? (FEAT && FEAT.can_edit ? '<button class="sel btnd" data-act="featcard">Turn on card capture</button>' : '<span class="mut">Ask an account admin to turn this on.</span>')
+      : key === 'lines' ? (obNavHas('phonesetup') ? '<button class="sel btnd" data-go="phonesetup">Set up phone lines</button>' : '') + '<a class="sel" href="' + mail + '">Ask the Opsis CX Support team</a>'
+      : '<a class="sel btnd" href="' + mail + '">Ask the Opsis CX Support team to connect it</a>' + (obNavHas('connect') ? '<button class="sel" data-go="connect">Connect your calls</button>' : '');
+    setMain(crumb([[nm]]) + '<div class="oq-card" style="max-width:720px"><div class="cap" style="margin-bottom:8px">Not turned on yet</div><h2 class="ttl" style="font-size:20px">' + esc(t[0]) + '</h2>' +
+      '<p style="font-size:14px;line-height:1.6;margin:10px 0 0;color:#3B4541">' + esc(t[1]) + '</p><p class="mut" style="font-size:13px;line-height:1.55;margin:8px 0 0">' + esc(t[2]) + '</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">' + btn + '</div></div>');
+  }
+  // Getting started (Becky 11/23): checklist that follows new customers around the portal + a pulsing
+  // bubble on the next menu item. Customer logins only; hides itself when done or dismissed.
+  var OB = { d: null, at: 0, open: true, busy: false };
+  try { OB.open = localStorage.getItem('oq_ob_open') !== '0'; } catch (x) { /* storage blocked */ }
+  var OB_STEPS = [
+    { k: 'scoring', go: 'qasettings', t: 'Set up how calls are scored', s: 'Your call steps and points — done in the setup interview.' },
+    { k: 'calls_in', go: 'connect', t: 'Bring in your calls', s: 'Upload a few recordings, or connect your phone system so calls come in every hour.' },
+    { k: 'first_scored', go: 'calls', t: 'Review your first scored call', s: 'Open a call to see its score, what went well and what to coach.' },
+    { k: 'kb', go: 'kb', t: 'Teach the AI about your business', s: 'Add prices, policies and hours so scoring checks the right answers. Optional, but it helps.' },
+    { k: 'team', go: 'team', t: 'Invite your team', s: 'Add managers and CSRs so each person sees their own calls and coaching.' },
+    { k: 'branding', go: 'brandset', t: 'Add your logo and colors', s: 'Make the portal look like yours.' }
+  ];
+  function obNavHas(k) { return NAV.some(function (sec) { return (sec[1] || []).some(function (n) { return n[0] === k; }); }); }
+  function obSteps() { return OB_STEPS.filter(function (x) { return obNavHas(x.go) || x.k === 'scoring'; }); }
+  function obNext() { var d = OB.d; if (!d) return null; var L = obSteps(); for (var i = 0; i < L.length; i++) if (!d[L[i].k]) return L[i]; return null; }
+  function obActive() { return !!(OB.d && !OB.d.hidden && OB.d.can_edit && !CFG.staff && !CFG.csrSelf && CFG.onboarding); }
+  function obTick(force) {
+    if (!CFG.onboarding || CFG.staff || CFG.csrSelf) return;
+    if (!force && OB.d && Date.now() - OB.at < 20000) { obDraw(); return; }
+    OB.at = Date.now();
+    CFG.onboarding().then(function (d) { OB.d = d; obDraw(); }).catch(function () { /* checklist is optional */ });
+  }
+  function obDraw() {
+    var root = $('oqa'); if (!root) return;
+    var p = $('obpanel'); document.querySelectorAll('#oqa .obnext').forEach(function (b) { b.classList.remove('obnext'); });
+    var oldTip = $('obtip'); if (oldTip) oldTip.remove();
+    if (S.view === 'brandset' && OB.d && OB.d.hidden && OB.d.can_edit && obNext() && $('main') && !$('obshow')) {
+      var bs = document.createElement('div'); bs.id = 'obshow'; bs.className = 'banner'; bs.innerHTML = 'Getting-started checklist is hidden. <button class="more" data-act="obshow">Show it again</button>';
+      var t0 = $('main').firstElementChild; $('main').insertBefore(bs, t0 ? t0.nextSibling : null);
+    }
+    if (!obActive()) { if (p) p.remove(); return; }
+    var L = obSteps(), d = OB.d, done = L.filter(function (x) { return d[x.k]; }).length, nx = obNext();
+    if (!p) { p = document.createElement('div'); p.id = 'obpanel'; root.appendChild(p); }
+    p.className = 'obp' + (OB.open ? '' : ' min');
+    if (!OB.open) {
+      p.innerHTML = '<button data-act="obopen" class="obpill" aria-label="Open the getting started checklist">Getting started · <b>' + done + ' of ' + L.length + '</b></button>';
+    } else {
+      p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:14px;color:#14302A">' + (nx ? 'Getting started' : 'You’re all set 🎉') + '</b><button data-act="obmin" class="obx" aria-label="Minimize checklist">–</button></div>' +
+        '<div class="track" style="margin:8px 0 10px"><div style="width:' + Math.round(100 * done / L.length) + '%;background:var(--g)"></div></div>' +
+        L.map(function (x, i) { var ok = !!d[x.k], cur = nx && nx.k === x.k;
+          var sub = x.k === 'first_scored' && !ok && d.calls_working ? d.calls_working + ' call' + (d.calls_working === 1 ? ' is' : 's are') + ' being scored now — usually a few minutes.' : x.s;
+          return '<button class="obrow' + (cur ? ' cur' : '') + '" data-act="obgo" data-v="' + x.go + '"' + (ok ? ' aria-label="' + esc(x.t) + ' — done"' : '') + '><span class="obck' + (ok ? ' ok' : '') + '">' + (ok ? '✓' : (i + 1)) + '</span><span style="text-align:left"><span style="display:block;font-weight:600;' + (ok ? 'color:#7A847F;text-decoration:line-through' : '') + '">' + esc(x.t) + '</span>' + (cur ? '<span style="display:block;font-size:12px;color:#55615C;margin-top:2px;line-height:1.4">' + esc(sub) + '</span>' : '') + '</span></button>'; }).join('') +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' + (nx ? '<button class="sel btnd" data-act="obgo" data-v="' + nx.go + '" style="min-height:36px;padding:6px 12px">' + (S.view === nx.go ? 'You’re here ↓' : 'Go to next step →') + '</button>' : '<span class="mut" style="font-size:12px">Nice work. You can reopen this anytime from Portal settings.</span>') +
+        '<button class="more" data-act="obhide" style="font-size:12px">' + (nx ? 'Hide checklist' : 'Close') + '</button></div>';
+    }
+    if (nx && S.view !== nx.go) {
+      var nb = document.querySelector('#oqa aside [data-go="' + nx.go + '"]');
+      if (nb) { nb.classList.add('obnext'); var r = nb.getBoundingClientRect(), tip = document.createElement('div'); tip.id = 'obtip'; tip.className = 'obtip';
+        tip.innerHTML = '<b>Next step:</b> ' + esc(nx.t) + '<button data-act="obgo" data-v="' + nx.go + '" class="obtipgo">Go →</button>';
+        if (window.innerWidth >= 900) { root.appendChild(tip); obPlaceTip(); } }
+    }
+    if (nx && S.view === nx.go) {
+      var m = $('main'); if (m && !$('obhere')) { var h = document.createElement('div'); h.id = 'obhere'; h.className = 'banner'; h.style.cssText = 'background:#E6F0EA;border-color:#B9D9C8;color:#1F5A41;font-size:13px';
+        h.innerHTML = '<b>Step ' + (L.indexOf(nx) + 1) + ' of ' + L.length + ' · ' + esc(nx.t) + '.</b> ' + esc(nx.s); var tb = m.firstElementChild; m.insertBefore(h, tb ? tb.nextSibling : null); }
+    }
+  }
+  // The menu is sticky, so the bubble is fixed to the screen and re-placed on scroll; hidden when its menu item is off screen.
+  function obPlaceTip() {
+    var tip = $('obtip'), nb = document.querySelector('#oqa aside .obnext'); if (!tip) return;
+    if (!nb || window.innerWidth < 900) { tip.style.display = 'none'; return; }
+    var r = nb.getBoundingClientRect(), off = r.bottom < 0 || r.top > window.innerHeight || r.height === 0;
+    tip.style.display = off ? 'none' : 'flex'; tip.style.top = (r.top + r.height / 2 - 18) + 'px'; tip.style.left = (r.right + 12) + 'px';
+  }
+  if (!window.__obTipBound) { window.__obTipBound = true; window.addEventListener('scroll', function () { obPlaceTip(); }, { passive: true }); window.addEventListener('resize', function () { obPlaceTip(); });
+    document.addEventListener('scroll', function (e) { if (e.target && e.target.closest && e.target.closest('#oqa aside')) obPlaceTip(); }, { capture: true, passive: true }); }
+  function obAct(a, d) {
+    if (a === 'obgo') { go(d.v); return; }
+    if (a === 'obmin' || a === 'obopen') { OB.open = a === 'obopen'; try { localStorage.setItem('oq_ob_open', OB.open ? '1' : '0'); } catch (x) { /* ignore */ } obDraw(); return; }
+    if (a === 'obshow') { if (OB.d) OB.d.hidden = false; OB.open = true; var x0 = $('obshow'); if (x0) x0.remove(); obDraw(); if (CFG.onboardingSet) CFG.onboardingSet('onboarding_hidden', false).catch(function () {}); return; }
+    if (a === 'obhide') { if (OB.d) OB.d.hidden = true; obDraw(); if (CFG.onboardingSet) CFG.onboardingSet('onboarding_hidden', true).catch(function () {}); if (obNext()) toast('Checklist hidden. Turn it back on in Portal settings.'); }
   }
   function go(view) { S.view = view; S.pop = null; window.scrollTo(0, 0); render(); }
   var XWHY = {};
@@ -3221,6 +6087,8 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var ap = t.closest('[data-autoplay]');
     if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    var wkb = t.closest('[data-wkn]'); if (wkb && WKF) { WKN = +wkb.getAttribute('data-wkn'); try { localStorage.setItem('oq_weeks', String(WKN)); } catch (x) {} focusWeekly(WKF); return; }
+    var tkb = t.closest('[data-tkview],[data-tkset],[data-tkcancel],[data-tkclose],[data-tkst],[data-tkdo],[data-tkdue],[data-tkradd],[data-tkrdel]'); if (tkb && tkAct(tkb)) return;
     var tra = t.closest('[data-trall]'); if (tra) { var tid = tra.getAttribute('data-trall'); TR.open[tid] = !TR.open[tid]; var tc = $('trc'); if (tc && S.cur) { tc.outerHTML = trCard(S.cur); bindTr(); } return; }
     var ppt = t.closest('[data-ppart]'); if (ppt && P.legs) { P.step = null; P.stepEnd = null; vseek(P.legs[+ppt.getAttribute('data-ppart')].offset, true); paintPlayer(); return; }
     if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended && (!P.legs || (P.li || 0) === P.legs.length - 1)) vseek(0); AU.play().catch(function () {}); } else AU.pause(); return; }
@@ -3256,6 +6124,22 @@ export function mountOpsisQA(ROOT, cfg) {
     if (pm) { S.pmode = pm.getAttribute('data-pmode'); loadPhone().then(phoneChart); return; }
     var ps = t.closest('[data-psort]');
     if (ps) { var pk = ps.getAttribute('data-psort').split('|'); S['pd' + pk[0]] = S['ps' + pk[0]] === pk[1] ? -(S['pd' + pk[0]] || 1) : 1; S['ps' + pk[0]] = pk[1]; loadPhone().then(pk[0] === 'b' ? phoneBrands : phoneCsrs); return; }
+    var wt = t.closest('[data-whytog]');
+    if (wt) { var wb = document.querySelector('#why .md'), wo = wb && wb.style.display === 'none'; if (wb) wb.style.display = wo ? '' : 'none'; wt.setAttribute('aria-expanded', wo ? 'true' : 'false'); var ws = wt.querySelector('span.mut'); if (ws) ws.textContent = wo ? 'Hide' : 'Show'; var wc = $('whychev'); if (wc) wc.style.transform = wo ? 'rotate(180deg)' : ''; return; }
+    var tg = t.closest('[data-tgo]');
+    if (tg) { var to = tg.getAttribute('data-tgo'); S.tileFrom = S.view === 'brand' && S.brand ? ['brand', short(S.brand)] : ['overview', 'Overview'];
+      if (S.view === 'brand' && S.brand) S.brands = [S.brand];
+      if (to.indexOf('calls:') === 0) { var cm = { all: {}, booked: { outcome: 'Booked' }, notbooked: { outcome: 'Not Booked' }, noask: { step: 'ask_booking' } }; openCalls(cm[to.slice(6)] || {}); } else go(to); return; }
+    var xsh = t.closest('[data-xsort]');
+    if (xsh && !t.closest('[data-tip]')) { var xk = xsh.getAttribute('data-xsort'); XSORT.dir = XSORT.k === xk ? -XSORT.dir : (xk === 'b' ? 1 : -1); XSORT.k = xk; if (XDRAW) XDRAW(); return; }
+    var qf = t.closest('[data-qaflow],[data-ddrill]');
+    if (qf) { var fs = $(qf.getAttribute('data-ddrill') || 'fsteps'); if (fs) { var fo = fs.style.display === 'none'; fs.style.display = fo ? '' : 'none'; qf.setAttribute('aria-expanded', fo ? 'true' : 'false'); if (fo) fs.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } return; }
+    var dsr = t.closest('[data-tip]') ? null : t.closest('[data-dsort]');
+    if (dsr) { var dk = dsr.getAttribute('data-dsort'); DASH.dir = DASH.sort === dk ? -DASH.dir : (dk === 'name' || dk === 'brand' || dk === 'tta' ? 1 : -1); DASH.sort = dk; drawDashTable(); return; }
+    var dcl = t.closest('[data-dcalls]');
+    if (dcl) { openCalls(dcl.getAttribute('data-dnocard') ? { nocard: true } : {}, dcl.getAttribute('data-dcalls')); return; }
+    var dop = t.closest('[data-dopen]');
+    if (dop && !t.closest('button')) { var di = dop.getAttribute('data-dopen'); DASH.open = DASH.open === di ? null : di; drawDashTable(); return; }
     var tm = t.closest('[data-tmode]');
     if (tm) { S.tmode = tm.getAttribute('data-tmode'); loadReport().then(trendCard); return; }
     var el = t.closest('[data-go],[data-brand],[data-agent],[data-call],[data-close],[data-kpi],[data-step],[data-ask],[data-pop],[data-range],[data-act],[data-bsort],[data-csort],[data-mix],[data-page],[data-unfilter],[data-callsfor],[data-needs],[data-xferlist],[data-change],[data-q],[data-outcome],[data-brandcb],[data-allbrands]');
@@ -3298,7 +6182,14 @@ export function mountOpsisQA(ROOT, cfg) {
       var a = d.act;
       if (a === 'customrange') { var cs = $('cs').value, ce = $('ce').value; if (cs && ce && cs <= ce) { S.range = 'custom'; S.start = cs; S.end = ce; S.pop = null; render(); } else toast('Pick a start date before the end date.'); }
       else if (a === 'closepop') { S.pop = null; render(); }
+      else if (a === 'pgexp') { pageExport(el.getAttribute('data-fmt')); S.pop = null; render(); }
+      else if (a === 'callexp') { callExport(el.getAttribute('data-fmt')); }
       else if (a === 'huballbrands') { S.brands = []; render(); }
+      else if (a === 'copycall') {
+        var cid = d.v || S.callId, chref = location.origin + location.pathname + location.search + '#v=calls&call=' + encodeURIComponent(cid), cdone = function () { toast('Link to this call copied. Anyone with a portal login for this brand can open it.'); };
+        var cfb = function () { var ta = document.createElement('textarea'); ta.value = chref; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); cdone(); } catch (x) { toast('Copy this link: ' + chref); } ta.remove(); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(chref).then(cdone, cfb); else cfb();
+      }
       else if (a === 'copylink') {
         writeHash(); var href = location.href, done = function () { toast('Link copied. Anyone with a portal login for these brands can open it.'); };
         var fallback = function () { var ta = document.createElement('textarea'); ta.value = href; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (x) { toast('Copy this link: ' + href); } ta.remove(); };
@@ -3314,12 +6205,19 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'cereqok' || a === 'cereqno') { ceDecide(d.r, a === 'cereqok', el); }
       else if (a === 'reqok' || a === 'reqno') { decideReq(d.r, a === 'reqok', el); }
       else if (a === 'restore') { var rk = d.k, st = ((S.cur && S.cur.steps) || []).filter(function (x) { return x.key === rk; })[0]; if (st) { el.disabled = true; saveAdjust(rk, st.ai_answer, null).then(function () { toast('Change undone'); }).catch(function (e2) { el.disabled = false; toast(e2.message || 'Couldn’t restore.'); }); } }
-      else if (a === 'invite') { TM.inv = { name: '', email: '', role: 'manager', brand: '' }; drawTeam(); }
+      else if (a === 'invite') { TM.inv = { name: '', email: '', role: 'rm', brand: '', location: '' }; drawTeam(); }
       else if (a === 'invcancel') { TM.inv = null; drawTeam(); }
       else if (a === 'invsend') { keepInv(); var I = TM.inv, nm = I.name.trim(), em = I.email.trim();
         if (!nm) { toast('Add their full name'); return; } if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast('Add a valid email'); return; }
+        if (I.role === 'gm' && (!I.brand || !I.location)) { toast('A GM needs a brand and a location'); return; }
+        if (NEWROLE[I.role] && !CFG.teamSet) { toast('Couldn’t set that role here. Try again later.'); return; }
         if (TM.busy) return; TM.busy = true; busyBtn(el, true);
-        api({ action: 'teaminvite', op: 'invite', name: nm, email: em, role: I.role, brand: I.role === 'admin' ? null : (I.brand || null) }).then(function (r) { TM.mail = r.mail; TM.inv = null; return api({ action: 'team' }); }).then(function (r2) { TM.busy = false; TM.list = r2.people || TM.list; drawTeam(); toast('Login created · send the invite from your mailbox'); })
+        // the invite itself starts as view-only; the real role (RM / GM / Coach) is set right after through qa_team_set
+        var ib = I.role === 'admin' ? null : (I.brand || null), irole = I.role, iloc = I.location || null;
+        api({ action: 'teaminvite', op: 'invite', name: nm, email: em, role: NEWROLE[irole] ? 'viewer' : irole, brand: ib }).then(function (r) { TM.mail = r.mail; TM.inv = null; return api({ action: 'team' }); })
+          .then(function (r2) { var nu = (r2.people || []).filter(function (u) { return String(u.email || '').toLowerCase() === em.toLowerCase(); })[0];
+            return NEWROLE[irole] && nu ? CFG.teamSet({ id: nu.id, role: irole, brand: ib, location: iloc }).then(function () { return r2; }) : r2; })
+          .then(function (r2) { return teamMerge(r2.people || []); }).then(function (pl) { TM.busy = false; TM.list = pl.length ? pl : TM.list; drawTeam(); toast('Login created · send the invite from your mailbox'); })
           .catch(function (e2) { TM.busy = false; busyBtn(el, false); drawTeam(); toast(e2.message || 'Couldn’t create the invite.'); }); }
       else if (a === 'mailclose') { TM.mail = null; drawTeam(); }
       else if (a === 'mailcopy') { var MM = TM.mail; if (MM && navigator.clipboard) navigator.clipboard.writeText('Subject: ' + MM.subject + '\n\n' + MM.body).then(function () { toast('Copied'); }, function () { toast('Couldn’t copy. Select the text instead.'); }); }
@@ -3330,6 +6228,9 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'prestore') { var ru = TM.list[+d.i]; teamWrite({ op: 'restore', id: ru.id }, ru.name + ' has access again', el); }
       else if (a === 'kbedit') { KBS.edit = +d.i; KBS.del = null; drawKb(); }
       else if (a === 'kbcancel') { KBS.edit = null; drawKb(); }
+      else if (a === 'bssave') { bsSave(); }
+      else if (a === 'bsreset') { if (BR.draft) { BR.draft.accent = BR_DEF.accent; BR.draft.sidebar = BR_DEF.sidebar; BR.draft.highlight = BR_DEF.highlight; BR.draft.hlAuto = true; drawBrandSet(); } }
+      else if (a === 'bsnologo') { bsSave({ remove_logo: true }); }
       else if (a === 'kbsave') { var ka = KBS.list[KBS.edit], t2 = $('kbt').value.trim(), b2 = $('kbb').value.trim(); if (!t2 || !b2) { toast('Add a title and the details'); return; } kbWrite({ op: 'edit', id: ka.id, title: t2, category: $('kbc').value, body: b2 }, 'Saved — used when scoring new calls', el); }
       else if (a === 'kbdel') { KBS.del = +d.i; drawKb(); }
       else if (a === 'kbdelno') { KBS.del = null; drawKb(); }
@@ -3341,11 +6242,106 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'jvcancel') { MN.edit = null; drawMoney(); }
       else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
+      else if (a === 'askdl') { var am = S.ask.msgs[+d.mi]; if (am && am.downloads) askDownload(am.downloads[+d.di]); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
+      else if (a === 'prstart') { prStart(d.id); }
+      else if (a === 'rcstart') { rcStart(); }
+      else if (a === 'rltog') { var lc = d.loc; RL.open = RL.open === lc ? null : lc; rcLocBox(RL.brand); }
+      else if (a === 'rlsave') { rlSave(d.loc); }
+      else if (a === 'rltest') { RC.brand = RL.brand; RC.loc = d.loc; RC.tab = 'calls'; rcStart(); }
+      else if (a === 'rcend') { rcEnd(); }
+      else if (a === 'rcback') { RC.res = null; RC.err = null; drawRecep(); }
+      else if (a === 'rcsay') {
+        if (RC.sayAudio) { try { RC.sayAudio.pause(); } catch (x) { } var was = RC.sayBtn; RC.sayAudio = null; RC.sayBtn = null; if (was) was.textContent = '▶ Hear it'; if (was === el) return; }
+        var ss = (RC.s && RC.s.settings) || {}, fill = rcPreview(ss), k2 = d.say, txt = '';
+        if (k2 === 'agent_name') txt = 'This is ' + (ss.agent_name || 'Ava') + '.';
+        else if (k2 === 'company_name') txt = 'Thank you for calling ' + (ss.company_name || '') + '.';
+        else if (k2 === 'aka') txt = String(ss.aka || '').split(/[,;]+/).map(function (x) { return x.trim(); }).filter(Boolean).join('. ');
+        else if (k2 === 'voice') txt = 'Hi, this is ' + (ss.agent_name || 'Ava') + ', the digital assistant. How can I help you today?';
+        else txt = fill(ss[k2]);
+        if (!String(txt).replace(/[\s.]/g, '')) { toast('Type something first.'); return; }
+        var tk2 = null; try { var rw2 = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw2) { for (var i2 = 0; i2 < localStorage.length; i2++) { var kk2 = localStorage.key(i2); if (/^sb-.*-auth-token$/.test(kk2)) { rw2 = localStorage.getItem(kk2); break; } } } var jj2 = rw2 && JSON.parse(rw2); tk2 = jj2 && (jj2.access_token || (jj2.currentSession && jj2.currentSession.access_token)); } catch (x) { }
+        var bt = el; bt.disabled = true; bt.textContent = 'Loading…';
+        fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-say', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk2 || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, { brand: RC.sBrand || RC.brand, text: txt, voice: VX.recep[RC.sBrand || RC.brand] || ss.voice || 'female' })) })
+          .then(function (r) { if (r.ok) return r.blob(); return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || 'Couldn’t play it.'); }); })
+          .then(function (b) { var au = new Audio(URL.createObjectURL(b)); RC.sayAudio = au; RC.sayBtn = bt; bt.disabled = false; bt.textContent = '■ Stop'; au.onended = function () { if (RC.sayBtn === bt) { RC.sayAudio = null; RC.sayBtn = null; } bt.textContent = '▶ Hear it'; }; return au.play(); })
+          .catch(function (e) { bt.disabled = false; bt.textContent = '▶ Hear it'; toast(e.message); });
+      }
+      else if (a === 'rcplay') { var slot = $('rcaudio'); if (!slot || el.disabled) return; el.disabled = true; el.textContent = 'Loading…';
+        var tk = null; try { var rw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw) { for (var ii = 0; ii < localStorage.length; ii++) { var kk = localStorage.key(ii); if (/^sb-.*-auth-token$/.test(kk)) { rw = localStorage.getItem(kk); break; } } } var jj = rw && JSON.parse(rw); tk = jj && (jj.access_token || (jj.currentSession && jj.currentSession.access_token)); } catch (x) { }
+        fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk || '') }, body: JSON.stringify({ call_id: d.id }) })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t load the recording.'); return j; }); })
+          .then(function (j) { if (!j.url) { el.disabled = false; el.textContent = '▶ Listen'; toast('No recording is available for this call.'); return; } slot.innerHTML = '<audio controls autoplay src="' + esc(j.url) + '" style="width:min(460px,80vw);height:44px"></audio>'; })
+          .catch(function (e) { el.disabled = false; el.textContent = '▶ Listen'; toast(e.message); }); }
+      else if (a === 'rctab') { if (RC.tab === 'settings' && RC.dirty && d.t !== 'settings' && !confirm('Discard unsaved settings changes?')) return; if (RC.tab === 'settings' && d.t !== 'settings') { RC.dirty = false; RC.sBrand = ''; } RC.tab = d.t; drawRecep(); }
+      else if (a === 'rcsec') { RC.open[d.id] = !RC.open[d.id]; drawRcSettings(); }
+      else if (a === 'rcadd') { rcListAdd(d.list); }
+      else if (a === 'rcdel') { rcGet(d.list).splice(+d.i, 1); RC.dirty = true; drawRcSettings(); }
+      else if (a === 'rcssave') { rcSave(); }
+      else if (a === 'rasave') { rcAlertsSave(); }
+      else if (a === 'rcpsave') { recapSave(); }
+      else if (a === 'locsave') { locSave(); }
+      else if (a === 'cbosave') { cbOwnerSave(d); }
+      else if (a === 'exaexp') { exAuditCsv(d, el); }
+      else if (a === 'cbodel') { cbOwnerSave(d, true); }
+      else if (a === 'ifby') { IF.by = d.k; drawIf(); }
+      else if (a === 'exnadd') { var ph = (($('exnp') || {}).value || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); if (ph.length !== 10) { toast('Enter a 10-digit phone number.'); return; } exnSave(ph, (($('exnl') || {}).value || '').trim(), true); }
+      else if (a === 'exndel') { if (confirm('Score calls from ' + fphone(d.p) + ' again?')) exnSave(d.p, null, false); }
+      else if (/^ob(go|min|open|hide|show)$/.test(a)) { obAct(a, d); }
+      else if (a === 'featcard') { el.disabled = true; CFG.featureSet('card_capture', true).then(function () { FEAT_AT = 0; return featLoad(); }).then(function () { toast('Card capture is on.'); render(); }).catch(function (e) { el.disabled = false; toast(e.message); }); }
+      else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm' || a === 'cctest') { ccAct(a, d); }
+      else if (/^oc/.test(a) && ['ocaddtech', 'ocedit', 'occancel', 'ocsavetech', 'ocdel', 'ocreset', 'ocrotsave'].indexOf(a) >= 0) { ocAct(a, d); }
+      else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'rchlcals') { api({ action: 'receptionist', op: 'hl_calendars' }).then(function (r) { RC.hlCals = r.calendars || []; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'rcsreset') { rcLoadSettings(RC.sBrand); }
+      else if (a === 'rcrprun') { var P0 = rcRpInit(); P0.start = ($('rpst') || {}).value || P0.start; P0.end = ($('rpen') || {}).value || P0.end; rcRpLoad(); }
+      else if (a === 'rcrppick') { RC.rp.pick = !RC.rp.pick; drawRcReport(); }
+      else if (a === 'rcrpcsv') { rcRpCsv(); }
+      else if (a === 'rcrpsum') { rcRpSumCsv(); }
+      else if (a === 'rcview') { api({ action: 'receptionist', op: 'call', call_id: d.id }).then(function (r) { RC.res = r; drawRecep(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'rcsetup') { api({ action: 'receptionist', op: 'setup' }).then(function () { toast('Ava is set up.'); render(); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'prend') { prEnd(); }
+      else if (a === 'pranswer') { prAnswer(); }
+      else if (a === 'prcancel') { prCancel(); }
+      else if (a === 'prback') { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); }
+      else if (a === 'prview') { prView(d.id); }
+      else if (a === 'vxprev') {
+        var vs = el.parentNode && el.parentNode.querySelector('select'), vid = vs && (VX_DEF[vs.value] || vs.value), vv = (VX.list || []).filter(function (x) { return x.id === vid; })[0];
+        if (VX.audio) { try { VX.audio.pause(); } catch (x) { } var wb = VX.btn; VX.audio = null; VX.btn = null; if (wb) wb.textContent = '▶ Sample'; if (wb === el) return; }
+        if (!vv || !vv.preview) { toast('No sample clip for this voice. Use ▶ Hear it.'); return; }
+        var au0 = new Audio(vv.preview); VX.audio = au0; VX.btn = el; el.textContent = '■ Stop'; au0.onended = function () { if (VX.btn === el) { VX.audio = null; VX.btn = null; } el.textContent = '▶ Sample'; }; au0.play().catch(function () { el.textContent = '▶ Sample'; toast('Couldn’t play the sample.'); });
+      }
+      else if (a === 'prvoice') {
+        var pf = document.querySelector('[data-pv="female"]'), pm = document.querySelector('[data-pv="male"]'), cur0 = VX.practice || {}, jobs = [];
+        if (pf && pf.value && pf.value !== cur0.female && pf.value.length > 10) jobs.push(['female', pf.value]);
+        if (pm && pm.value && pm.value !== cur0.male && pm.value.length > 10) jobs.push(['male', pm.value]);
+        if (!jobs.length) { toast('No changes to save.'); return; }
+        el.disabled = true; el.textContent = 'Saving…';
+        jobs.reduce(function (pr, j) { return pr.then(function () { return vxCall({ op: 'practice_set', slot: j[0], voice_id: j[1] }); }).then(function () { (VX.practice = VX.practice || {})[j[0]] = j[1]; }); }, Promise.resolve())
+          .then(function () { toast('Caller voices saved.'); drawPractice(); }).catch(function (e) { el.disabled = false; el.textContent = 'Save caller voices'; toast(e.message); });
+      }
+      else if (a === 'prsetup') { api({ action: 'practice', op: 'setup' }).then(function () { toast('Practice caller is set up.'); PR.d = null; render(); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'ptf') { PT.f = d.f; PT.shown = 50; PT.scroll = !!d.scroll; drawPrice(); }
+      else if (a === 'ptsort') { if (PT.sk === d.k) PT.sd = -PT.sd; else { PT.sk = d.k; PT.sd = (d.k === 'agent' || d.k === 'brand') ? 1 : -1; } drawPrice(); }
+      else if (a === 'ptbsort') { if (PT.bk === d.k) PT.bd = -PT.bd; else { PT.bk = d.k; PT.bd = d.k === 'brand' ? 1 : -1; } drawPrice(); }
+      else if (a === 'ptag') { if (PT.ag === d.ag && PT.b === d.br) { PT.ag = null; PT.b = null; } else { PT.ag = d.ag; PT.b = d.br; PT.scroll = true; } PT.shown = 50; drawPrice(); }
+      else if (a === 'ptbr') { if (PT.b === d.br && !PT.ag) { PT.b = null; } else { PT.b = d.br; PT.ag = null; PT.scroll = true; } PT.shown = 50; drawPrice(); }
+      else if (a === 'ptclr') { PT.ag = null; PT.b = null; PT.shown = 50; drawPrice(); }
+      else if (a === 'ptmore') { PT.shown += 50; drawPrice(); }
+      else if (a === 'ptcsv') { ptCsv(); }
       else if (a === 'ccf') { CAP.f = d.f; CAP.shown = 50; drawCard(); }
-      else if (a === 'ccag') { if (CAP.ag === d.ag && CAP.b === d.br) { CAP.ag = null; CAP.b = null; } else { CAP.ag = d.ag; CAP.b = d.br; } CAP.shown = 50; drawCard(); }
-      else if (a === 'ccbr') { if (CAP.b === d.br && !CAP.ag) CAP.b = null; else { CAP.b = d.br; CAP.ag = null; } CAP.shown = 50; drawCard(); }
+      else if (a === 'ccsort') { var txt = d.k === 'agent' || d.k === 'location' || d.k === 'brand'; if (d.t === 'b') { if (CAP.bsk === d.k) CAP.bsd = -(CAP.bsd || -1); else { CAP.bsk = d.k; CAP.bsd = txt ? 1 : -1; } } else { if (CAP.sk === d.k) CAP.sd = -(CAP.sd || -1); else { CAP.sk = d.k; CAP.sd = txt ? 1 : -1; } } drawCard(); }
+      else if (a === 'ccreset') { CAP.loc = ''; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); }
+      else if (a === 'ccag' || a === 'ccbr') {
+        // Clicking a CSR/brand opens its "Not asked" calls; clicking a number opens that number's calls. Then jump to the list.
+        var cfEl = t.closest('[data-cf]'), cf = cfEl ? cfEl.getAttribute('data-cf') : 'not';
+        var same = a === 'ccag' ? (CAP.ag === d.ag && CAP.b === d.br) : (CAP.b === d.br && !CAP.ag);
+        if (same && CAP.f === cf) { CAP.ag = null; CAP.b = null; CAP.f = 'all'; }
+        else { if (a === 'ccag') { CAP.ag = d.ag; CAP.b = d.br; } else { CAP.b = d.br; CAP.ag = null; } CAP.f = cf; }
+        CAP.shown = 50; drawCard();
+        if (CAP.b) { var lst = $('cclist'); if (lst && lst.scrollIntoView) lst.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      }
       else if (a === 'ccclr') { CAP.ag = null; CAP.b = null; drawCard(); }
       else if (a === 'ccmore') { CAP.shown += 100; drawCard(); }
       else if (a === 'cccsv') { ccCsv(); }
@@ -3378,7 +6374,7 @@ export function mountOpsisQA(ROOT, cfg) {
   });
   on(document, 'change', function (e) {
     var t = e.target;
-    if (t.hasAttribute && t.hasAttribute('data-invrole') && TM.inv) { keepInv(); TM.inv.role = t.value; drawTeam(); }
+    if (t.hasAttribute && t.hasAttribute('data-invrole') && TM.inv) { keepInv(); drawTeam(); }
     else if (t.hasAttribute && t.hasAttribute('data-rpscope')) { RP.scope = t.getAttribute('data-rpscope'); drawReporting(); }
     else if (t.hasAttribute && t.hasAttribute('data-rpagent')) { RP.agent = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rptypes')) { RP.allTypes = t.checked; }
@@ -3388,11 +6384,20 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-rpteam')) { RP.team = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-hubqbrand')) { HQ.brand = t.value; HQ.csr = null; HQ.topic = null; S.brands = t.value ? [t.value] : []; render(); }
+    else if (t.hasAttribute && t.hasAttribute('data-mybr') && CFG.pickBrand) { var nb = t.value; t.disabled = true; CFG.pickBrand(nb).then(function () { window.location.reload(); }).catch(function (e) { t.disabled = false; t.value = LOCK; toast(e.message || 'Couldn’t switch brands.'); }); }
     else if (t.hasAttribute && t.hasAttribute('data-hubweek')) { HUB.week = t.value; HUB.home = {}; HUB.wins = {}; HUB.roster = null; render(); }
+    else if (t.hasAttribute && t.hasAttribute('data-tkown')) tkOwn(t);
+    else if (t.hasAttribute && t.hasAttribute('data-tkrf')) { var kk = $('tkrk'), kv = kk ? kk.value : ''; if (t.id === 'tkrb') { TK.rb = t.value; TK.rl = ''; } else TK.rl = t.value; drawTasks(); var k2 = $('tkrk'); if (k2) k2.value = kv; }
+    else if (t.hasAttribute && t.hasAttribute('data-tcb') && TM.list) {
+      var cu = TM.list[+t.getAttribute('data-tcb')], picked = [].slice.call(document.querySelectorAll('input[data-tcb="' + t.getAttribute('data-tcb') + '"]:checked')).map(function (x) { return x.value; });
+      teamWrite({ op: 'update', id: cu.id, role: 'coach', brand: picked.length === 1 ? picked[0] : null, location: null, brands: picked }, cu.name + ' coaches ' + (picked.length ? picked.map(short).join(', ') : 'all brands'));
+    }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
-      var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id);
-      var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null));
-      teamWrite({ op: 'update', id: u.id, role: role, brand: brand }, u.name + ' is now ' + RNAME[role] + (role === 'admin' ? '' : ' · ' + (brand ? short(brand) : 'all brands')));
+      var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id), ls = $('tl-' + u.id);
+      var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null)), loc = role === 'gm' ? (ls && brand === u.brand ? (ls.value || null) : (brand === u.brand ? u.location : null)) : null;
+      // a GM needs a location: show the picker first, save once one is chosen
+      if (role === 'gm' && (!brand || !loc)) { u.role = 'gm'; u.brand = brand; u.location = null; drawTeam(); toast(brand ? 'Pick ' + u.name + '’s location' : 'Pick a brand, then a location'); return; }
+      teamWrite({ op: 'update', id: u.id, role: role, brand: brand, location: loc }, u.name + ' is now ' + RNAME[role] + (role === 'admin' ? '' : ' · ' + (brand ? short(brand) : 'all brands')) + (loc ? ' · ' + loc : ''));
     }
   });
   on(document, 'keydown', function (e) {
@@ -3402,12 +6407,15 @@ export function mountOpsisQA(ROOT, cfg) {
   });
   on(window, 'resize', function () { clearTimeout(fitReview.t); fitReview.t = setTimeout(fitReview, 150); });
   on(window, 'hashchange', function () { var before = location.hash; readHash(); render(); });
-  var lg = $('oqlogo'); if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'; lg.alt = CLIENT; }
+  var lg = $('oqlogo'); if (lg && OPSIS) { lg.insertAdjacentHTML('afterend', '<div id="oqlogotxt" style="font-weight:700;font-size:20px;letter-spacing:-0.02em;color:#14302A;text-align:center;padding:6px 0">Opsis CX <span style="font-weight:500;font-size:13px;color:#2F7D5B">QA</span></div>'); lg.remove(); lg = null; }
+  if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/9726e6eb-1364-4dba-8ddb-10c07a408ecb/logo-1793310857674.png'; /* Becky 11/23: Opsis CX is the default, never another client's logo */ lg.alt = CLIENT; }
+  try { var bc0 = JSON.parse(localStorage.getItem('oqa_brand_' + (CFG.clientId || 'own')) || 'null'); if (bc0) applyBranding(bc0); } catch (x) {}
+  if (!CFG.csrSelf) api({ action: 'branding' }).then(function (b) { try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(b)); } catch (x) {} var g0 = G; applyBranding(b); if (G !== g0) render(); }).catch(function () {});
   var DEEP_CALL = (location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i) || [])[1];
-  readHash(); render();
+  readHash(true); if (COACHMODE && !/(^|&)v=/.test(location.hash.replace(/^#/, ''))) S.view = 'coach'; render();
   if (DEEP_CALL && !CFG.csrSelf) { S.callId = DEEP_CALL; callDrawer(); }
   return function destroy() {
-    LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];
+    LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2], l[3]); }); LISTENERS = [];
     try { AU.pause(); AU.removeAttribute('src'); AU.load(); } catch (x) {}
     if (EXT) { try { EXT(); } catch (x) {} EXT = null; }
   };

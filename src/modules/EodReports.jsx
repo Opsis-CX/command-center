@@ -241,7 +241,7 @@ function PersonalEod({ userId }) {
             <div><span style={label}>Notes</span>
               <textarea style={area} value={c.notes} onChange={e => setC({ ...c, notes: e.target.value })} placeholder="Live listens, training, anything else…" /></div>
           </div>
-          {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
+          {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : submittedAt ? 'Update report' : 'Submit report'}</button>
             {submittedAt && <button className="btn btn-ghost" onClick={() => emailCopy(date)} disabled={emailing}>{emailing ? 'Emailing…' : '📧 Email me a copy'}</button>}
@@ -286,7 +286,7 @@ function MyPastReports({ userId, refreshKey, onEmail, emailing }) {
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 10 }}>{err}</div>}
+          {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 10 }}>{err}</div>}
           {rows === null ? <p className="page-sub" style={{ fontSize: 12.5 }}>Loading…</p>
             : rows.length === 0 ? <p className="page-sub" style={{ fontSize: 12.5 }}>No submitted reports yet.</p>
               : (
@@ -339,7 +339,7 @@ function AdminEod() {
   const load = useCallback(async () => {
     setLoading(true); setErr(''); setMissing(false)
     try {
-      const { data: profs } = await supabase.from('profiles').select('id, full_name, role, is_active').eq('is_active', true)
+      const { data: profs } = await supabase.from('profiles').select('id, full_name, role, is_active').is('client_id', null).eq('is_active', true)
       const nonAgents = (profs || []).filter(p => String(p.role || '').toLowerCase() !== 'agent')
       const ids = nonAgents.map(p => p.id)
 
@@ -412,7 +412,7 @@ function AdminEod() {
       <p className="page-sub" style={{ marginBottom: 14 }}>{prettyDate(date)} · non-agents who were on, tracked time, or filed a report. Tracked hours come straight from the time tracker.</p>
 
       {missing ? <SetupNote /> : loading ? <p className="page-sub">Loading…</p> : err ? (
-        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5 }}>{err}</div>
+        <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12.5 }}>{err}</div>
       ) : rows.length === 0 ? <p className="page-sub">Nobody to show for this day.</p> : (
         <div style={{ display: 'grid', gap: 8 }}>
           {rows.map(r => {

@@ -21,9 +21,9 @@ export default function BillingSettings() {
   }
 
   return (
-    <div style={{ maxWidth: 480, padding: 24, border: '1px solid #e5e7eb', borderRadius: 12 }}>
+    <div style={{ maxWidth: 480, padding: 24, border: '1px solid light-dark(#e5e7eb, #2a3439)', borderRadius: 12 }}>
       <h2 style={{ marginTop: 0 }}>Billing</h2>
-      {err && <p style={{ color: '#b00020' }}>{err}</p>}
+      {err && <p style={{ color: 'light-dark(#b00020, #e9637b)' }}>{err}</p>}
       {ent ? (
         <>
           <p><strong>Plan:</strong> {ent.plan ? ent.plan[0].toUpperCase() + ent.plan.slice(1) : '—'}</p>
@@ -33,7 +33,7 @@ export default function BillingSettings() {
           {ent.current_period_end &&
             <p><strong>Renews:</strong> {new Date(ent.current_period_end).toLocaleDateString()}</p>}
         </>
-      ) : <p style={{ color: '#666' }}>Loading…</p>}
+      ) : <p style={{ color: 'light-dark(#666, #b3c1c7)' }}>Loading…</p>}
       <button onClick={manage} disabled={busy} style={{
         marginTop: 12, padding: '10px 18px', borderRadius: 8, border: 'none',
         background: '#111827', color: '#fff', fontWeight: 600, cursor: busy ? 'wait' : 'pointer',

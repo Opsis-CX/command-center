@@ -594,22 +594,22 @@ export default function HiringDashboard() {
         </div>
       </div>
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
 
       {lastOnboard && (
-        <div style={{ background: lastOnboard.error ? '#FEF2F2' : '#ECFDF5', border: '1px solid ' + (lastOnboard.error ? '#FECACA' : '#A7F3D0'), borderRadius: 10, padding: '12px 16px', marginBottom: 14, position: 'relative' }}>
+        <div style={{ background: lastOnboard.error ? 'light-dark(#FEF2F2, #391313)' : 'light-dark(#ECFDF5, #133927)', border: '1px solid ' + (lastOnboard.error ? '#FECACA' : '#A7F3D0'), borderRadius: 10, padding: '12px 16px', marginBottom: 14, position: 'relative' }}>
           <button onClick={() => setLastOnboard(null)} style={{ position: 'absolute', top: 8, right: 10, border: 0, background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-soft)', lineHeight: 1 }}>×</button>
           {lastOnboard.error ? (
-            <div style={{ fontSize: 13, color: '#B91C1C' }}><b>Onboarding for {lastOnboard.name} hit a problem:</b> {lastOnboard.error} — you can retry, or set a password from People & Tags.</div>
+            <div style={{ fontSize: 13, color: 'light-dark(#B91C1C, #e86464)' }}><b>Onboarding for {lastOnboard.name} hit a problem:</b> {lastOnboard.error} — you can retry, or set a password from People & Tags.</div>
           ) : (
-            <div style={{ fontSize: 13.5, color: '#065F46' }}>
+            <div style={{ fontSize: 13.5, color: 'light-dark(#065F46, #1dc998)' }}>
               <b>✓ {lastOnboard.name} onboarded.</b> Account {lastOnboard.created ? 'created' : 'updated'}, certification assigned, and a welcome email {lastOnboard.emailed ? 'sent' : 'could NOT be sent — share the login below manually'}.
               <div style={{ marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
                 <span><b>Login:</b> app.opsiscx.com</span>
                 <span><b>Email:</b> {lastOnboard.email}</span>
-                <span style={{ fontFamily: 'monospace', background: '#fff', border: '1px solid #A7F3D0', borderRadius: 6, padding: '2px 8px' }}><b>Temp password:</b> {lastOnboard.tempPassword}</span>
+                <span style={{ fontFamily: 'monospace', background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#A7F3D0, #2b644a)', borderRadius: 6, padding: '2px 8px' }}><b>Temp password:</b> {lastOnboard.tempPassword}</span>
                 <button onClick={() => { navigator.clipboard?.writeText(`Login: https://app.opsiscx.com\nEmail: ${lastOnboard.email}\nTemporary password: ${lastOnboard.tempPassword}`) }}
-                  style={{ border: '1px solid #A7F3D0', background: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12.5, cursor: 'pointer', fontWeight: 600 }}>Copy login</button>
+                  style={{ border: '1px solid light-dark(#A7F3D0, #2b644a)', background: 'light-dark(#fff, #161d21)', borderRadius: 6, padding: '3px 10px', fontSize: 12.5, cursor: 'pointer', fontWeight: 600 }}>Copy login</button>
               </div>
             </div>
           )}
@@ -683,9 +683,9 @@ function PayChip({ app }) {
   if (pay === 'na') return null
   if (pay === 'unknown' && !PAY_CHECK_STAGES.includes(app.status)) return null
   const look = {
-    yes: { bg: '#DCFCE7', bd: '#BBF7D0', c: '#166534', t: '✓ OK with ' + CC_RATE },
-    no: { bg: '#FEE2E2', bd: '#FECACA', c: '#991B1B', t: '✗ Wants more than ' + CC_RATE + (app.compensation ? ' · ' + app.compensation : '') },
-    unknown: { bg: '#FEF3C7', bd: '#FDE68A', c: '#92400E', t: '? Pay not confirmed' },
+    yes: { bg: 'light-dark(#DCFCE7, #133920)', bd: '#BBF7D0', c: '#166534', t: '✓ OK with ' + CC_RATE },
+    no: { bg: 'light-dark(#FEE2E2, #391313)', bd: '#FECACA', c: '#991B1B', t: '✗ Wants more than ' + CC_RATE + (app.compensation ? ' · ' + app.compensation : '') },
+    unknown: { bg: 'light-dark(#FEF3C7, #393213)', bd: '#FDE68A', c: '#92400E', t: '? Pay not confirmed' },
   }[pay]
   return (
     <div title={look.t} style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: look.c, background: look.bg, border: '1px solid ' + look.bd, borderRadius: 999, padding: '2px 9px', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{look.t}</div>
@@ -705,7 +705,7 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
       <PayChip app={app} />
       {app.on_hold && (
         <div title={app.on_hold_reason || 'On hold at capacity'}
-          style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 9px' }}>
+          style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: 'light-dark(#92400E, #e1712d)', background: 'light-dark(#FEF3C7, #393213)', border: '1px solid light-dark(#FDE68A, #64592b)', borderRadius: 999, padding: '2px 9px' }}>
           ⏸ On hold{app.on_hold_reason ? ' · ' + app.on_hold_reason : ''}
         </div>
       )}
@@ -718,10 +718,87 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
           <button disabled={busy} onClick={onApprove}
             style={{ flex: 1, border: 0, borderRadius: 7, background: '#16A34A', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '6px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
           <button disabled={busy} onClick={onDeny}
-            style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: '#DC2626', fontSize: 12.5, fontWeight: 700, padding: '6px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
+            style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'light-dark(#DC2626, #e76c6c)', fontSize: 12.5, fontWeight: 700, padding: '6px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
         </div>
       )}
     </div>
+  )
+}
+
+// 🔑 Login help for a new hire (2026-10-30): reset their password and copy the login details
+// to send them. Admins can reset anyone; the hiring team (certification role) only new hires
+// still in training — enforced by the admin-set-password server function.
+function LoginHelp({ app }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)      // { password } | { error }
+  const [requireChange, setRequireChange] = useState(false)
+  const [copied, setCopied] = useState(false)
+  function makePassword() {
+    const n = Math.floor(1000 + Math.random() * 9000)
+    const words = ['Cert', 'Start', 'Welcome', 'Opsis', 'Team']
+    return `${words[Math.floor(Math.random() * words.length)]}-${n}-Go!`
+  }
+  async function reset() {
+    setBusy(true); setResult(null); setCopied(false)
+    const password = makePassword()
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-set-password', {
+        body: { userId: app.profile_id || undefined, email: app.profile_id ? undefined : app.email, password, requireChange },
+      })
+      let msg = data?.error
+      if (error) { try { msg = (await error.context?.json())?.error || error.message } catch { msg = error.message } }
+      setResult(msg ? { error: msg } : { password })
+    } catch (e) { setResult({ error: String(e?.message || e) }) }
+    finally { setBusy(false) }
+  }
+  const details = result?.password
+    ? `Hi ${String(app.full_name || '').split(' ')[0] || 'there'}! Here's your Command Center login:\n\nLink: https://app.opsiscx.com\nEmail: ${app.email}\nPassword: ${result.password}${requireChange ? '\n\nYou\'ll be asked to choose your own password when you sign in.' : ''}`
+    : ''
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 20, fontSize: 12.5 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontWeight: 700 }}>🔑 Command Center login</div>
+          <div style={{ color: 'var(--ink-soft)' }}>{app.email}</div>
+        </div>
+        <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} disabled={busy} onClick={reset}>
+          {busy ? 'Resetting…' : 'Reset password'}
+        </button>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, color: 'var(--ink-soft)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={requireChange} onChange={e => setRequireChange(e.target.checked)} />
+        Make them choose their own password when they sign in
+      </label>
+      {result?.error && <div style={{ marginTop: 8, color: 'light-dark(#B91C1C, #e86464)' }}>{result.error}</div>}
+      {result?.password && (
+        <div style={{ marginTop: 10, background: 'var(--canvas)', borderRadius: 8, padding: '8px 10px' }}>
+          <div>New password: <b style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13.5 }}>{result.password}</b></div>
+          <button className="btn btn-primary" style={{ marginTop: 8, fontSize: 12.5, padding: '5px 12px' }}
+            onClick={() => { navigator.clipboard?.writeText(details); setCopied(true) }}>
+            {copied ? '✓ Copied — paste it to them' : '📋 Copy login details to send'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Approximate IP location with a map link and mismatch flags.
+function GeoLoc({ loc, state, when, empty, vpnFlag }) {
+  if (!loc || loc.lat == null || loc.lng == null) return <span style={{ color: 'var(--ink-soft)' }}>{empty}</span>
+  return (
+    <span>
+      {[loc.city, loc.region, loc.country].filter(Boolean).join(', ')}{' · '}
+      <a href={`https://www.google.com/maps?q=${loc.lat},${loc.lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+        {Number(loc.lat).toFixed(4)}, {Number(loc.lng).toFixed(4)}
+      </a>
+      {loc.country && loc.country !== 'US' && <span style={{ marginLeft: 8, color: 'light-dark(#B91C1C, #e86464)', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+      {vpnFlag && <span style={{ marginLeft: 8, color: 'light-dark(#B91C1C, #e86464)', fontWeight: 700 }}>⚠ {vpnFlag}</span>}
+      {loc.country === 'US' && loc.region && state && loc.region !== state && <span style={{ marginLeft: 8, color: 'light-dark(#B45309, #e07524)', fontWeight: 700 }}>⚠ Doesn't match stated state ({state})</span>}
+      <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+        Approximate, from IP{loc.ip ? ` ${loc.ip}` : ''}{when ? ` · ${new Date(when).toLocaleString()}` : ''} — VPNs can skew this.
+      </div>
+    </span>
   )
 }
 
@@ -732,6 +809,15 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
   const [moveTo, setMoveTo] = useState('')
   const [holdReason, setHoldReason] = useState('')
   const [removeReason, setRemoveReason] = useState('')
+  // Most recent login location for this applicant's Command Center account (if any).
+  const [loginLoc, setLoginLoc] = useState(null)
+  useEffect(() => {
+    setLoginLoc(null)
+    if (!app?.profile_id) return
+    supabase.from('login_locations').select('created_at, ip, lat, lng, city, region, country')
+      .eq('profile_id', app.profile_id).order('created_at', { ascending: false }).limit(1)
+      .then(({ data }) => setLoginLoc(data?.[0] || null), () => {})
+  }, [app?.profile_id])
   // Certification to assign on onboard — defaults to the first available cert.
   const [certTag, setCertTag] = useState('')
   // Default to the Appointment Setter certification (ASC used to be picked by
@@ -872,11 +958,16 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
             )
           })()}
 
+          {/* 🔑 Reset a new hire's Command Center password (admins + hiring team) */}
+          {(app.profile_id || ['rippling_awaiting_signature', 'cert_assigned', 'certifying', 'cert_complete', 'mock_requested', 'hired'].includes(app.status)) && app.email && (
+            <LoginHelp app={app} />
+          )}
+
           {/* action bar */}
           {onApprove && app.status === 'pending_review' && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
               <button disabled={busy} onClick={() => onApprove(app)} style={{ flex: 1, border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
-              <button disabled={busy} onClick={() => onDeny(app)} style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
+              <button disabled={busy} onClick={() => onDeny(app)} style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'light-dark(#DC2626, #e76c6c)', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
             </div>
           )}
           {onTransition && SCREENED_OUT.includes(app.status) && (
@@ -919,11 +1010,11 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                 {adv.to === 'assessment_passed' && (
                   <button disabled={busy} title="They passed, but there's no open spot yet. Emails them that they're first in line for the next wave. No Rippling task until you release the hold."
                     onClick={() => onTransition(app, 'assessment_passed', { email: 'waitlist', note: 'Passed assessment: waitlisted for next wave', waitlist: true })}
-                    style={{ flex: 1, border: '1px solid #FDE68A', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>Pass, waitlist for next wave</button>
+                    style={{ flex: 1, border: '1px solid light-dark(#FDE68A, #64592b)', borderRadius: 8, background: 'light-dark(#FEF3C7, #393213)', color: 'light-dark(#92400E, #e1712d)', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>Pass, waitlist for next wave</button>
                 )}
                 {adv.deny && (
                   <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
-                    style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}>{adv.deny.label}</button>
+                    style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'light-dark(#DC2626, #e76c6c)', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}>{adv.deny.label}</button>
                 )}
               </div>
               {adv.hint && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7, lineHeight: 1.4 }}>{adv.hint}</div>}
@@ -933,9 +1024,9 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           {/* Capacity hold — park them between stages without losing their place. */}
           {onHold && !SCREENED_OUT.includes(app.status) && (
             app.on_hold ? (
-              <div style={{ marginBottom: 20, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 14px' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⏸ On hold at capacity</div>
-                <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.5, marginBottom: 10 }}>
+              <div style={{ marginBottom: 20, background: 'light-dark(#FFFBEB, #393213)', border: '1px solid light-dark(#FDE68A, #64592b)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'light-dark(#92400E, #e1712d)', marginBottom: 4 }}>⏸ On hold at capacity</div>
+                <div style={{ fontSize: 12.5, color: 'light-dark(#92400E, #e1712d)', lineHeight: 1.5, marginBottom: 10 }}>
                   {app.on_hold_reason ? <>Reason: {app.on_hold_reason}. </> : null}
                   They're still at <b>{STATUS_LABEL[app.status] || app.status}</b> and will resume there. Reminder emails and the 14-day
                   auto-deny are paused, and they're excluded from the morning report's SLA. Releasing them emails them the good news and
@@ -957,7 +1048,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                 <input value={holdReason} onChange={e => setHoldReason(e.target.value)} placeholder="Reason (optional) — e.g. no open spots until September"
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', boxSizing: 'border-box', marginBottom: 8 }} />
                 <button disabled={busy} onClick={() => onHold(app, true, holdReason.trim())}
-                  style={{ width: '100%', border: '1px solid #FDE68A', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 700, padding: '9px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ width: '100%', border: '1px solid light-dark(#FDE68A, #64592b)', borderRadius: 8, background: 'light-dark(#FEF3C7, #393213)', color: 'light-dark(#92400E, #e1712d)', fontSize: 13.5, fontWeight: 700, padding: '9px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
                   ⏸ Put on hold &amp; email them
                 </button>
               </details>
@@ -994,8 +1085,8 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           {/* Universal remove / deny — works at ANY stage, sends NO email. Use for
               undeliverable-email or stale applicants to keep the pipeline clean. */}
           {onRemove && !SCREENED_OUT.includes(app.status) && (
-            <details style={{ marginBottom: 20, border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', background: '#fef2f2' }}>
-              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#b91c1c' }}>Remove from pipeline</summary>
+            <details style={{ marginBottom: 20, border: '1px solid light-dark(#fecaca, #642b2b)', borderRadius: 8, padding: '10px 12px', background: 'light-dark(#fef2f2, #391313)' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'light-dark(#b91c1c, #e86464)' }}>Remove from pipeline</summary>
               <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.4 }}>
                 Screens this applicant out from any stage (they move to the screened-out list and can be reinstated later). <strong>No email is sent</strong> — safe for bad-email or stale applicants.
               </div>
@@ -1003,7 +1094,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                 style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button disabled={busy} onClick={() => { onRemove(app, 'withdrawn', removeReason.trim()); setRemoveReason('') }}
-                  style={{ flex: '1 1 140px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#b91c1c', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Remove (no email)</button>
+                  style={{ flex: '1 1 140px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'light-dark(#b91c1c, #e86464)', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Remove (no email)</button>
                 <button disabled={busy} onClick={() => { onRemove(app, 'denied', removeReason.trim()); setRemoveReason('') }}
                   style={{ flex: '1 1 140px', border: 0, borderRadius: 8, background: '#DC2626', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
               </div>
@@ -1013,6 +1104,9 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           <Row label="Email" value={app.email} />
           <Row label="Phone" value={app.phone} />
           <Row label="Location" value={[app.city, app.state].filter(Boolean).join(', ')} />
+          <Row label="Applied from" value={<GeoLoc loc={app.apply_lat != null ? { ip: app.apply_ip, lat: app.apply_lat, lng: app.apply_lng, city: app.apply_city, region: app.apply_region, country: app.apply_country } : null} state={app.state} vpnFlag={app.apply_vpn_flag} empty="Not captured (applied before tracking was added)" />} />
+          {app.assess_lat != null && <Row label="Assessment taken from" value={<GeoLoc loc={{ ip: app.assess_ip, lat: app.assess_lat, lng: app.assess_lng, city: app.assess_city, region: app.assess_region, country: app.assess_country }} state={app.state} when={app.assess_geo_at} vpnFlag={app.assess_vpn_flag} />} />}
+          {app.profile_id && <Row label="Last login from" value={<GeoLoc loc={loginLoc} state={app.state} when={loginLoc?.created_at} empty="No login recorded yet — captured on their next login" />} />}
           <Row label="Work authorized" value={app.work_authorized ? 'Yes' : 'No'} />
           <Row label="Role applying for" value={app.role_applying} />
           <Row label="Open to other roles" value={app.open_to_other_roles ? 'Yes' : 'No'} />

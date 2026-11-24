@@ -80,11 +80,11 @@ export default function NewHireSurvey() {
         </div>
       )}
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
 
       {hasSurvey ? (
         <>
-          <div className="card" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', marginBottom: 16 }}>
+          <div className="card" style={{ background: 'light-dark(#eff6ff, #1b2327)', border: '1px solid light-dark(#bfdbfe, #2b4464)', color: 'light-dark(#1e3a8a, #7591e1)', marginBottom: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>🔒 This is anonymous</div>
             <div style={{ fontSize: 13.5 }}>{pending.intro || 'Your answers are stored without your name attached.'}</div>
           </div>

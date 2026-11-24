@@ -76,7 +76,7 @@ async function uploadResume(file) {
 // what stole focus and limited typing to one character at a time.
 const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
 const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
-const reqMark = <span style={{ color: '#DC2626' }}> *</span>
+const reqMark = <span style={{ color: 'light-dark(#DC2626, #e76c6c)' }}> *</span>
 function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 26 }}>
@@ -143,6 +143,15 @@ export default function ApplicationForm() {
       if (!authorized) { status = 'auto_denied'; screen_reason = 'not_authorized' }
       else if (excluded) { status = 'out_of_area'; screen_reason = 'state:' + f.state }
 
+      // Approximate location the applicant is applying from (IP-based, via
+      // our /api/geo Vercel function). Never blocks submission.
+      let geo = {}
+      try {
+        const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500)
+        const r = await fetch('/api/geo', { signal: ctl.signal }); clearTimeout(t)
+        if (r.ok) geo = await r.json()
+      } catch { /* ignore */ }
+
       const newId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())
       const row = {
         id: newId,
@@ -170,6 +179,13 @@ export default function ApplicationForm() {
         linkedin_url: f.linkedin_url.trim() || null,
         why_opsis: f.why_opsis.trim() || null,
         info_confirmed: true,
+        apply_ip: geo.ip || null,
+        apply_lat: geo.lat ?? null,
+        apply_lng: geo.lng ?? null,
+        apply_city: geo.city || null,
+        apply_region: geo.region || null,
+        apply_country: geo.country || null,
+        apply_vpn_flag: (g => [g.is_tor && 'Tor', g.is_vpn && ('VPN' + (g.vpn_service ? ' (' + g.vpn_service + ')' : '')), g.is_proxy && !g.is_vpn && 'Proxy', g.is_hosting && !g.is_vpn && !g.is_proxy && 'Datacenter IP (likely VPN)'].filter(Boolean).join(' · ') || null)(geo),
       }
       // NOTE: no .select() here — anonymous applicants can insert but cannot
       // read the table back (reads are admin-only), so selecting the new row
@@ -221,7 +237,7 @@ export default function ApplicationForm() {
         </p>
       </div>
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
 
       <Section title="About you">
         <div><label style={labelStyle}>Full name{reqMark}</label><input style={inputStyle} value={f.full_name} onChange={set('full_name')} placeholder="First and last name" /></div>
@@ -246,7 +262,7 @@ export default function ApplicationForm() {
         </div>
         <div style={{ fontSize: 13.5 }}><span style={{ fontWeight: 600 }}>Position:</span> {f.role_applying}</div>
         {isContactCenter && (
-          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px' }}>
+          <div style={{ background: 'light-dark(#F0FDF4, #13391f)', border: '1px solid light-dark(#BBF7D0, #2b643f)', borderRadius: 10, padding: '12px 14px' }}>
             <label style={labelStyle}>This position pays {CONTACT_CENTER_RATE}. Does that rate work for you?{reqMark}</label>
             <select style={inputStyle} value={f.pay_ok} onChange={set('pay_ok')}>
               <option value="">Select…</option>

@@ -3,7 +3,7 @@
 # Run it by hand: GitHub → Actions → "Sync staging database structure" → Run workflow.
 #
 # Needs two repository secrets (Settings → Secrets and variables → Actions):
-#   PROD_DB_URL     – live database connection string (Session pooler, port 5432)
+#   PROD_DB_URL     – live database connection string (Session pooler, port 5432, read-only staging_sync login)
 #   STAGING_DB_URL  – staging database connection string (Session pooler, port 5432)
 name: Sync staging database structure
 
@@ -16,38 +16,68 @@ on:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Safety checks
+      - name: Check the connection strings (never prints passwords)
         env:
-          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
-          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          RAW_STAGING: ${{ secrets.STAGING_DB_URL }}
+          RAW_PROD: ${{ secrets.PROD_DB_URL }}
         run: |
-          if [ "${{ github.event.inputs.confirm }}" != "STAGING" ]; then echo "Type STAGING to confirm."; exit 1; fi
-          # Staging must be the staging project, and must never be the live one.
-          case "$STAGING_DB_URL" in *suctozsxsqjnlyecqfer*) ;; *) echo "STAGING_DB_URL is not the staging project — stopping."; exit 1;; esac
-          case "$STAGING_DB_URL" in *dqvuviyqrcrgapmxkoyx*) echo "STAGING_DB_URL points at LIVE — stopping."; exit 1;; esac
-          case "$PROD_DB_URL" in *dqvuviyqrcrgapmxkoyx*) ;; *) echo "PROD_DB_URL is not the live project — stopping."; exit 1;; esac
+          if [ "${{ github.event.inputs.confirm }}" != "STAGING" ]; then echo "❌ Type STAGING (all capitals) to confirm."; exit 1; fi
 
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
+          # Forgive common paste slips: spaces, line breaks, quotes, a leading NAME= .
+          clean() { printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^[A-Z_]*=//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"; }
+          STAGING="$(clean "$RAW_STAGING")"; PROD="$(clean "$RAW_PROD")"
 
-      - name: Install the Postgres client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          explain() {   # $1 = label, $2 = url
+            u="$2"; ok=1
+            case "$u" in postgresql://*|postgres://*) ;; *) echo "❌ $1 should start with postgresql://"; ok=0;; esac
+            case "$u" in *'[YOUR-PASSWORD]'*|*'['*|*']'*) echo "❌ $1 still has [ ] brackets — replace [YOUR-PASSWORD] (brackets included) with the password."; ok=0;; esac
+            case "$u" in *@*) ;; *) echo "❌ $1 has no @ — the password part is missing."; ok=0;; esac
+            case "$u" in *:5432/*) ;; *) echo "❌ $1 should use port 5432 (Session pooler)."; ok=0;; esac
+            user="$(printf '%s' "$u" | sed -E 's#^[a-z]+://([^:@]+).*#\1#')"
+            host="$(printf '%s' "$u" | sed -E 's#^.*@([^:/]+).*#\1#')"
+            echo "   $1 → user: $user · host: $host"
+            [ $ok = 1 ]
+          }
+          echo "Checking connection strings (passwords are never shown):"
+          explain STAGING_DB_URL "$STAGING" || exit 1
+          explain PROD_DB_URL "$PROD" || exit 1
+
+          # Staging must be the staging project and never the live one; prod must be live.
+          case "$STAGING" in *suctozsxsqjnlyecqfer*) ;; *) echo "❌ STAGING_DB_URL is not the staging project — stopping."; exit 1;; esac
+          case "$STAGING" in *dqvuviyqrcrgapmxkoyx*) echo "❌ STAGING_DB_URL points at LIVE — stopping."; exit 1;; esac
+          case "$PROD" in *dqvuviyqrcrgapmxkoyx*) ;; *) echo "❌ PROD_DB_URL is not the live project — stopping."; exit 1;; esac
+
+          echo "STAGING_URL=$STAGING" >> "$GITHUB_ENV"
+          echo "PROD_URL=$PROD" >> "$GITHUB_ENV"
+          echo "::add-mask::$STAGING"
+          echo "::add-mask::$PROD"
+          echo "✅ Connection strings look right."
+
+      - name: Install the Postgres 17 tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Test both connections
+        run: |
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          $PSQL "$PROD_URL" -tAc "select 'live connection ok — ' || count(*) || ' tables' from pg_tables where schemaname='public'" || { echo "❌ Couldn't sign in to LIVE with PROD_DB_URL. Check the user (staging_sync.dqvuviyqrcrgapmxkoyx) and password."; exit 1; }
+          $PSQL "$STAGING_URL" -tAc "select 'staging connection ok — ' || count(*) || ' tables' from pg_tables where schemaname='public'" || { echo "❌ Couldn't sign in to STAGING with STAGING_DB_URL. Check the password you reset."; exit 1; }
 
       - name: Copy the live structure (no data)
-        env:
-          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
         run: |
-          supabase db dump --db-url "$PROD_DB_URL" --schema public -f live_structure.sql
+          /usr/lib/postgresql/17/bin/pg_dump "$PROD_URL" --schema-only --schema=public --no-owner -f live_structure.sql
           echo "Lines in structure file: $(wc -l < live_structure.sql)"
 
       - name: Replace the staging structure
-        env:
-          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: |
-          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          $PSQL "$STAGING_URL" -v ON_ERROR_STOP=1 <<'SQL'
           drop schema if exists public cascade;
           create schema public;
           grant usage on schema public to postgres, anon, authenticated, service_role;
@@ -56,5 +86,50 @@ jobs:
           alter default privileges in schema public grant all on functions to postgres, anon, authenticated, service_role;
           alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
           SQL
-          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=0 -f live_structure.sql 2>&1 | tail -n 40
-          echo "Done. Tables in staging now: $(psql "$STAGING_DB_URL" -tAc "select count(*) from pg_tables where schemaname='public'")"
+          $PSQL "$STAGING_URL" -v ON_ERROR_STOP=0 -q -f live_structure.sql 2>&1 | grep -iE "error" | head -n 40 || true
+          echo "✅ Done. Tables in staging now: $($PSQL "$STAGING_URL" -tAc "select count(*) from pg_tables where schemaname='public'")"
+
+      - name: Copy storage folders, file rules and the new-account trigger
+        run: |
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          # These live outside the main section, and a re-sync removes the ones that depend on it.
+          $PSQL "$PROD_URL" -tA -v ON_ERROR_STOP=1 > storage_and_auth.sql <<'SQL'
+          select format('insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values (%L, %L, %s, %s, %s) on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;',
+                 id, name, public, coalesce(file_size_limit::text, 'null'), coalesce(quote_literal(allowed_mime_types::text) || '::text[]', 'null'))
+          from storage.buckets
+          union all
+          select format('drop policy if exists %I on storage.objects; create policy %I on storage.objects as %s for %s to %s%s%s;',
+                 policyname, policyname, permissive, cmd, array_to_string(roles, ', '),
+                 case when qual is not null then ' using (' || qual || ')' else '' end,
+                 case when with_check is not null then ' with check (' || with_check || ')' else '' end)
+          from pg_policies where schemaname = 'storage' and tablename = 'objects';
+          SQL
+          echo "drop trigger if exists on_auth_user_created on auth.users; create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();" >> storage_and_auth.sql
+          $PSQL "$STAGING_URL" -v ON_ERROR_STOP=0 -q -f storage_and_auth.sql 2>&1 | grep -iE "error" | head -n 20 || true
+          echo "✅ Storage folders: $($PSQL "$STAGING_URL" -tAc "select count(*) from storage.buckets") · file rules: $($PSQL "$STAGING_URL" -tAc "select count(*) from pg_policies where schemaname='storage'")"
+
+      - name: Make staging safe (never call live, no scheduled jobs)
+        run: |
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          # Some live functions have live's address written inside them (push, jobs, webhooks).
+          # Re-point every one of them at STAGING so staging can never call back into live.
+          $PSQL "$STAGING_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          do $$ declare r record; n int := 0; begin
+            for r in select p.oid from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and p.prosrc ilike '%dqvuviyqrcrgapmxkoyx%' loop
+              execute replace(pg_get_functiondef(r.oid), 'dqvuviyqrcrgapmxkoyx', 'suctozsxsqjnlyecqfer'); n := n + 1;
+            end loop;
+            raise notice 'Re-pointed % functions at staging', n;
+          end $$;
+          do $$ declare r record; begin
+            for r in select conrelid::regclass as tbl, conname, pg_get_constraintdef(oid) as def from pg_constraint
+                     where connamespace = 'public'::regnamespace and contype = 'c' and pg_get_constraintdef(oid) ilike '%dqvuviyqrcrgapmxkoyx%' loop
+              execute format('alter table %s drop constraint %I', r.tbl, r.conname);
+              execute format('alter table %s add constraint %I %s', r.tbl, r.conname, replace(r.def, 'dqvuviyqrcrgapmxkoyx', 'suctozsxsqjnlyecqfer'));
+            end loop;
+          end $$;
+          select cron.alter_job(job_id := jobid, active := false) from cron.job where active;
+          SQL
+          left=$($PSQL "$STAGING_URL" -tAc "select count(*) from pg_proc where pronamespace='public'::regnamespace and prosrc ilike '%dqvuviyqrcrgapmxkoyx%'")
+          if [ "$left" != "0" ]; then echo "❌ $left functions still point at live — check before using staging."; exit 1; fi
+          echo "✅ Staging is safe: 0 functions point at live, rules re-pointed, scheduled jobs paused."
+          echo "ℹ️  Re-syncing clears staging's sample data and test logins' profiles — ask Claude to re-add the demo company afterwards."

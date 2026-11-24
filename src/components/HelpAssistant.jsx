@@ -102,9 +102,9 @@ export default function HelpAssistant() {
             position: 'fixed', right: 20, bottom: 20, zIndex: 9999,
             width: 'min(400px, calc(100vw - 40px))',
             height: 'min(600px, calc(100vh - 40px))',
-            background: '#fff', borderRadius: 16, overflow: 'hidden',
+            background: 'light-dark(#fff, #161d21)', borderRadius: 16, overflow: 'hidden',
             boxShadow: '0 12px 40px rgba(0,0,0,0.25)', display: 'flex',
-            flexDirection: 'column', border: '1px solid #e5e7eb',
+            flexDirection: 'column', border: '1px solid light-dark(#e5e7eb, #2a3439)',
           }}
         >
           {/* Header */}
@@ -124,19 +124,19 @@ export default function HelpAssistant() {
           </div>
 
           {/* Messages */}
-          <div ref={scroller} style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#f8fafc' }}>
+          <div ref={scroller} style={{ flex: 1, overflowY: 'auto', padding: 16, background: 'light-dark(#f8fafc, #161d21)' }}>
             {messages.length === 0 && (
               <div>
-                <div style={{ fontSize: 14, color: '#334155', marginBottom: 12 }}>
+                <div style={{ fontSize: 14, color: 'light-dark(#334155, #b3c1c7)', marginBottom: 12 }}>
                   Hi{auth?.user?.email ? '' : ' there'}! I can explain how the Command Center works and
                   help you troubleshoot on your own. I can’t change anything — I’m just here to help.
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Try asking:</div>
+                <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 6 }}>Try asking:</div>
                 {suggestions.map((s) => (
                   <button key={s} onClick={() => send(s)} style={{
                     display: 'block', width: '100%', textAlign: 'left', margin: '6px 0',
-                    padding: '10px 12px', background: '#fff', border: '1px solid #e2e8f0',
-                    borderRadius: 10, fontSize: 13, color: '#0f172a', cursor: 'pointer',
+                    padding: '10px 12px', background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)',
+                    borderRadius: 10, fontSize: 13, color: 'light-dark(#0f172a, #e8eef0)', cursor: 'pointer',
                   }}>{s}</button>
                 ))}
               </div>
@@ -157,12 +157,12 @@ export default function HelpAssistant() {
               </div>
             ))}
             {loading && (
-              <div style={{ fontSize: 13, color: '#64748b', padding: '4px 2px' }}>Thinking…</div>
+              <div style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)', padding: '4px 2px' }}>Thinking…</div>
             )}
           </div>
 
           {/* Composer */}
-          <div style={{ borderTop: '1px solid #e5e7eb', padding: 10, background: '#fff' }}>
+          <div style={{ borderTop: '1px solid light-dark(#e5e7eb, #2a3439)', padding: 10, background: 'light-dark(#fff, #161d21)' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <textarea
                 value={input}
@@ -171,7 +171,7 @@ export default function HelpAssistant() {
                 placeholder="Type your question…"
                 rows={1}
                 style={{
-                  flex: 1, resize: 'none', border: '1px solid #cbd5e1', borderRadius: 10,
+                  flex: 1, resize: 'none', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 10,
                   padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', maxHeight: 120,
                   outline: 'none',
                 }}

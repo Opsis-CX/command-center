@@ -411,6 +411,93 @@ function ColorMenu({ editor, kind }) {
   )
 }
 
+// Link box. Replaces window.prompt(), which browsers silently block once a
+// site has had "prevent this page from creating additional dialogs" ticked —
+// the button then did nothing at all.
+function normalizeUrl(raw) {
+  const u = raw.trim()
+  if (!u) return ''
+  if (/^(https?:|mailto:)/i.test(u)) return u
+  if (/^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(u)) return 'mailto:' + u
+  if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(u)) return null  // javascript:, ftp:, etc. → rejected
+  return 'https://' + u.replace(/^\/+/, '')
+}
+
+function LinkMenu({ editor }) {
+  const [open, setOpen] = React.useState(false)
+  const [url, setUrl] = React.useState('')
+  const [err, setErr] = React.useState('')
+  const rangeRef = React.useRef(null)
+  const inputRef = React.useRef(null)
+
+  const openBox = () => {
+    if (open) { setOpen(false); return }
+    // If the caret sits inside an existing link, edit the whole link.
+    if (editor.isActive('link')) editor.chain().focus().extendMarkRange('link').run()
+    const { from, to } = editor.state.selection
+    rangeRef.current = { from, to }
+    setUrl(editor.getAttributes('link').href || '')
+    setErr('')
+    setOpen(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  const close = () => { setOpen(false); editor.chain().focus().run() }
+
+  const apply = () => {
+    const href = normalizeUrl(url)
+    if (href === null) { setErr('Use a web address (https://…) or an email.'); return }
+    const r = rangeRef.current || editor.state.selection
+    const chain = editor.chain().focus().setTextSelection(r)
+    if (!href) { chain.extendMarkRange('link').unsetLink().run(); setOpen(false); return }
+    if (r.from === r.to) {
+      // Nothing highlighted → insert the address itself as the link text.
+      chain.insertContent({ type: 'text', text: url.trim(), marks: [{ type: 'link', attrs: { href } }] }).run()
+    } else {
+      chain.extendMarkRange('link').setLink({ href }).run()
+    }
+    const ok = editor.getAttributes('link').href ||
+      editor.state.doc.rangeHasMark(r.from, Math.max(r.to, r.from + 1), editor.schema.marks.link)
+    if (!ok) { setErr('Use a web address (https://…) or an email.'); return }
+    setOpen(false)
+  }
+
+  const remove = () => {
+    const r = rangeRef.current || editor.state.selection
+    editor.chain().focus().setTextSelection(r).extendMarkRange('link').unsetLink().run()
+    setOpen(false)
+  }
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <Btn title="Link" active={open || editor.isActive('link')} onClick={openBox}>🔗</Btn>
+      {open && (
+        <>
+          <div onMouseDown={e => { e.preventDefault(); close() }}
+            style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+          <div className="re-popover" style={{ width: 260 }}>
+            <input ref={inputRef} type="text" value={url} placeholder="Paste link (https://…)"
+              onChange={e => { setUrl(e.target.value); setErr('') }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); apply() }
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() }
+              }}
+              style={{ width: '100%', boxSizing: 'border-box', height: 30, padding: '0 8px', border: '1px solid var(--line)',
+                borderRadius: 6, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit' }} />
+            {err && <div style={{ color: 'light-dark(#c0392b, #dd7469)', fontSize: 11.5, marginTop: 4 }}>{err}</div>}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button type="button" className="re-clear" style={{ background: 'var(--accent, #1a73e8)', color: '#fff', borderColor: 'transparent' }}
+                onMouseDown={e => { e.preventDefault(); apply() }}>Apply</button>
+              {editor.isActive('link') &&
+                <button type="button" className="re-clear" onMouseDown={e => { e.preventDefault(); remove() }}>Remove</button>}
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  )
+}
+
 // Table controls. Once the caret is inside a table, the button set changes.
 function TableMenu({ editor }) {
   const inTable = editor.isActive('table')
@@ -438,17 +525,6 @@ function TableMenu({ editor }) {
 function Toolbar({ editor, items, onSpellCheck }) {
   if (!editor) return null
   const c = () => editor.chain().focus()
-
-  const setLink = () => {
-    const prev = editor.getAttributes('link').href || ''
-    const url = window.prompt('Link URL', prev)
-    if (url === null) return                       // cancelled
-    if (url === '') { c().unsetLink().run(); return }
-    // sanitize.js rejects javascript: etc. on save, but check here too so the
-    // person gets told rather than silently losing the link later.
-    c().setLink({ href: url }).run()
-    if (!editor.getAttributes('link').href) window.alert('That link was rejected. Use http://, https://, or mailto:.')
-  }
 
   const render = (key, i) => {
     switch (key) {
@@ -484,10 +560,10 @@ function Toolbar({ editor, items, onSpellCheck }) {
       case 'h1':       return <Btn key={i} title="Heading 1" active={editor.isActive('heading', { level: 1 })} onClick={() => c().toggleHeading({ level: 1 }).run()}>H1</Btn>
       case 'h2':       return <Btn key={i} title="Heading 2" active={editor.isActive('heading', { level: 2 })} onClick={() => c().toggleHeading({ level: 2 }).run()}>H2</Btn>
       case 'h3':       return <Btn key={i} title="Heading 3" active={editor.isActive('heading', { level: 3 })} onClick={() => c().toggleHeading({ level: 3 }).run()}>H3</Btn>
-      case 'bullet':   return <Btn key={i} title="Bulleted list" active={editor.isActive('bulletList')}  onClick={() => c().toggleBulletList().run()}>•</Btn>
-      case 'ordered':  return <Btn key={i} title="Numbered list" active={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()}>1.</Btn>
+      case 'bullet':   return <Btn key={i} title="Bulleted list" active={editor.isActive('bulletList')}  onClick={() => { if (!editor.isActive('bulletList')) splitSelectedLines(editor); c().toggleBulletList().run() }}>•</Btn>
+      case 'ordered':  return <Btn key={i} title="Numbered list" active={editor.isActive('orderedList')} onClick={() => { if (!editor.isActive('orderedList')) splitSelectedLines(editor); c().toggleOrderedList().run() }}>1.</Btn>
       case 'quote':    return <Btn key={i} title="Quote" active={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()}>❝</Btn>
-      case 'link':     return <Btn key={i} title="Link" active={editor.isActive('link')} onClick={setLink}>🔗</Btn>
+      case 'link':     return <LinkMenu key={i} editor={editor} />
       case 'color':    return <ColorMenu key={i} editor={editor} kind="color" />
       case 'highlight':return <ColorMenu key={i} editor={editor} kind="highlight" />
       case 'table':    return <TableMenu key={i} editor={editor} />
@@ -502,6 +578,29 @@ function Toolbar({ editor, items, onSpellCheck }) {
   return <div className="re-toolbar">{items.map(render)}</div>
 }
 
+// Bullets / numbers on highlighted lines (2026-11-10, Becky): Shift+Enter lines are one paragraph with line
+// breaks, so the list used to swallow the whole block (including the line above the highlight). Before
+// making a list, turn the line breaks inside the highlighted paragraph(s) into real lines, so only the
+// highlighted lines get bullets.
+function splitSelectedLines(editor) {
+  try {
+    const { state, view } = editor
+    const { from, to } = state.selection
+    const breaks = []
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (node.type.name === 'paragraph') {
+        node.forEach((child, offset) => { if (child.type.name === 'hardBreak') breaks.push(pos + 1 + offset) })
+        return false
+      }
+      return true
+    })
+    if (!breaks.length) return
+    let tr = state.tr
+    for (let k = breaks.length - 1; k >= 0; k--) { const p = breaks[k]; tr = tr.delete(p, p + 1).split(p) }
+    view.dispatch(tr)
+  } catch (e) { /* fall back to the normal list toggle */ }
+}
+
 /**
  * RichEditor
  *
@@ -510,8 +609,10 @@ function Toolbar({ editor, items, onSpellCheck }) {
  * @param onSubmit     called on Enter, when submitOnEnter is set
  * @param variant      'chat' | 'full'
  * @param editorRef    optional; receives { clear, focus, insertText, getHTML, isEmpty }
- * @param submitOnEnter  Enter submits, Shift+Enter is a newline (chat behaviour)
+ * @param submitOnEnter  Enter submits, Shift+Enter is a newline (chat behaviour); on touch devices Enter is always a newline
  */
+
+
 export function RichEditor({
   value = '', onChange, onSubmit, onPasteFiles,
   placeholder = 'Write something…', variant = 'full',
@@ -605,6 +706,9 @@ export function RichEditor({
       handleKeyDown(view, event) {
         if (!submitOnEnter) return false
         if (event.key !== 'Enter' || event.shiftKey) return false
+        // Phones / tablets (2026-11-17, Becky): Enter is a new line, the Send button sends.
+        // Touch keyboards have no Shift+Enter, so Enter-to-send made multi-line messages impossible.
+        if (typeof window !== 'undefined' && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return false
 
         // Inside a list or a table, Enter must keep its normal meaning —
         // new bullet, next cell — not send the message.

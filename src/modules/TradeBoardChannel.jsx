@@ -5,6 +5,7 @@ import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
+import { createPoliteReloader } from '../lib/politePoll'
 
 // Interval acceptance verbiage (Becky picked Option 2, 2026-09-03). Same text
 // as Schedule.jsx.
@@ -40,11 +41,13 @@ function RoleBadge({ role }) {
   const meta = ROLE_META[role] || { label: role || 'Unknown', bg: 'var(--canvas)', color: 'var(--ink-soft)' }
   return <span className="badge" style={{ background: meta.bg, color: meta.color, marginBottom: 6 }}>{meta.label}</span>
 }
-const POLL_MS = 20000
+const POLL_MS = 60000   // (2026-11-11) was 20 s; reloads now go through createPoliteReloader (skipped while hidden, merged, spaced out)
 const SEAT_CAP = 60   // cap open-seat cards rendered at once (agents see far fewer via the release window)
 
 // ---- date/time helpers (Eastern), mirrored from Schedule.jsx ----
 function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })) }
+// Matches the DB's enforce_claim_rules: agents can't claim before release_at.
+function isReleased(block) { return !block?.release_at || new Date(block.release_at).getTime() <= Date.now() }
 function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -87,7 +90,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
       const { data: { user } } = await supabase.auth.getUser()
       const [meRes, profRes, blkRes, clmRes, trdRes, schRes, audRes, recRes, certRes, tierRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('profiles').select('id, full_name').order('full_name'),
+        supabase.from('profiles').select('id, full_name').is('client_id', null).order('full_name'),
         supabase.from('shift_blocks').select('*').in('role', ROLES).order('block_date').order('start_time'),
         fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('interval_trades').select('*').eq('status', 'open'),
@@ -114,13 +117,13 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
+    const poller = createPoliteReloader(() => load(true), { pollMs: POLL_MS })
     const ch = supabase.channel('tradeboard-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_claims' }, () => load(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_blocks' }, () => load(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'interval_trades' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_claims' }, poller.trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_blocks' }, poller.trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interval_trades' }, poller.trigger)
       .subscribe()
-    const t = setInterval(() => load(true), POLL_MS)
-    return () => { supabase.removeChannel(ch); clearInterval(t) }
+    return () => { supabase.removeChannel(ch); poller.dispose() }
   }, [load])
 
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 3500) }
@@ -206,6 +209,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
     .filter(b => {
       if (b.block_date < todayStr || hasIntervalStarted(b)) return false
       if (b.block_date > horizon) return false
+      if (!noReleaseTimes && !isReleased(b)) return false   // not released yet — DB would refuse
       const s = scheduleOf(b)
       if (!s || s.status !== 'published') return false
       if (!(isAdmin || canViewAll || inAudience(b.schedule_id))) return false

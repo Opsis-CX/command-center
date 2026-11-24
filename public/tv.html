@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Live wallboard</title>
+<!-- TV wallboard for the CX engine (2026-11-13). No login: the link's token decides what it shows
+     (counts + CSR first names only, never customer details). Data: rpc cx_wallboard_public(token). -->
+<style>
+  :root { --g:#14302A; --bg:#0d1f1b; --card:#16302a; --mut:#9fb5ad; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:24px 32px 8px; }
+  h1 { margin:0; font-size:32px; }
+  .mut { color:var(--mut); font-size:16px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; padding:16px 32px; }
+  .tile { background:var(--card); border-radius:18px; padding:18px 20px; }
+  .tile .l { color:var(--mut); font-size:15px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; }
+  .tile .v { font-size:64px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; margin-top:6px; }
+  .tile.warn { box-shadow: inset 0 0 0 3px var(--warn); } .tile.bad { box-shadow: inset 0 0 0 3px var(--bad); }
+  .agents { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:8px 32px 32px; }
+  .a { background:var(--card); border-radius:14px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; font-size:18px; font-weight:700; }
+  .dot { width:14px; height:14px; border-radius:50%; display:inline-block; margin-right:10px; }
+  .s { font-size:14px; color:var(--mut); font-weight:600; text-align:right; }
+  .err { padding:60px 32px; font-size:24px; }
+</style>
+</head>
+<body>
+<div id="app"><div class="err">Loading…</div></div>
+<script>
+  const URL_ = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/rest/v1/rpc/cx_wallboard_public'
+  const KEY = 'sb_publishable_I7ZGgWc9yC2v6gLsUNBdCA_lF56Atgs'
+  const token = new URLSearchParams(location.search).get('t') || ''
+  const COL = { ready:'#4ade80', on_call:'#60a5fa', wrap:'#a78bfa', not_ready:'#fbbf24', offline:'#64748b' }
+  const LBL = { ready:'Ready', on_call:'On a call', wrap:'Wrap-up', not_ready:'Not ready', offline:'Offline' }
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
+  const mmss = s => s == null ? '—' : `${Math.floor(s/60)}:${String(Math.round(s)%60).padStart(2,'0')}`
+  const since = t => t ? mmss(Math.max(0, (Date.now() - new Date(t).getTime())/1000)) : ''
+  let last = null
+  function render(d) {
+    const wait = d.waiting || 0, sl = d.service_level, ab = d.offered ? Math.round(100 * d.abandoned / Math.max(1, d.answered + d.abandoned)) : null
+    const tiles = [
+      ['Waiting now', wait, wait >= 3 ? 'bad' : wait ? 'warn' : ''],
+      ['Longest wait', mmss(d.longest_wait_secs), (d.longest_wait_secs || 0) > 90 ? 'bad' : (d.longest_wait_secs || 0) > 30 ? 'warn' : ''],
+      ['On calls', d.on_calls || 0, ''],
+      ['Answered today', `${d.answered || 0}/${d.offered || 0}`, ''],
+      ['Service level', sl == null ? '—' : sl + '%', sl != null && sl < 80 ? 'bad' : ''],
+      ['Avg answer', mmss(d.asa_secs), (d.asa_secs || 0) > 30 ? 'warn' : ''],
+      ['Abandoned', d.abandoned || 0, (ab || 0) > 5 ? 'warn' : ''],
+      ['Outbound today', d.outbound || 0, ''],
+    ]
+    document.getElementById('app').innerHTML =
+      `<header><div><h1>${esc(d.label)}</h1><div class="mut">Live · updated ${new Date(d.at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit', second:'2-digit' })}</div></div></header>` +
+      `<div class="tiles">${tiles.map(([l, v, c]) => `<div class="tile ${c}"><div class="l">${l}</div><div class="v">${esc(v)}</div></div>`).join('')}</div>` +
+      `<div class="agents">${(d.agents || []).map(a => `<div class="a"><span><span class="dot" style="background:${COL[a.state] || '#64748b'}"></span>${esc(a.name)}</span><span class="s">${esc(a.state === 'not_ready' && a.reason ? a.reason : (LBL[a.state] || a.state))}<br>${a.state !== 'offline' ? since(a.since) : ''}</span></div>`).join('')}</div>`
+  }
+  async function load() {
+    try {
+      const r = await fetch(URL_, { method:'POST', headers:{ apikey:KEY, Authorization:'Bearer ' + KEY, 'Content-Type':'application/json' }, body: JSON.stringify({ p_token: token }) })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j?.message || 'This wallboard link is not valid.')
+      last = j; render(j)
+    } catch (e) {
+      if (!last) document.getElementById('app').innerHTML = `<div class="err">${esc(e.message)}</div>`
+    }
+  }
+  load(); setInterval(load, 10000); setInterval(() => last && render(last), 1000)
+</script>
+</body>
+</html>

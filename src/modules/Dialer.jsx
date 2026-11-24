@@ -42,7 +42,8 @@ function scriptFor(campaign) {
   }
 }
 
-export default function Dialer() {
+// embedded (Becky 11/20): inside the CSR phone, which has its own status bar — one status control, not two.
+export default function Dialer({ embedded = false } = {}) {
   const voice = useVoice()
   const [me, setMe] = useState({ name: '', first: '' })
   useEffect(() => {
@@ -58,13 +59,13 @@ export default function Dialer() {
   if (!voice) return <div className="card">Calling isn't available for your login.</div>
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      {!embedded && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <h1 className="page-title" style={{ marginBottom: 2 }}>Agent workspace</h1>
           <p className="page-sub" style={{ margin: 0 }}>Set yourself Ready — inbound calls ring you first, and the Dialer feeds you outbound contacts in between.</p>
         </div>
         <AgentStatus />
-      </div>
+      </div>}
       {voice.inboundCall
         ? <InboundWork key={voice.inboundCall.id || voice.inboundCall.answeredAt} call={voice.inboundCall} me={me} />
         : <OutboundWork me={me} />}
@@ -224,6 +225,10 @@ function OutboundWork({ me }) {
   const callStarted = useRef(false)
   const wasReady = useRef(false)
   const busyFetch = useRef(false)
+  // After-call work target (location's blending setting) + when wrap-up started
+  const [wrapLimit, setWrapLimit] = useState(60)
+  const [wrapStart, setWrapStart] = useState(null)
+  const [, setTick] = useState(0)
 
   const ready = voice.agent.state === 'ready'
   const campaign = (campaigns || []).find(c => c.id === (contact?.campaign_id || sel)) || null
@@ -248,18 +253,21 @@ function OutboundWork({ me }) {
     busyFetch.current = true
     setErr(''); setMsg('')
     try {
-      const list = sel === 'all' ? [...campaigns].sort((a, b) => b.ready_now - a.ready_now) : campaigns.filter(c => c.id === sel)
-      for (const c of list) {
-        const { data, error } = await supabase.rpc('dialer_next', { p_campaign: c.id })
-        if (error) continue
-        const row = Array.isArray(data) ? data[0] : data
-        if (row) {
-          setContact({ ...row, campaign_id: c.id }); setInfo(null); callStarted.current = false
-          // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
-          // lead is handed over — no Call, Pause or Skip for the agent.
-          if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
-          return
-        }
+      // Blended (2026-11-10): the server picks the next contact across all my campaigns in the
+      // location's chosen order (missed calls, speed to lead, callbacks, lifecycle, not booked…) and
+      // holds outbound while a customer is waiting on one of my inbound lines.
+      const { data: nx, error: nxErr } = await supabase.rpc('csr_dialer_next', sel === 'all' ? {} : { p_campaign: sel })
+      if (nxErr) { setErr(nxErr.message); return }
+      if (nx?.wrap_limit) setWrapLimit(Number(nx.wrap_limit))
+      if (nx?.held) { setContact(null); setPhase('idle'); setMsg(nx.reason || 'Outbound is paused right now.'); return }
+      const row = nx?.contact
+      const c = row && campaigns.find(x => x.id === row.campaign_id)
+      if (row && c) {
+        setContact(row); setInfo(null); callStarted.current = false
+        // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
+        // lead is handed over — no Call, Pause or Skip for the agent.
+        if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
+        return
       }
       setContact(null); setPhase('idle'); setMsg('No one to call right now. Checking again every few seconds…')
     } finally { busyFetch.current = false }
@@ -311,10 +319,12 @@ function OutboundWork({ me }) {
     if (phase !== 'calling') return
     if (voice.status === 'in-call') setLastTalk(voice.seconds)
     if ((voice.status === 'ended' || voice.status === 'error') && callStarted.current) {
-      setPhase('dispo')
+      setPhase('dispo'); setWrapStart(Date.now())
       supabase.rpc('dialer_set_state', { p_state: 'wrap', p_campaign: contact?.campaign_id || null })
     }
   }, [voice.status, voice.seconds, phase]) // eslint-disable-line
+  // wrap-up clock ticks once a second while the disposition is open
+  useEffect(() => { if (phase !== 'dispo') return; const t = setInterval(() => setTick(x => x + 1), 1000); return () => clearInterval(t) }, [phase])
 
   function placeCall() {
     if (!contact) return
@@ -349,7 +359,7 @@ function OutboundWork({ me }) {
     if (fields && Object.keys(fields).length) await supabase.rpc('dialer_save_fields', { p_queue: contact.queue_id, p_fields: fields })
     setSaving(false)
     voice.reset()
-    setContact(null); setPhase('idle'); setInfo(null); setMsg('Saved.')
+    setContact(null); setPhase('idle'); setInfo(null); setWrapStart(null); setMsg('Saved.')
     const back = wasReady.current
     wasReady.current = false
     await voice.setStatus(back ? 'ready' : 'not_ready', back ? null : 'Other')
@@ -371,7 +381,7 @@ function OutboundWork({ me }) {
           <>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{ready ? 'Waiting for your next call…' : "You're not Ready"}</div>
             <div className="page-sub" style={{ margin: '6px 0 14px' }}>
-              {ready ? (msg || 'Looking…') : `Set yourself Ready (top right) to start. ${totalReady} contact${totalReady === 1 ? '' : 's'} ready to call now.`}
+              {ready ? (msg || 'Looking…') : `Set yourself Ready at the top to start. ${totalReady} contact${totalReady === 1 ? '' : 's'} ready to call now.`}
             </div>
             <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
               <span style={S.small}>Outbound from</span>
@@ -410,9 +420,14 @@ function OutboundWork({ me }) {
 
   const callBar = (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#0e7490' }}>{campaign?.name}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)' }}>{campaign?.name}</div>
       <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{contact.contact_name || 'Unknown name'}</div>
       <div style={S.small}>{info?.phone ? prettyPhone(info.phone) : `Phone ending ${contact.phone_last4}`} · their time {contact.customer_local_time}</div>
+      {contact.dial_no && <div style={{ marginTop: 6, display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'light-dark(#E6F0EA, #222c31)', color: 'light-dark(#14532d, #2db964)' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: contact.voicemail === 'none' ? '#F3F4F6' : '#FEF3C7', color: contact.voicemail === 'none' ? '#374151' : '#92400E' }}>
+          {contact.voicemail === 'leave' ? 'Leave a voicemail' : contact.voicemail === 'final' ? 'Leave the final voicemail' : 'No voicemail — hang up'}</span>
+      </div>}
       {contact.last_disposition && <div style={{ ...S.small, marginTop: 2 }}>Last result: {(campaign?.dispositions || []).find(x => x.code === contact.last_disposition)?.label || contact.last_disposition}</div>}
       <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
         {phase === 'preview' && <>
@@ -436,6 +451,10 @@ function OutboundWork({ me }) {
         </>}
         {phase === 'dispo' && <>
           <div style={{ width: '100%', fontWeight: 700 }}>Call ended{lastTalk ? ` · talked ${mmss(lastTalk)}` : ''}</div>
+          {wrapStart && (() => { const w = Math.floor((Date.now() - wrapStart) / 1000), over = w > wrapLimit; return (
+            <div style={{ width: '100%', fontSize: 13, fontWeight: 700, color: over ? 'light-dark(#b91c1c, #e86464)' : 'light-dark(#475569, #b3c1c7)' }}>
+              Wrap-up {mmss(w)} / {mmss(wrapLimit)}{over ? ' — over your wrap-up time, save the disposition' : ''}
+            </div>) })()}
           {voice.status === 'error' && voice.error && <div style={{ ...S.small, width: '100%' }}>{voice.error}</div>}
           <button onClick={placeCall} style={{ ...S.btn, flex: 1 }} title="Call again (e.g. dropped call) — counts as another attempt">Redial</button>
           {voice.status === 'error' && <button onClick={() => { voice.reset(); skip() }} style={{ ...S.btn, flex: 1 }} title="The call never went through — put this contact back in the queue">Skip</button>}
@@ -461,7 +480,7 @@ function OutboundWork({ me }) {
 
 const S = {
   card: { padding: 14, borderRadius: 14, border: '1px solid rgba(100,116,139,0.22)', background: 'var(--card, #fff)' },
-  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#0e7490', marginBottom: 8 },
+  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)', marginBottom: 8 },
   select: { padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14, maxWidth: 360 },
   btn: { padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   callBtn: { padding: '9px 14px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' },

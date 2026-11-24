@@ -183,12 +183,12 @@ export default function SalesProspects() {
                   style={{ cursor: 'pointer', background: d.id === openId ? 'var(--accent-bg, #e5f1f8)' : undefined }}>
                   <td style={S.td}><TierChip tier={d.tier} /></td>
                   <td style={{ ...S.td, fontWeight: 700, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {d.organization || '—'}{!d.researched_at && <span title="Needs research" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: '#a15c00' }}>RESEARCH</span>}
+                    {d.organization || '—'}{!d.researched_at && <span title="Needs research" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'light-dark(#a15c00, #c97f1d)' }}>RESEARCH</span>}
                   </td>
                   {!open && <td style={{ ...S.td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.contact_person || '—'}</td>}
                   {!open && <td style={{ ...S.td, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--ink-soft)' }}>{d.industry || '—'}</td>}
                   <td style={{ ...S.td, color: 'var(--ink-soft)' }}>{STAGE_TITLE[d.status] || d.status}</td>
-                  <td style={{ ...S.td, color: d.next_activity && d.next_activity <= todayET() ? '#c0392b' : 'var(--ink-soft)' }}>{d.next_activity ? fmtDate(d.next_activity) : '—'}</td>
+                  <td style={{ ...S.td, color: d.next_activity && d.next_activity <= todayET() ? 'light-dark(#c0392b, #dd7469)' : 'var(--ink-soft)' }}>{d.next_activity ? fmtDate(d.next_activity) : '—'}</td>
                   {!open && <td style={{ ...S.td, color: 'var(--ink-soft)' }}>{d.owner_name || '—'}</td>}
                 </tr>
               ))}
@@ -359,7 +359,7 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
             <span>· Owner: {deal.owner_name || 'Unassigned'}</span>
             {deal.researched_at
               ? <span>· Researched {fmtDate(deal.researched_at)}{deal.researched_by_name ? ` by ${deal.researched_by_name}` : ''}</span>
-              : <span style={{ color: '#a15c00', fontWeight: 700 }}>· Needs research</span>}
+              : <span style={{ color: 'light-dark(#a15c00, #c97f1d)', fontWeight: 700 }}>· Needs research</span>}
           </div>
         </div>
         <button style={S.btn} onClick={onClose} aria-label="Close record">✕</button>
@@ -403,7 +403,7 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
         </div>
       )}
       {err && <div style={{ ...S.err, margin: 0 }}>{err}</div>}
-      {msg && <div style={{ fontSize: 12.5, color: '#1f8a53', fontWeight: 700 }}>{msg}</div>}
+      {msg && <div style={{ fontSize: 12.5, color: 'light-dark(#1f8a53, #2abb71)', fontWeight: 700 }}>{msg}</div>}
 
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)', paddingBottom: 6 }}>
         {tabBtn('research', 'Research')}{tabBtn('log', 'Log & activity')}{tabBtn('discovery', `Discovery${notes?.length ? ` (${notes.length})` : ''}`)}

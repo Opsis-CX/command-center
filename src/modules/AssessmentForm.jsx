@@ -38,7 +38,7 @@ async function uploadFile(file, folder, maxBytes) {
 // Module-level styles + Section so React keeps input focus while typing.
 const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
 const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
-const reqMark = <span style={{ color: '#DC2626' }}> *</span>
+const reqMark = <span style={{ color: 'light-dark(#DC2626, #e76c6c)' }}> *</span>
 function Section({ title, sub, children }) {
   return (
     <div style={{ marginBottom: 26 }}>
@@ -148,7 +148,7 @@ function VoiceRecorderField({ file, onFile, fieldKey }) {
                 style={{ border: 0, borderRadius: 8, background: '#DC2626', color: '#fff', fontWeight: 700, fontSize: 13.5, padding: '10px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
                 ⏹ Stop recording
               </button>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#DC2626', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'light-dark(#DC2626, #e76c6c)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#DC2626', display: 'inline-block', animation: 'pulse 1.2s ease-in-out infinite' }} />
                 Recording {mmss} — read the script above
               </span>
@@ -161,7 +161,7 @@ function VoiceRecorderField({ file, onFile, fieldKey }) {
           )}
         </div>
       )}
-      {recErr && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>{recErr}</div>}
+      {recErr && <div style={{ fontSize: 12, color: 'light-dark(#DC2626, #e76c6c)', marginTop: 6 }}>{recErr}</div>}
 
       {file && recState !== 'recording' && (
         <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
@@ -257,7 +257,22 @@ export default function AssessmentForm({ applicationId }) {
       if (aErr) throw aErr
 
       if (applicationId) {
-        await supabase.from('hiring_applications').update({ status: 'assessment_review' }).eq('id', applicationId)
+        // Approximate location they took the assessment from (IP-based, via /api/geo).
+        let geo = {}
+        try {
+          const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500)
+          const r = await fetch('/api/geo', { signal: ctl.signal }); clearTimeout(t)
+          if (r.ok) geo = await r.json()
+        } catch { /* never block submission */ }
+        await supabase.from('hiring_applications').update({
+          status: 'assessment_review',
+          ...(geo.lat != null ? {
+            assess_ip: geo.ip || null, assess_lat: geo.lat, assess_lng: geo.lng ?? null,
+            assess_city: geo.city || null, assess_region: geo.region || null, assess_country: geo.country || null,
+            assess_vpn_flag: (g => [g.is_tor && 'Tor', g.is_vpn && ('VPN' + (g.vpn_service ? ' (' + g.vpn_service + ')' : '')), g.is_proxy && !g.is_vpn && 'Proxy', g.is_hosting && !g.is_vpn && !g.is_proxy && 'Datacenter IP (likely VPN)'].filter(Boolean).join(' · ') || null)(geo),
+            assess_geo_at: new Date().toISOString(),
+          } : {}),
+        }).eq('id', applicationId)
         await supabase.from('hiring_stage_events').insert({
           application_id: applicationId, from_status: 'assessment_sent', to_status: 'assessment_review', note: 'assessment submitted',
         })
@@ -297,7 +312,7 @@ export default function AssessmentForm({ applicationId }) {
         </p>
       </div>
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
 
       <Section title="Your name">
         <div><label style={labelStyle}>Full name{reqMark}</label><input style={inputStyle} value={f.full_name} onChange={set('full_name')} placeholder="First and last name" /></div>

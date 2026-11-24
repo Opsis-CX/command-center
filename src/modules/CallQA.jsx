@@ -21,7 +21,8 @@ const RUBRIC_ORDER = ['greeting', 'verify', 'callflow', 'knowledge', 'appointmen
 // `lavin` / `open_invoices` = Opsis's own internal Five9 programs. Keys must match ai_qa_reviews.campaign.
 const PROGRAM_LABELS = { garagedoor: 'GarageCo', lavin: 'Lavin', open_invoices: 'Open Invoices' }
 const TEAL = '#0f766e'
-const INK = '#0f172a'   // this module's own text colour (it never uses the theme's)
+const TEAL_T = 'light-dark(#0f766e, #2dd4bf)'  // teal for text: brighter in dark mode
+const INK = 'light-dark(#0f172a, #e8eef0)'   // this module's own text colour (it never uses the theme's)
 const canViewAll = (r) => can(r, 'quality_audit.call_reviews') || can(r, 'service_performance_scorecard.view_all_scorecards')
 
 const scoreColor = (v) => (v == null ? '#94a3b8' : v >= 85 ? '#1b5e20' : v >= 70 ? '#8d6e00' : '#b71c1c')
@@ -29,7 +30,7 @@ const scoreBg = (v) => (v == null ? '#f1f5f9' : v >= 85 ? '#e8f5e9' : v >= 70 ? 
 const pct = (v) => (v == null ? '—' : `${Number(v).toFixed(1)}%`)
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—')
 const fmtDur = (s) => (s == null ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
-const trendNavBtn = (enabled) => ({ width: 26, height: 26, lineHeight: '22px', textAlign: 'center', padding: 0, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: enabled ? '#334155' : '#cbd5e1', fontSize: 16, fontWeight: 700, cursor: enabled ? 'pointer' : 'default' })
+const trendNavBtn = (enabled) => ({ width: 26, height: 26, lineHeight: '22px', textAlign: 'center', padding: 0, borderRadius: 6, border: '1px solid light-dark(#e2e8f0, #2a3439)', background: 'light-dark(#fff, #161d21)', color: enabled ? '#334155' : '#cbd5e1', fontSize: 16, fontWeight: 700, cursor: enabled ? 'pointer' : 'default' })
 // Put each speaker turn on its own line with a blank line between, for readability.
 const formatTranscript = (t) => {
   if (!t) return ''
@@ -39,9 +40,9 @@ const formatTranscript = (t) => {
     .trim()
 }
 const OUTCOME_STYLE = {
-  'Booked': { bg: '#e8f5e9', fg: '#1b5e20' }, 'Not Booked': { bg: '#fdecea', fg: '#b71c1c' },
-  'Transferred': { bg: '#e3f2fd', fg: '#0d47a1' }, 'No Opportunity': { bg: '#f1f5f9', fg: '#64748b' }, 'Other': { bg: '#f1f5f9', fg: '#64748b' },
-  'Voicemail': { bg: '#f1f5f9', fg: '#64748b' }, 'Internal': { bg: '#f1f5f9', fg: '#64748b' }, 'No Conversation': { bg: '#f1f5f9', fg: '#64748b' },
+  'Booked': { bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)' }, 'Not Booked': { bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' },
+  'Transferred': { bg: 'light-dark(#e3f2fd, #132939)', fg: 'light-dark(#0d47a1, #5a91e7)' }, 'No Opportunity': { bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#64748b, #9fb4bb)' }, 'Other': { bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#64748b, #9fb4bb)' },
+  'Voicemail': { bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#64748b, #9fb4bb)' }, 'Internal': { bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#64748b, #9fb4bb)' }, 'No Conversation': { bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#64748b, #9fb4bb)' },
 }
 const agentOf = (r) => r.call?.agent_name || r.extracted_agent_name || 'Unknown'
 // Seconds → m:ss for transcript timestamps.
@@ -52,8 +53,8 @@ function TimedTranscript({ segments }) {
     <div style={{ maxHeight: 340, overflowY: 'auto', fontSize: 13, lineHeight: 1.5 }}>
       {segments.map((seg, i) => (
         <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 5 }}>
-          <span style={{ color: TEAL, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', minWidth: 32 }}>{clockOf(seg.t)}</span>
-          <span style={{ color: '#334155' }}><b style={{ color: '#475569' }}>{seg.s}:</b> {seg.text}</span>
+          <span style={{ color: TEAL_T, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', minWidth: 32 }}>{clockOf(seg.t)}</span>
+          <span style={{ color: 'light-dark(#334155, #b3c1c7)' }}><b style={{ color: 'light-dark(#475569, #b3c1c7)' }}>{seg.s}:</b> {seg.text}</span>
         </div>
       ))}
     </div>
@@ -82,9 +83,9 @@ const valueTier = (r) => {
   return 1
 }
 const TIER_META = {
-  3: { label: 'Large', bg: '#fef3c7', fg: '#92400e' },
-  2: { label: 'Medium', bg: '#e0f2fe', fg: '#075985' },
-  1: { label: 'Small', bg: '#f1f5f9', fg: '#64748b' },
+  3: { label: 'Large', bg: 'light-dark(#fef3c7, #393213)', fg: 'light-dark(#92400e, #e1712d)' },
+  2: { label: 'Medium', bg: 'light-dark(#e0f2fe, #132a39)', fg: 'light-dark(#075985, #1f99db)' },
+  1: { label: 'Small', bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#64748b, #9fb4bb)' },
 }
 // A DECIDED opportunity = a real sales/booking chance that ended Booked or Not
 // Booked on this call. Transferred / Other / hand-offs are NOT decided here, so
@@ -113,15 +114,15 @@ function recomputeReview(answers) {
 // This module is painted light-on-light throughout (hardcoded #fff / #f8fafc).
 // It must therefore state its own ink colour — otherwise text with no explicit
 // colour inherits var(--ink), which is near-white in dark mode, on a white card.
-const Card = ({ children, style }) => <div style={{ background: '#fff', color: INK, border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, ...style }}>{children}</div>
+const Card = ({ children, style }) => <div style={{ background: 'light-dark(#fff, #161d21)', color: INK, border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 12, padding: 16, ...style }}>{children}</div>
 const Tile = ({ label, value, sub, color, delta }) => (
   <Card style={{ flex: 1, minWidth: 130 }}>
-    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+    <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-      <div style={{ fontSize: 26, fontWeight: 700, color: color || '#0f172a' }}>{value}</div>
+      <div style={{ fontSize: 26, fontWeight: 700, color: color || 'light-dark(#0f172a, #e8eef0)' }}>{value}</div>
       {delta}
     </div>
-    {sub && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}</div>}
+    {sub && <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 2 }}>{sub}</div>}
   </Card>
 )
 // Change vs. the prior period. `good` says which direction is good (up/down); the
@@ -133,14 +134,14 @@ const Delta = ({ now, prev, good = 'up', digits = 1, suffix = 'pp' }) => {
   const up = d > 0
   const positive = good === 'up' ? up : !up
   const mag = digits === 0 ? Math.round(Math.abs(d)) : Math.round(Math.abs(d) * 10) / 10
-  return <span title={'vs. prior period'} style={{ fontSize: 11.5, fontWeight: 700, color: positive ? '#1b5e20' : '#b71c1c', whiteSpace: 'nowrap' }}>{up ? '▲' : '▼'} {mag}{suffix}</span>
+  return <span title={'vs. prior period'} style={{ fontSize: 11.5, fontWeight: 700, color: positive ? 'light-dark(#1b5e20, #33b23d)' : 'light-dark(#b71c1c, #e76464)', whiteSpace: 'nowrap' }}>{up ? '▲' : '▼'} {mag}{suffix}</span>
 }
-const Bar = ({ v, color }) => <div style={{ background: '#eef2f7', borderRadius: 999, height: 9, overflow: 'hidden' }}><div style={{ width: `${Math.max(0, Math.min(100, v || 0))}%`, height: '100%', background: color || TEAL, borderRadius: 999, transition: 'width .3s ease' }} /></div>
+const Bar = ({ v, color }) => <div style={{ background: 'light-dark(#eef2f7, #1b2327)', borderRadius: 999, height: 9, overflow: 'hidden' }}><div style={{ width: `${Math.max(0, Math.min(100, v || 0))}%`, height: '100%', background: color || TEAL, borderRadius: 999, transition: 'width .3s ease' }} /></div>
 // ---- Lightweight SVG charts (zero dependencies) ---------------------------
 // Smooth area+line trend chart. `data` = [{ label, value, n? }]. Scales width
 // to its container; height is fixed by the viewBox aspect ratio.
 function TrendChart({ data, color = TEAL, yMax = 100, valueFmt = (v) => Math.round(v), showTrend = true }) {
-  if (!data || !data.length) return <div style={{ color: '#64748b', padding: '20px 0' }}>No calls in range.</div>
+  if (!data || !data.length) return <div style={{ color: 'light-dark(#64748b, #9fb4bb)', padding: '20px 0' }}>No calls in range.</div>
   const W = 760, H = 200, padT = 12, padB = 24, padX = 6
   const n = data.length, innerW = W - padX * 2, innerH = H - padT - padB
   const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW)
@@ -196,11 +197,11 @@ function useTableView(rows, opts = {}) {
   const pageRows = filtered.slice((cur - 1) * pageSize, cur * pageSize)
   return { query, setQuery, pageRows, total, allTotal: rows.length, page: cur, pages, setPage, pageSize }
 }
-const pagerBtn = (on) => ({ width: 26, height: 26, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: on ? '#334155' : '#cbd5e1', cursor: on ? 'pointer' : 'default', fontSize: 15, fontWeight: 700, lineHeight: '20px', padding: 0 })
+const pagerBtn = (on) => ({ width: 26, height: 26, borderRadius: 6, border: '1px solid light-dark(#e2e8f0, #2a3439)', background: 'light-dark(#fff, #161d21)', color: on ? '#334155' : '#cbd5e1', cursor: on ? 'pointer' : 'default', fontSize: 15, fontWeight: 700, lineHeight: '20px', padding: 0 })
 function Pager({ view }) {
   if (view.pages <= 1) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#475569' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'light-dark(#475569, #b3c1c7)' }}>
       <button onClick={() => view.setPage(view.page - 1)} disabled={view.page <= 1} title="Previous page" style={pagerBtn(view.page > 1)}>‹</button>
       <span style={{ whiteSpace: 'nowrap' }}>Page {view.page} / {view.pages}</span>
       <button onClick={() => view.setPage(view.page + 1)} disabled={view.page >= view.pages} title="Next page" style={pagerBtn(view.page < view.pages)}>›</button>
@@ -210,13 +211,13 @@ function Pager({ view }) {
 // Search box + row count + pager, shown above a table.
 function TableToolbar({ view, placeholder = 'Search…' }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', flexWrap: 'wrap', borderBottom: '1px solid #f1f5f9' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', flexWrap: 'wrap', borderBottom: '1px solid light-dark(#f1f5f9, #2a3439)' }}>
       <div style={{ position: 'relative' }}>
         <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 12, pointerEvents: 'none' }}>🔎</span>
         <input value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder}
-          style={{ padding: '6px 10px 6px 30px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, width: 210, maxWidth: '60vw', background: '#fff', color: INK, boxSizing: 'border-box' }} />
+          style={{ padding: '6px 10px 6px 30px', borderRadius: 8, border: '1px solid light-dark(#e2e8f0, #2a3439)', fontSize: 13, width: 210, maxWidth: '60vw', background: 'light-dark(#fff, #161d21)', color: INK, boxSizing: 'border-box' }} />
       </div>
-      <div style={{ fontSize: 12.5, color: '#64748b' }}>{view.total === view.allTotal ? `${view.total} rows` : `${view.total} of ${view.allTotal}`}</div>
+      <div style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' }}>{view.total === view.allTotal ? `${view.total} rows` : `${view.total} of ${view.allTotal}`}</div>
       <div style={{ flex: 1 }} />
       <Pager view={view} />
     </div>
@@ -257,7 +258,7 @@ function sortRows(list, sort, accessors) {
 function SortHead({ cols, sort, onSort, thStyle, trStyle }) {
   return (
     <thead>
-      <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569', ...trStyle }}>
+      <tr style={{ background: 'light-dark(#f8fafc, #161d21)', textAlign: 'left', color: 'light-dark(#475569, #b3c1c7)', ...trStyle }}>
         {cols.map((c, i) => {
           const label = Array.isArray(c) ? c[0] : c
           const key = Array.isArray(c) ? c[1] : c
@@ -267,8 +268,8 @@ function SortHead({ cols, sort, onSort, thStyle, trStyle }) {
             <th key={label + i}
               onClick={sortable ? () => onSort(key) : undefined}
               title={sortable ? 'Sort by ' + label : undefined}
-              style={{ padding: '8px 12px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1, ...thStyle, ...(active ? { color: TEAL } : null) }}>
-              {label}{active ? <span style={{ color: TEAL }}>{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span> : (sortable ? <span style={{ color: '#cbd5e1', fontSize: 10 }}> ⇅</span> : '')}
+              style={{ padding: '8px 12px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'light-dark(#f8fafc, #161d21)', zIndex: 1, ...thStyle, ...(active ? { color: TEAL_T } : null) }}>
+              {label}{active ? <span style={{ color: TEAL_T }}>{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span> : (sortable ? <span style={{ color: '#cbd5e1', fontSize: 10 }}> ⇅</span> : '')}
             </th>
           )
         })}
@@ -762,7 +763,17 @@ export default function CallQA({ portal = false } = {}) {
     })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
   }, [filtered])
 
-  async function rescore(callId) { setBusy(callId); try { const { error } = await supabase.functions.invoke('callqa-score', { body: { call_id: callId } }); if (error) throw error; await load() } catch (e) { alert('Re-score failed: ' + (e.message || e)) } setBusy('') }
+  // Scores are locked once given (Becky 11/18: same score every time). Re-score unlocks just this call, on purpose.
+  async function rescore(callId) {
+    if (!window.confirm('Scores are locked so a call always keeps the same score.\n\nRe-scoring unlocks this one call and lets the AI score it again — the score may change. Continue?')) return
+    setBusy(callId)
+    try {
+      const { error: ue } = await supabase.rpc('callqa_unlock_score', { p_call: callId }); if (ue) throw ue
+      const { error } = await supabase.functions.invoke('callqa-score', { body: { call_id: callId } }); if (error) throw error
+      await load()
+    } catch (e) { alert('Re-score failed: ' + (e.message || e)) }
+    setBusy('')
+  }
   async function setReviewStatus(reviewId, status) { await supabase.from('ai_qa_reviews').update({ status, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load() }
   // Marking reviewed goes through the qa_set_reviewed RPC rather than a direct
   // update: the RLS write policy on ai_qa_reviews is can_manage_qa(), which
@@ -970,12 +981,12 @@ export default function CallQA({ portal = false } = {}) {
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto', color: INK }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, color: '#0f172a' }}>Call QA <span style={{ color: TEAL }}>(AI)</span></h1>
-          <div style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>Every call scored on the 10-point door rubric, with sales-opportunity outcomes and coaching.</div>
+          <h1 style={{ margin: 0, fontSize: 24, color: 'light-dark(#0f172a, #e8eef0)' }}>Call QA <span style={{ color: TEAL_T }}>(AI)</span></h1>
+          <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 13, marginTop: 2 }}>Every call scored on the 10-point door rubric, with sales-opportunity outcomes and coaching.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {inFlight > 0 && <Pill bg="#fff8e1" fg="#8d6e00">⏳ {inFlight} in queue</Pill>}
-          <select value={exportScope} onChange={(e) => setExportScope(e.target.value)} disabled={exporting} title="What to export (uses the Range / Brand / Agent / Source / Call type filters below)" style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, background: '#fff', color: INK }}>
+          <select value={exportScope} onChange={(e) => setExportScope(e.target.value)} disabled={exporting} title="What to export (uses the Range / Brand / Agent / Source / Call type filters below)" style={{ padding: '6px 8px', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 8, fontSize: 13, background: 'light-dark(#fff, #161d21)', color: INK }}>
             <option value="notbooked">Revenue opps — not booked</option>
             <option value="opps">All revenue opportunities</option>
             <option value="all">All scored calls</option>
@@ -1000,25 +1011,25 @@ export default function CallQA({ portal = false } = {}) {
         {sourceList.length > 1 && <Select label="Source" value={source} onChange={setSource} opts={[['all', 'All sources'], ...sourceList.map((s) => [s, SOURCE_LABELS[s] || s])]} />}
       </div>
 
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e2e8f0', marginBottom: 16, flexWrap: 'wrap' }}>
-        {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 14, color: tab === k ? TEAL : '#64748b', borderBottom: tab === k ? `2px solid ${TEAL}` : '2px solid transparent' }}>{l}</button>)}
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid light-dark(#e2e8f0, #2a3439)', marginBottom: 16, flexWrap: 'wrap' }}>
+        {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 14, color: tab === k ? TEAL_T : 'light-dark(#64748b, #9fb4bb)', borderBottom: tab === k ? `2px solid ${TEAL}` : '2px solid transparent' }}>{l}</button>)}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 14px', fontSize: 12.5 }}>
         <span style={{ color: '#94a3b8', fontWeight: 600 }}>Showing:</span>
         {filterChips.map(([k, v]) => (
-          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 10px' }}>
+          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'light-dark(#f1f5f9, #1b2327)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 999, padding: '3px 10px' }}>
             <span style={{ color: '#94a3b8' }}>{k}</span>
-            <span style={{ color: '#334155', fontWeight: 700 }}>{v}</span>
+            <span style={{ color: 'light-dark(#334155, #b3c1c7)', fontWeight: 700 }}>{v}</span>
           </span>
         ))}
         {dateOnlyTab && <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>portfolio view — spans all brands &amp; agents (use the rows/segments to drill in)</span>}
       </div>
 
       {tab === 'overview' ? (
-        ovErr ? <Card style={{ color: '#b71c1c' }}>Error: {ovErr}</Card>
+        ovErr ? <Card style={{ color: 'light-dark(#b71c1c, #e76464)' }}>Error: {ovErr}</Card>
           : ovData ? <Overview agg={ovData.agg} trend={ovData.trend} prevAgg={ovData.prev} />
-            : <div style={{ color: '#64748b' }}>Loading…</div>
+            : <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>Loading…</div>
       ) : tab === 'dashboard' ? (
         <ManagerDashboard agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />
       ) : tab === 'briefing' ? (
@@ -1028,7 +1039,7 @@ export default function CallQA({ portal = false } = {}) {
         // `loading` left it stuck on "Loading…" forever whenever you jumped
         // straight here from Briefing/Dashboard (load() only runs for ROW_TABS).
         canManage ? <ImportPanel /> : null
-      ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
+      ) : loading ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>Loading…</div> : err ? <Card style={{ color: 'light-dark(#b71c1c, #e76464)' }}>Error: {err}</Card> : (
         <>
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brands={brands} setBrands={setBrands} />}
           {tab === 'humanai' && <HumanVsAI rows={dateFiltered} filterText={filterText} />}
@@ -1084,25 +1095,25 @@ function Overview({ agg, trend, prevAgg }) {
           <div style={{ fontWeight: 700, marginBottom: 14 }}>Top “not booked” reasons</div>
           {topReasons.length ? topReasons.map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}><span>{k}</span><b>{v}</b></div>
-          )) : <div style={{ color: '#64748b', fontSize: 13 }}>No missed opportunities in range.</div>}
+          )) : <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 13 }}>No missed opportunities in range.</div>}
         </Card>
       </div>
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
           <div style={{ fontWeight: 700 }}>Daily QA score trend <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>· dashed line = trend</span></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 7, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 7, overflow: 'hidden' }}>
               {[7, 14, 30].map((w) => (
                 <button
                   key={w}
                   onClick={() => setWindow(w)}
-                  style={{ padding: '4px 11px', fontSize: 12.5, fontWeight: 700, border: 'none', borderLeft: w === 7 ? 'none' : '1px solid #e2e8f0', cursor: 'pointer', background: trendWindow === w ? TEAL : '#fff', color: trendWindow === w ? '#fff' : '#475569' }}
+                  style={{ padding: '4px 11px', fontSize: 12.5, fontWeight: 700, border: 'none', borderLeft: w === 7 ? 'none' : '1px solid #e2e8f0', cursor: 'pointer', background: trendWindow === w ? TEAL : 'light-dark(#fff, #161d21)', color: trendWindow === w ? '#fff' : 'light-dark(#475569, #b3c1c7)' }}
                 >{w}d</button>
               ))}
             </div>
             {paged && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: '#64748b' }}>
+                <span style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>
                   {visibleTrend.length ? `${fmtDate(visibleTrend[0].d)} – ${fmtDate(visibleTrend[visibleTrend.length - 1].d)}` : ''}
                 </span>
                 <button
@@ -1121,14 +1132,14 @@ function Overview({ agg, trend, prevAgg }) {
             )}
           </div>
         </div>
-        {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (
+        {trend.length === 0 ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No calls in range.</div> : (
           <TrendChart data={visibleTrend.map((t) => ({ label: fmtDate(t.d), value: t.avg, n: t.n }))} />
         )}
         {paged && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>Showing {visibleTrend.length} of {total} days{canOlder ? '' : ' · earliest'}{canNewer ? '' : ' · most recent'}</div>}
       </Card>
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 14 }}>What calls are about</div>
-        {topTopics.length === 0 ? <div style={{ color: '#64748b' }}>No topics yet.</div> : topTopics.map(([t, v]) => (
+        {topTopics.length === 0 ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No topics yet.</div> : topTopics.map(([t, v]) => (
           <BarRow key={t} label={t} value={v} v={(v / maxTopic) * 100} color={TEAL} />
         ))}
       </Card>
@@ -1149,7 +1160,7 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
   const brandAcc = { Brand: (b) => b.brand, Opportunities: (b) => b.opps, Decided: (b) => b.decided, Booked: (b) => b.booked, Conversion: (b) => b.conv }
   const oppAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, Outcome: (r) => r.outcome, Reason: (r) => r.not_booked_reason, Score: (r) => Number(r.score_pct) }
   const oppView = useTableView(sortRows(opps, oppSort, oppAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || ''} ${r.outcome || ''} ${r.not_booked_reason || ''}` })
-  if (!opps.length) return <Card style={{ color: '#64748b' }}>No opportunity calls scored in this range yet.</Card>
+  if (!opps.length) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No opportunity calls scored in this range yet.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -1163,9 +1174,9 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={['Brand', 'Opportunities', 'Decided', 'Booked', 'Conversion']} sort={brandSort} onSort={brandOnSort} />
           <tbody>{sortRows(byBrand, brandSort, brandAcc).map((b) => (
-            <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
+            <tr key={b.brand} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)' }}>
               <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td><td style={{ padding: '8px 12px' }}>{b.opps}</td><td style={{ padding: '8px 12px' }}>{b.decided}</td><td style={{ padding: '8px 12px' }}>{b.booked}</td>
-              <td style={{ padding: '8px 12px' }}><span style={{ color: b.conv >= 50 ? '#1b5e20' : b.conv >= 30 ? '#8d6e00' : '#b71c1c', fontWeight: 700 }}>{pct(b.conv)}</span></td>
+              <td style={{ padding: '8px 12px' }}><span style={{ color: b.conv >= 50 ? 'light-dark(#1b5e20, #33b23d)' : b.conv >= 30 ? 'light-dark(#8d6e00, #c9a31d)' : 'light-dark(#b71c1c, #e76464)', fontWeight: 700 }}>{pct(b.conv)}</span></td>
             </tr>
           ))}</tbody>
         </table>
@@ -1179,13 +1190,13 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
           <tbody>{oppView.pageRows.map((r) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             return (
-              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                 <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                 {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
                 <td style={{ padding: '8px 12px' }}>{c.brand}</td>
-                <td style={{ padding: '8px 12px', maxWidth: 220, color: '#475569' }}>{r.opportunity_context || '—'}</td>
+                <td style={{ padding: '8px 12px', maxWidth: 220, color: 'light-dark(#475569, #b3c1c7)' }}>{r.opportunity_context || '—'}</td>
                 <td style={{ padding: '8px 12px' }}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
-                <td style={{ padding: '8px 12px', color: '#64748b' }}>{r.outcome === 'Not Booked' ? (r.not_booked_reason || '—') : ''}</td>
+                <td style={{ padding: '8px 12px', color: 'light-dark(#64748b, #9fb4bb)' }}>{r.outcome === 'Not Booked' ? (r.not_booked_reason || '—') : ''}</td>
                 <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}</span></td>
               </tr>
             )
@@ -1219,7 +1230,7 @@ function MissedOpps({ rows, onOpen, viewAll }) {
   const missAcc = { Size: (x) => x.tier, Date: (x) => dnum(x.r.call?.call_date), Agent: (x) => agentOf(x.r), Brand: (x) => x.r.call?.brand, 'What they wanted': (x) => x.r.opportunity_context || (x.r.topics || [])[0], Outcome: (x) => x.r.outcome, 'What would have won it': (x) => x.r.revenue_tip || x.r.not_booked_reason, Score: (x) => Number(x.r.score_pct) }
   const missView = useTableView(sortRows(shown, missSort, missAcc), { searchText: ({ r }) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || (r.topics || [])[0] || ''} ${r.outcome || ''}` })
 
-  if (!allMissed.length) return <Card style={{ color: '#64748b' }}>No missed opportunities in this range.</Card>
+  if (!allMissed.length) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No missed opportunities in this range.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -1227,13 +1238,13 @@ function MissedOpps({ rows, onOpen, viewAll }) {
         <Tile label="Medium missed" value={medium} color="#075985" sub="repairs / service" />
         <Tile label="Missed bookings" value={allMissed.length} color="#b71c1c" sub="opps not booked" />
       </div>
-      <Card style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+      <Card style={{ background: 'light-dark(#fffbeb, #393213)', border: '1px solid light-dark(#fde68a, #64592b)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <div style={{ fontWeight: 700, color: '#92400e' }}>Biggest deals that got away</div>
-            <div style={{ fontSize: 12.5, color: '#9a3412', marginTop: 2 }}>Missed opportunities ranked by inferred deal size. Deal size is estimated from the call topic (there's no dollar value on the call) — new-door installs and commercial jobs rank highest.</div>
+            <div style={{ fontWeight: 700, color: 'light-dark(#92400e, #e1712d)' }}>Biggest deals that got away</div>
+            <div style={{ fontSize: 12.5, color: 'light-dark(#9a3412, #e56f48)', marginTop: 2 }}>Missed opportunities ranked by inferred deal size. Deal size is estimated from the call topic (there's no dollar value on the call) — new-door installs and commercial jobs rank highest.</div>
           </div>
-          <label style={{ fontSize: 13, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+          <label style={{ fontSize: 13, color: 'light-dark(#92400e, #e1712d)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={highOnly} onChange={(e) => setHighOnly(e.target.checked)} /> Large only
           </label>
         </div>
@@ -1257,14 +1268,14 @@ function MissedOpps({ rows, onOpen, viewAll }) {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other; const tm = TIER_META[tier]
             const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
-              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                 <td style={cell}><Pill bg={tm.bg} fg={tm.fg}>{tm.label}</Pill></td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                 {viewAll && <td style={cell}>{agentOf(r)}</td>}
                 <td style={cell}>{c.brand}</td>
-                <td style={{ ...cell, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
+                <td style={{ ...cell, color: 'light-dark(#475569, #b3c1c7)' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
                 <td style={cell}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
-                <td style={{ ...cell, color: TEAL }}>{r.revenue_tip || (r.not_booked_reason ? `Reason: ${r.not_booked_reason}` : '—')}</td>
+                <td style={{ ...cell, color: TEAL_T }}>{r.revenue_tip || (r.not_booked_reason ? `Reason: ${r.not_booked_reason}` : '—')}</td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>{pct(r.score_pct)}</span></td>
               </tr>
             )
@@ -1288,7 +1299,7 @@ function EpicFails({ rows, onOpen, viewAll }) {
   const under50 = scored.filter((r) => Number(r.score_pct) < 50).length
   const under60 = scored.filter((r) => Number(r.score_pct) < 60).length
   const worst = scored.length ? Number(scored[0].score_pct) : null
-  if (!scored.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
+  if (!scored.length) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No scored calls in this range.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -1297,9 +1308,9 @@ function EpicFails({ rows, onOpen, viewAll }) {
         <Tile label="Under 60%" value={under60} color="#8d6e00" />
         <Tile label="Scored calls" value={scored.length} sub="in this range" />
       </div>
-      <Card style={{ background: '#fdecea', border: '1px solid #f5c6cb' }}>
-        <div style={{ fontWeight: 700, color: '#b71c1c' }}>Lowest scores first</div>
-        <div style={{ fontSize: 12.5, color: '#7f1d1d', marginTop: 2 }}>Every scored call in range, ranked lowest QA score to highest. Start at the top for the calls that need attention most.</div>
+      <Card style={{ background: 'light-dark(#fdecea, #391713)', border: '1px solid light-dark(#f5c6cb, #642b31)' }}>
+        <div style={{ fontWeight: 700, color: 'light-dark(#b71c1c, #e76464)' }}>Lowest scores first</div>
+        <div style={{ fontSize: 12.5, color: 'light-dark(#7f1d1d, #de6e6e)', marginTop: 2 }}>Every scored call in range, ranked lowest QA score to highest. Start at the top for the calls that need attention most.</div>
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <TableToolbar view={failView} placeholder="Search calls…" />
@@ -1319,13 +1330,13 @@ function EpicFails({ rows, onOpen, viewAll }) {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
-              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                 <td style={{ ...cell, color: '#94a3b8', fontWeight: 600 }}>{(failView.page - 1) * failView.pageSize + i + 1}</td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span></td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                 {viewAll && <td style={cell}>{agentOf(r)}</td>}
                 <td style={cell}>{c.brand || '—'}</td>
-                <td style={{ ...cell, color: '#b71c1c' }}>{topIssue(r)}</td>
+                <td style={{ ...cell, color: 'light-dark(#b71c1c, #e76464)' }}>{topIssue(r)}</td>
                 <td style={cell}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
               </tr>
             )
@@ -1372,9 +1383,9 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
   const agView = useTableView(sortRows(agents, agSort, agAcc), { pageSize: 15, searchText: (a) => a.name })
   const Leak = ({ label, n, sub, of }) => (
     <Card style={{ flex: 1, minWidth: 180 }}>
-      <div style={{ fontSize: 26, fontWeight: 800, color: '#b71c1c' }}>{n}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: 'light-dark(#b71c1c, #e76464)' }}>{n}</div>
       <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{label}</div>
-      <div style={{ fontSize: 12, color: '#64748b' }}>{of ? `${pctOf(n, of)}% of ${sub}` : sub}</div>
+      <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{of ? `${pctOf(n, of)}% of ${sub}` : sub}</div>
     </Card>
   )
 
@@ -1390,9 +1401,9 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
         <Tile label="Missed bookings" value={lost.length} color="#b71c1c" sub={`${pctOf(lost.length, decided.length)}% of decided opps`} delta={<Delta now={lost.length} prev={prevAgg?.missed} digits={0} suffix="" good="down" />} />
       </div>
 
-      <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+      <Card style={{ background: 'light-dark(#fff7ed, #392813)', border: '1px solid light-dark(#fed7aa, #64492b)' }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Where revenue is leaking</div>
-        <div style={{ fontSize: 12.5, color: '#9a3412', marginBottom: 12 }}>The biggest, most fixable gaps across these calls — each one is money left on the table.</div>
+        <div style={{ fontSize: 12.5, color: 'light-dark(#9a3412, #e56f48)', marginBottom: 12 }}>The biggest, most fixable gaps across these calls — each one is money left on the table.</div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Leak label="Didn't ask for the booking" n={noAsk} of={opps.length} sub="opportunities" />
           <Leak label="Quoted price before collecting info" n={priceBeforeInfo} of={priceDiscussed} sub="calls where price came up" />
@@ -1404,13 +1415,13 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <Card style={{ flex: 1, minWidth: 300 }}>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>What's stopping the sale (objections)</div>
-          {topObj.length === 0 ? <div style={{ color: '#64748b' }}>No objections captured yet.</div> : topObj.map(([o, v]) => (
+          {topObj.length === 0 ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No objections captured yet.</div> : topObj.map(([o, v]) => (
             <BarRow key={o} label={o} value={<span>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, opps.length)}% of opps)</span></span>} v={(v / maxObj) * 100} color="#c2410c" />
           ))}
         </Card>
         <Card style={{ flex: 1, minWidth: 300 }}>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>Biggest revenue coaching gaps</div>
-          {topTags.length === 0 ? <div style={{ color: '#64748b' }}>No coaching data yet.</div> : topTags.map(([t, v]) => (
+          {topTags.length === 0 ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No coaching data yet.</div> : topTags.map(([t, v]) => (
             <BarRow key={t} label={t} value={<span>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, scoredCount)}% of calls)</span></span>} v={(v / maxTag) * 100} color={TEAL} />
           ))}
         </Card>
@@ -1424,13 +1435,13 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <SortHead cols={['Agent', 'Opportunities', 'Decided', 'Booked', 'Conversion', 'Asked for booking']} sort={agSort} onSort={agOnSort} />
             <tbody>{agView.pageRows.map((a) => (
-              <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
+              <tr key={a.name} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)' }}>
                 <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
                 <td style={{ padding: '8px 12px' }}>{a.opps}</td>
                 <td style={{ padding: '8px 12px' }}>{a.decided}</td>
                 <td style={{ padding: '8px 12px' }}>{a.booked}</td>
-                <td style={{ padding: '8px 12px' }}><b style={{ color: a.conv >= 50 ? '#1b5e20' : a.conv >= 30 ? '#8d6e00' : '#b71c1c' }}>{a.conv.toFixed(0)}%</b></td>
-                <td style={{ padding: '8px 12px', color: a.askRate < 50 ? '#b71c1c' : '#334155' }}>{a.askRate.toFixed(0)}%</td>
+                <td style={{ padding: '8px 12px' }}><b style={{ color: a.conv >= 50 ? 'light-dark(#1b5e20, #33b23d)' : a.conv >= 30 ? 'light-dark(#8d6e00, #c9a31d)' : 'light-dark(#b71c1c, #e76464)' }}>{a.conv.toFixed(0)}%</b></td>
+                <td style={{ padding: '8px 12px', color: a.askRate < 50 ? 'light-dark(#b71c1c, #e76464)' : 'light-dark(#334155, #b3c1c7)' }}>{a.askRate.toFixed(0)}%</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1440,20 +1451,20 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Opportunities that didn't book — and what would have won them <span style={{ color: '#94a3b8', fontWeight: 400 }}>({winList.length})</span></div>
-        {winList.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No missed bookings in range.</div> : (
+        {winList.length === 0 ? <div style={{ padding: 14, color: 'light-dark(#64748b, #9fb4bb)' }}>No missed bookings in range.</div> : (
           <div style={{ overflowX: 'auto', maxHeight: 620 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Reason', 'What would have won it']} sort={winSort} onSort={winOnSort} />
             <tbody>{sortRows(winList, winSort, winAcc).map((r) => {
               const c = r.call || {}
               return (
-                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                   {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
                   <td style={{ padding: '8px 12px' }}>{c.brand}</td>
-                  <td style={{ padding: '8px 12px', maxWidth: 180, color: '#475569' }}>{r.opportunity_context || '—'}</td>
-                  <td style={{ padding: '8px 12px', maxWidth: 160, color: '#64748b' }}>{r.not_booked_reason || '—'}</td>
-                  <td style={{ padding: '8px 12px', maxWidth: 320, color: TEAL }}>{r.revenue_tip || '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 180, color: 'light-dark(#475569, #b3c1c7)' }}>{r.opportunity_context || '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 160, color: 'light-dark(#64748b, #9fb4bb)' }}>{r.not_booked_reason || '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 320, color: TEAL_T }}>{r.revenue_tip || '—'}</td>
                 </tr>
               )
             })}</tbody>
@@ -1481,18 +1492,18 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
   const callAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'Opp.': (r) => (r.opportunity ? 1 : 0), Outcome: (r) => r.outcome, Score: (r) => (isScored(r) ? Number(r.score_pct) : null) }
   const callView = useTableView(sortRows(list, callSort, callAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.outcome || ''} ${(r.topics || [])[0] || ''}` })
 
-  if (!rows.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
+  if (!rows.length) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No scored calls in this range.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {canManage && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Show</span>
-          <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+          <span style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>Show</span>
+          <div style={{ display: 'flex', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 8, overflow: 'hidden' }}>
             {[['all', `All (${rows.length})`], ['unreviewed', `Unreviewed (${rows.length - reviewedCount})`], ['reviewed', `Reviewed (${reviewedCount})`]].map(([k, lbl], i) => (
-              <button key={k} onClick={() => setRevFilter(k)} style={{ padding: '6px 14px', fontSize: 13, fontWeight: 700, border: 'none', borderLeft: i === 0 ? 'none' : '1px solid #e2e8f0', cursor: 'pointer', background: revFilter === k ? TEAL : '#fff', color: revFilter === k ? '#fff' : '#475569' }}>{lbl}</button>
+              <button key={k} onClick={() => setRevFilter(k)} style={{ padding: '6px 14px', fontSize: 13, fontWeight: 700, border: 'none', borderLeft: i === 0 ? 'none' : '1px solid #e2e8f0', cursor: 'pointer', background: revFilter === k ? TEAL : 'light-dark(#fff, #161d21)', color: revFilter === k ? '#fff' : 'light-dark(#475569, #b3c1c7)' }}>{lbl}</button>
             ))}
           </div>
-          <div style={{ fontSize: 12.5, color: '#64748b' }}>
+          <div style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' }}>
             {reviewedCount} of {rows.length} calls in this range marked reviewed
           </div>
         </div>
@@ -1500,7 +1511,7 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <TableToolbar view={callView} placeholder="Search calls…" />
-        {list.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>
+        {list.length === 0 ? <div style={{ padding: 14, color: 'light-dark(#64748b, #9fb4bb)' }}>
           {revFilter === 'unreviewed' ? 'Everything in this range has been reviewed. 🎉' : 'No calls match this filter.'}
         </div> : (
         <div style={{ overflowX: 'auto', maxHeight: 620 }}>
@@ -1509,7 +1520,7 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
           <tbody>{callView.pageRows.map((r) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             return (
-              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer', background: r.reviewed ? '#f8fdf9' : '#fff' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = r.reviewed ? '#f8fdf9' : '#fff'}>
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer', background: r.reviewed ? '#f8fdf9' : '#fff' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = r.reviewed ? '#f8fdf9' : '#fff'}>
                 {canManage && (
                   // stopPropagation so ticking the box doesn't also open the drawer
                   <td style={{ padding: '9px 12px' }} onClick={(e) => e.stopPropagation()}>
@@ -1527,7 +1538,7 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
                 <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{isScored(r)
                   ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span>
                   : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}
-                  {r.reviewed && <span style={{ marginLeft: 6, fontSize: 11, color: '#1b5e20', fontWeight: 600 }}>✓ Reviewed</span>}</td>
+                  {r.reviewed && <span style={{ marginLeft: 6, fontSize: 11, color: 'light-dark(#1b5e20, #33b23d)', fontWeight: 600 }}>✓ Reviewed</span>}</td>
                 <td style={{ padding: '9px 12px', color: '#94a3b8' }}>›</td>
               </tr>
             )
@@ -1608,11 +1619,11 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
         : <Pill bg="#fff8e1" fg="#8d6e00">Pending</Pill>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card style={{ background: '#f8fafc' }}>
+      <Card style={{ background: 'light-dark(#f8fafc, #161d21)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
           <div>
             <div style={{ fontWeight: 700 }}>Card capture{serviceOnly ? ' — service calls only' : ' — all call types'}</div>
-            <div style={{ fontSize: 12.5, color: '#64748b' }}>
+            <div style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' }}>
               These figures come from the same report that is emailed to the client, so they match it exactly.
               {bounds?.start ? ` ${bounds.start} → ${bounds.end || 'today'}.` : ' All time.'}
               {brands.length ? ` ${brands.join(', ')}.` : ' All brands.'}
@@ -1624,8 +1635,8 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
           </label>
         </div>
 
-        {repErr && <div style={{ color: '#b71c1c', fontSize: 13 }}>Could not load: {repErr}</div>}
-        {repBusy && !rep && <div style={{ color: '#64748b', fontSize: 13 }}>Loading…</div>}
+        {repErr && <div style={{ color: 'light-dark(#b71c1c, #e76464)', fontSize: 13 }}>Could not load: {repErr}</div>}
+        {repBusy && !rep && <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 13 }}>Loading…</div>}
 
         {ov && (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -1638,13 +1649,13 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
         {Array.isArray(rep?.by_brand) && rep.by_brand.length > 1 && (
           <div style={{ marginTop: 14, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ textAlign: 'left', color: '#64748b' }}>
+              <thead><tr style={{ textAlign: 'left', color: 'light-dark(#64748b, #9fb4bb)' }}>
                 <th style={{ padding: '6px 8px' }}>Brand</th><th style={{ padding: '6px 8px' }}>Booked</th>
                 <th style={{ padding: '6px 8px' }}>Asked</th><th style={{ padding: '6px 8px' }}>Ask&nbsp;%</th>
                 <th style={{ padding: '6px 8px' }}>Captured</th><th style={{ padding: '6px 8px' }}>Capture&nbsp;%</th>
               </tr></thead>
               <tbody>{rep.by_brand.map((b) => (
-                <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
+                <tr key={b.brand} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)' }}>
                   <td style={{ padding: '6px 8px', fontWeight: 600 }}>{b.brand}</td>
                   <td style={{ padding: '6px 8px' }}>{b.booked}</td>
                   <td style={{ padding: '6px 8px' }}>{b.asked_cc}</td>
@@ -1659,18 +1670,18 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
 
         {Array.isArray(rep?.by_agent) && rep.by_agent.length > 0 && viewAll && (
           <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: TEAL }}>Per CSR ({rep.by_agent.length})</summary>
+            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: TEAL_T }}>Per CSR ({rep.by_agent.length})</summary>
             <div style={{ marginTop: 8, overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead><tr style={{ textAlign: 'left', color: '#64748b' }}>
+                <thead><tr style={{ textAlign: 'left', color: 'light-dark(#64748b, #9fb4bb)' }}>
                   <th style={{ padding: '6px 8px' }}>CSR</th><th style={{ padding: '6px 8px' }}>Brand</th>
                   <th style={{ padding: '6px 8px' }}>Booked</th><th style={{ padding: '6px 8px' }}>Asked</th>
                   <th style={{ padding: '6px 8px' }}>Ask&nbsp;%</th><th style={{ padding: '6px 8px' }}>Captured</th>
                 </tr></thead>
                 <tbody>{rep.by_agent.map((a, i) => (
-                  <tr key={`${a.brand}:${a.agent}:${i}`} style={{ borderTop: '1px solid #eef2f7' }}>
+                  <tr key={`${a.brand}:${a.agent}:${i}`} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)' }}>
                     <td style={{ padding: '6px 8px', fontWeight: 600 }}>{a.agent}</td>
-                    <td style={{ padding: '6px 8px', color: '#64748b' }}>{a.brand}</td>
+                    <td style={{ padding: '6px 8px', color: 'light-dark(#64748b, #9fb4bb)' }}>{a.brand}</td>
                     <td style={{ padding: '6px 8px' }}>{a.booked}</td>
                     <td style={{ padding: '6px 8px' }}>{a.asked_cc}</td>
                     <td style={{ padding: '6px 8px' }}>{a.booked ? `${Math.round(a.asked_cc / a.booked * 1000) / 10}%` : '—'}</td>
@@ -1699,19 +1710,19 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
           {pending > 0 && <Tile label="Pending" value={pending} color="#8d6e00" sub="not yet evaluated" />}
         </div>
       )}
-      <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}>
-        <div style={{ fontWeight: 700, color: TEAL }}>Booked calls — two layers: did we ask for a card, and did we collect it?</div>
-        <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}><b>Layer A — Card asked</b> (agent metric): the CSR asks the customer for a credit card <b>to secure or hold the appointment</b> (e.g. “we'll need a card to hold it — no charge until we come out”). Paying for a product/part over the phone, paying an existing invoice, or the customer offering to pay on arrival do <b>not</b> count. <b>Layer B — Card collected</b> (corporate metric): given the rep asked, the customer actually provided the card. An agent gets credit for asking even if the customer declines — collection is a corporate outcome, not an agent ding. Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
+      <Card style={{ background: 'light-dark(#f0fdfa, #133931)', border: '1px solid light-dark(#99f6e4, #2b6459)' }}>
+        <div style={{ fontWeight: 700, color: TEAL_T }}>Booked calls — two layers: did we ask for a card, and did we collect it?</div>
+        <div style={{ fontSize: 12.5, color: 'light-dark(#334155, #b3c1c7)', marginTop: 2 }}><b>Layer A — Card asked</b> (agent metric): the CSR asks the customer for a credit card <b>to secure or hold the appointment</b> (e.g. “we'll need a card to hold it — no charge until we come out”). Paying for a product/part over the phone, paying an existing invoice, or the customer offering to pay on arrival do <b>not</b> count. <b>Layer B — Card collected</b> (corporate metric): given the rep asked, the customer actually provided the card. An agent gets credit for asking even if the customer declines — collection is a corporate outcome, not an agent ding. Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
       </Card>
-      <div style={{ fontSize: 12.5, color: '#8d6e00', background: '#fff8e1', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px' }}>
+      <div style={{ fontSize: 12.5, color: 'light-dark(#8d6e00, #c9a31d)', background: 'light-dark(#fff8e1, #393013)', border: '1px solid light-dark(#fde68a, #64592b)', borderRadius: 8, padding: '8px 12px' }}>
         <b>Note:</b> the call list below is for browsing and drill-down — it follows the filters at the top of the page and
         may include calls the headline doesn’t count (installs and new-door quotes when “Service calls only” is on, plus
         duplicate recordings of the same conversation). Trust the tiles above for any number you report.
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
-        <span style={{ color: '#64748b' }}>Show:</span>
+        <span style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>Show:</span>
         {[['all', `All bookings (${booked.length})`], ['asked', `Asked (${booked.filter((r) => r.asked_for_cc === true).length})`], ['collected', `Collected (${booked.filter((r) => r.collected_cc === true).length})`], ['failed', `Asked but not collected (${askedButNot})`]].map(([k, lbl]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid ' + (filter === k ? TEAL : '#e2e8f0'), background: filter === k ? '#f0fdfa' : '#fff', color: filter === k ? TEAL : '#475569', fontWeight: filter === k ? 700 : 500, cursor: 'pointer' }}>{lbl}</button>
+          <button key={k} onClick={() => setFilter(k)} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid ' + (filter === k ? TEAL : '#e2e8f0'), background: filter === k ? 'light-dark(#f0fdfa, #133931)' : 'light-dark(#fff, #161d21)', color: filter === k ? TEAL_T : 'light-dark(#475569, #b3c1c7)', fontWeight: filter === k ? 700 : 500, cursor: 'pointer' }}>{lbl}</button>
         ))}
       </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -1734,14 +1745,14 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
               const c = r.call || {}
               const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
               return (
-                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                   {viewAll && <td style={cell}>{agentOf(r)}</td>}
                   <td style={cell}>{c.brand || '—'}</td>
-                  <td style={{ ...cell, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
+                  <td style={{ ...cell, color: 'light-dark(#475569, #b3c1c7)' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
                   <td style={cell}>{askPill(r.asked_for_cc)}</td>
                   <td style={cell}>{collectPill(r)}</td>
-                  <td style={{ ...cell, color: '#64748b', fontStyle: (r.cc_quote || r.cc_collected_quote) ? 'italic' : 'normal' }}>{r.asked_for_cc === true ? (r.cc_quote ? `“${r.cc_quote}”` : '—') : ''}{r.asked_for_cc === true && r.cc_collected_quote ? <span style={{ display: 'block', color: '#0f766e', marginTop: 2 }}>{`→ “${r.cc_collected_quote}”`}</span> : null}</td>
+                  <td style={{ ...cell, color: 'light-dark(#64748b, #9fb4bb)', fontStyle: (r.cc_quote || r.cc_collected_quote) ? 'italic' : 'normal' }}>{r.asked_for_cc === true ? (r.cc_quote ? `“${r.cc_quote}”` : '—') : ''}{r.asked_for_cc === true && r.cc_collected_quote ? <span style={{ display: 'block', color: 'light-dark(#0f766e, #1dc9bb)', marginTop: 2 }}>{`→ “${r.cc_collected_quote}”`}</span> : null}</td>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{isScored(r) ? (r.auto_fail ? 'FAIL' : pct(r.score_pct)) : '—'}</span></td>
                   <td style={{ ...cell, color: '#94a3b8' }}>›</td>
                 </tr>
@@ -1756,25 +1767,25 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
 
 function Coaching({ byAgent }) {
   const [open, setOpen] = useState(null)
-  if (!byAgent.length) return <Card style={{ color: '#64748b' }}>No data in range.</Card>
+  if (!byAgent.length) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No data in range.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {byAgent.map((a) => (
         <Card key={a.name} style={{ padding: 0 }}>
           <div onClick={() => setOpen(open === a.name ? null : a.name)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, cursor: 'pointer' }}>
             <div style={{ width: 46, textAlign: 'center' }}><div style={{ fontSize: 20, fontWeight: 700, color: scoreColor(a.avg) }}>{a.avg == null ? '—' : Math.round(a.avg)}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>avg</div></div>
-            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{a.name}</div><div style={{ fontSize: 12, color: '#64748b' }}>{a.calls} calls · {a.opps} opportunities · {a.booked} booked{a.conv != null ? ` (${pct(a.conv)})` : ''}</div></div>
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{a.name}</div><div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{a.calls} calls · {a.opps} opportunities · {a.booked} booked{a.conv != null ? ` (${pct(a.conv)})` : ''}</div></div>
             <span style={{ color: '#94a3b8' }}>{open === a.name ? '▾' : '›'}</span>
           </div>
           {open === a.name && (
             <div style={{ padding: '0 14px 14px 74px', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#1b5e20', marginBottom: 6 }}>Strengths</div>
-                {a.topStrong.length ? a.topStrong.map(([t, n]) => <div key={t} style={{ fontSize: 13, marginBottom: 4 }}>• {t} <span style={{ color: '#94a3b8' }}>×{n}</span></div>) : <div style={{ fontSize: 13, color: '#64748b' }}>—</div>}
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'light-dark(#1b5e20, #33b23d)', marginBottom: 6 }}>Strengths</div>
+                {a.topStrong.length ? a.topStrong.map(([t, n]) => <div key={t} style={{ fontSize: 13, marginBottom: 4 }}>• {t} <span style={{ color: '#94a3b8' }}>×{n}</span></div>) : <div style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)' }}>—</div>}
               </div>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#b71c1c', marginBottom: 6 }}>Weaknesses / coaching focus</div>
-                {a.topWeak.length ? a.topWeak.map(([t, n]) => <div key={t} style={{ fontSize: 13, marginBottom: 4 }}>• {t} <span style={{ color: '#94a3b8' }}>×{n}</span></div>) : <div style={{ fontSize: 13, color: '#64748b' }}>Solid across the board.</div>}
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'light-dark(#b71c1c, #e76464)', marginBottom: 6 }}>Weaknesses / coaching focus</div>
+                {a.topWeak.length ? a.topWeak.map(([t, n]) => <div key={t} style={{ fontSize: 13, marginBottom: 4 }}>• {t} <span style={{ color: '#94a3b8' }}>×{n}</span></div>) : <div style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)' }}>Solid across the board.</div>}
               </div>
             </div>
           )}
@@ -1881,17 +1892,17 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
   const headerText = row.excluded ? 'Excluded' : (row.scoreable === false ? (CLASS_LABEL[row.call_class] || 'Not scored') : (row.auto_fail && !dirty ? 'FAIL' : pct(shownPct)))
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 50, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(720px, 100%)', background: '#f8fafc', color: INK, height: '100%', overflowY: 'auto', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)' }}>
-        <div style={{ position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #e2e8f0', padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(720px, 100%)', background: 'light-dark(#f8fafc, #161d21)', color: INK, height: '100%', overflowY: 'auto', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)' }}>
+        <div style={{ position: 'sticky', top: 0, background: 'light-dark(#fff, #161d21)', borderBottom: '1px solid light-dark(#e2e8f0, #2a3439)', padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
           <div>
             {agentEdit ? (
               <form onSubmit={(e) => { e.preventDefault(); saveAgent(agentText) }} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input list="callqa-agent-names" value={agentText} onChange={(e) => setAgentText(e.target.value)} placeholder="Agent name" autoFocus style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 14, minWidth: 180 }} />
+                <input list="callqa-agent-names" value={agentText} onChange={(e) => setAgentText(e.target.value)} placeholder="Agent name" autoFocus style={{ padding: '4px 8px', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 6, fontSize: 14, minWidth: 180 }} />
                 <datalist id="callqa-agent-names">{agentOptions.filter((a) => a && a !== 'Unknown').map((a) => <option key={a} value={a} />)}</datalist>
                 <button type="submit" disabled={agentBusy || !agentText.trim()} style={{ ...btn('primary'), padding: '3px 10px' }}>{agentBusy ? 'Saving…' : 'Save'}</button>
                 {c.agent_name_manual && <button type="button" disabled={agentBusy} onClick={() => saveAgent('')} title="Revert to the name the source / AI gave" style={{ ...btn('ghost'), padding: '3px 8px' }}>↺ Revert</button>}
                 <button type="button" onClick={() => setAgentEdit(false)} style={{ ...btn('ghost'), padding: '3px 8px' }}>Cancel</button>
-                <span style={{ fontSize: 11, color: '#64748b', width: '100%' }}>· {c.brand}</span>
+                <span style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', width: '100%' }}>· {c.brand}</span>
               </form>
             ) : (
               <div style={{ fontWeight: 700, fontSize: 16 }}>
@@ -1899,12 +1910,12 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                 {canManage && c.id && <button onClick={beginAgent} title={c.agent_name_manual ? 'Agent was set by a manager — click to change or revert' : 'Assign the agent for this call'} style={{ ...btn('ghost'), padding: '1px 7px', marginLeft: 8, fontSize: 12, fontWeight: 500 }}>✎ {c.agent_name_manual ? 'agent set' : 'assign agent'}</button>}
               </div>
             )}
-            <div style={{ fontSize: 12, color: '#64748b' }}>{fmtDate(c.call_date)} · {c.source} · {c.direction} · {fmtDur(c.duration_seconds)}{c.customer_number ? ` · 📞 ${c.customer_number}` : ''}{c.customer_name ? ` · ${c.customer_name}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{fmtDate(c.call_date)} · {c.source} · {c.direction} · {fmtDur(c.duration_seconds)}{c.customer_number ? ` · 📞 ${c.customer_number}` : ''}{c.customer_name ? ` · ${c.customer_name}` : ''}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: notScored ? 15 : 26, fontWeight: 800, color: notScored ? '#64748b' : scoreColor(shownPct) }}>{headerText}</div>
-            {dirty && !notScored && <div style={{ fontSize: 11, color: '#8d6e00' }}>adjusted preview</div>}
-            {row.manager_adjusted && !dirty && <div style={{ fontSize: 11, color: '#8d6e00' }}>manager-adjusted</div>}
+            <div style={{ fontSize: notScored ? 15 : 26, fontWeight: 800, color: notScored ? 'light-dark(#64748b, #9fb4bb)' : scoreColor(shownPct) }}>{headerText}</div>
+            {dirty && !notScored && <div style={{ fontSize: 11, color: 'light-dark(#8d6e00, #c9a31d)' }}>adjusted preview</div>}
+            {row.manager_adjusted && !dirty && <div style={{ fontSize: 11, color: 'light-dark(#8d6e00, #c9a31d)' }}>manager-adjusted</div>}
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
               <button onClick={() => downloadPdf(false)} disabled={downloading} title="One-page summary (no transcript)" style={{ ...btn('ghost'), padding: '2px 8px', opacity: downloading ? 0.6 : 1 }}>{downloading ? 'Preparing…' : '⬇ PDF'}</button>
               <button onClick={() => downloadPdf(true)} disabled={downloading} title="Full report including the transcript" style={{ ...btn('ghost'), padding: '2px 8px', opacity: downloading ? 0.6 : 1 }}>⬇ + Transcript</button>
@@ -1913,41 +1924,41 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
           </div>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {notScored && <Card style={{ background: '#f1f5f9', border: '1px solid #e2e8f0' }}><b style={{ color: '#475569' }}>Not counted toward the agent's score</b> <span style={{ fontSize: 13, color: '#64748b' }}>— {row.excluded ? 'manually excluded' : (CLASS_LABEL[row.call_class] || 'non-conversation')}. Still shown here for reporting.</span></Card>}
+          {notScored && <Card style={{ background: 'light-dark(#f1f5f9, #1b2327)', border: '1px solid light-dark(#e2e8f0, #2a3439)' }}><b style={{ color: 'light-dark(#475569, #b3c1c7)' }}>Not counted toward the agent's score</b> <span style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)' }}>— {row.excluded ? 'manually excluded' : (CLASS_LABEL[row.call_class] || 'non-conversation')}. Still shown here for reporting.</span></Card>}
 
-          <Card style={{ background: os.bg, border: `1px solid ${os.fg}33` }}>
+          <Card style={{ background: os.bg, border: `1px solid color-mix(in srgb, ${os.fg} 20%, transparent)` }}>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-              <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CALL TYPE</div><div style={{ fontWeight: 700 }}>{CLASS_LABEL[row.call_class] || 'Conversation'}</div></div>
-              <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OPPORTUNITY</div><div style={{ fontWeight: 700 }}>{row.opportunity ? 'Yes' : 'No'}</div></div>
-              <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OUTCOME</div><div style={{ fontWeight: 700, color: os.fg }}>{row.outcome || '—'}</div></div>
-              {row.outcome === 'Not Booked' && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>REASON</div><div style={{ fontWeight: 700 }}>{row.not_booked_reason || '—'}</div></div>}
-              {row.outcome === 'Transferred' && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>AFTER TRANSFER <span style={{ color: '#94a3b8', fontWeight: 500 }}>· result of the receiving call</span></div><div style={{ fontWeight: 700, color: (OUTCOME_STYLE[row.transfer_outcome] || {}).fg || INK }}>{row.transfer_outcome || '—'}</div></div>}
-              {row.outcome === 'Other' && row.other_reason && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OTHER — WHY</div><div style={{ fontWeight: 700 }}>{row.other_reason}</div></div>}
-              {row.opportunity_context && <div style={{ flex: 1, minWidth: 180 }}><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CALLER WANTED</div><div>{row.opportunity_context}</div></div>}
+              <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>CALL TYPE</div><div style={{ fontWeight: 700 }}>{CLASS_LABEL[row.call_class] || 'Conversation'}</div></div>
+              <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>OPPORTUNITY</div><div style={{ fontWeight: 700 }}>{row.opportunity ? 'Yes' : 'No'}</div></div>
+              <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>OUTCOME</div><div style={{ fontWeight: 700, color: os.fg }}>{row.outcome || '—'}</div></div>
+              {row.outcome === 'Not Booked' && <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>REASON</div><div style={{ fontWeight: 700 }}>{row.not_booked_reason || '—'}</div></div>}
+              {row.outcome === 'Transferred' && <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>AFTER TRANSFER <span style={{ color: '#94a3b8', fontWeight: 500 }}>· result of the receiving call</span></div><div style={{ fontWeight: 700, color: (OUTCOME_STYLE[row.transfer_outcome] || {}).fg || INK }}>{row.transfer_outcome || '—'}</div></div>}
+              {row.outcome === 'Other' && row.other_reason && <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>OTHER — WHY</div><div style={{ fontWeight: 700 }}>{row.other_reason}</div></div>}
+              {row.opportunity_context && <div style={{ flex: 1, minWidth: 180 }}><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>CALLER WANTED</div><div>{row.opportunity_context}</div></div>}
             </div>
             {(row.topics || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.topics.map((t, i) => <Pill key={i} bg="#e0f2fe" fg="#075985">🏷 {t}</Pill>)}</div>}
           </Card>
 
           {(row.opportunity || row.revenue_tip || row.asked_for_cc != null) && (
-            <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
-              <div style={{ fontWeight: 700, marginBottom: 8, color: '#9a3412' }}>Revenue &amp; conversion</div>
+            <Card style={{ background: 'light-dark(#fff7ed, #392813)', border: '1px solid light-dark(#fed7aa, #64492b)' }}>
+              <div style={{ fontWeight: 700, marginBottom: 8, color: 'light-dark(#9a3412, #e56f48)' }}>Revenue &amp; conversion</div>
               <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13 }}>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>ASKED FOR BOOKING</div><b style={{ color: row.asked_for_booking ? '#1b5e20' : '#b71c1c' }}>{row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No')}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD ASKED</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD COLLECTED</div><b style={{ color: row.asked_for_cc !== true ? '#94a3b8' : (row.collected_cc == null ? '#8d6e00' : (row.collected_cc ? '#0f766e' : '#b71c1c')) }}>{row.asked_for_cc !== true ? 'N/A' : (row.collected_cc == null ? 'Pending' : (row.collected_cc ? 'Yes' : 'No'))}</b></div>
+                <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>ASKED FOR BOOKING</div><b style={{ color: row.asked_for_booking ? '#1b5e20' : '#b71c1c' }}>{row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No')}</b></div>
+                <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
+                <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
+                <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>CARD ASKED</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
+                <div><div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>CARD COLLECTED</div><b style={{ color: row.asked_for_cc !== true ? '#94a3b8' : (row.collected_cc == null ? '#8d6e00' : (row.collected_cc ? '#0f766e' : '#b71c1c')) }}>{row.asked_for_cc !== true ? 'N/A' : (row.collected_cc == null ? 'Pending' : (row.collected_cc ? 'Yes' : 'No'))}</b></div>
               </div>
               {(row.objections || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.objections.map((o, i) => <Pill key={i} bg="#fee2e2" fg="#991b1b">⛔ {o}</Pill>)}</div>}
-              {row.asked_for_cc && row.cc_quote && <div style={{ marginTop: 10, fontSize: 13.5, color: '#334155' }}><b>Card ask:</b> “{row.cc_quote}”</div>}
-              {row.asked_for_cc === true && row.cc_collected_quote && <div style={{ marginTop: 6, fontSize: 13.5, color: '#334155' }}><b>Collected:</b> “{row.cc_collected_quote}”</div>}
-              {row.revenue_tip && <div style={{ marginTop: 10, fontSize: 13.5, color: '#7c2d12' }}><b>Biggest revenue lever:</b> {row.revenue_tip}</div>}
+              {row.asked_for_cc && row.cc_quote && <div style={{ marginTop: 10, fontSize: 13.5, color: 'light-dark(#334155, #b3c1c7)' }}><b>Card ask:</b> “{row.cc_quote}”</div>}
+              {row.asked_for_cc === true && row.cc_collected_quote && <div style={{ marginTop: 6, fontSize: 13.5, color: 'light-dark(#334155, #b3c1c7)' }}><b>Collected:</b> “{row.cc_collected_quote}”</div>}
+              {row.revenue_tip && <div style={{ marginTop: 10, fontSize: 13.5, color: 'light-dark(#7c2d12, #e47048)' }}><b>Biggest revenue lever:</b> {row.revenue_tip}</div>}
             </Card>
           )}
 
-          {(row.risk_flags || []).length > 0 && <Card style={{ background: '#fdecea', border: '1px solid #f5c6cb' }}><b style={{ color: '#b71c1c' }}>⚠ Risk flags</b><ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{row.risk_flags.map((f, i) => <li key={i} style={{ fontSize: 13 }}>{f}</li>)}</ul></Card>}
+          {(row.risk_flags || []).length > 0 && <Card style={{ background: 'light-dark(#fdecea, #391713)', border: '1px solid light-dark(#f5c6cb, #642b31)' }}><b style={{ color: 'light-dark(#b71c1c, #e76464)' }}>⚠ Risk flags</b><ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{row.risk_flags.map((f, i) => <li key={i} style={{ fontSize: 13 }}>{f}</li>)}</ul></Card>}
 
-          <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: '#334155' }}>{row.summary || '—'}</div></Card>
+          <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: 'light-dark(#334155, #b3c1c7)' }}>{row.summary || '—'}</div></Card>
 
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{canManage && ans != null && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any mark — and ✎ the AI's feedback ↓</span>}</div>
@@ -1956,12 +1967,12 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
               const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
               const col = isNa ? '#64748b' : isYes ? '#1b5e20' : '#b71c1c'
               return (
-                <div key={k} style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
+                <div key={k} style={{ padding: '8px 0', borderTop: '1px solid light-dark(#f1f5f9, #2a3439)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.label || k}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
                       {canManage
-                        ? <select value={isNa ? 'na' : (isYes ? 'yes' : 'no')} onChange={(e) => setItem(k, e.target.value)} style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #cbd5e1', color: col, fontWeight: 700 }}><option value="yes">✓ Yes</option><option value="no">✗ No</option><option value="na">N/A</option></select>
+                        ? <select value={isNa ? 'na' : (isYes ? 'yes' : 'no')} onChange={(e) => setItem(k, e.target.value)} style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid light-dark(#cbd5e1, #3a464c)', color: col, fontWeight: 700 }}><option value="yes">✓ Yes</option><option value="no">✗ No</option><option value="na">N/A</option></select>
                         : <span style={{ fontWeight: 700, color: col }}>{isNa ? 'N/A' : (isYes ? '✓' : '✗')}</span>}
                       <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>({isNa ? 0 : a.max} pts)</span>
                     </div>
@@ -1970,7 +1981,7 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                     <div style={{ marginTop: 6 }}>
                       <textarea value={fbText} onChange={(e) => setFbText(e.target.value)} rows={3} autoFocus
                         placeholder="Feedback shown to the agent for this question"
-                        style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 12.5, color: '#334155', padding: '7px 9px', borderRadius: 8, border: '1px solid #94a3b8', resize: 'vertical' }} />
+                        style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 12.5, color: 'light-dark(#334155, #b3c1c7)', padding: '7px 9px', borderRadius: 8, border: '1px solid #94a3b8', resize: 'vertical' }} />
                       <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                         <button disabled={fbBusy || !fbText.trim()} onClick={() => saveFb(k, fbText.trim())} style={{ ...btn('primary'), padding: '3px 10px', fontSize: 12 }}>{fbBusy ? 'Saving…' : 'Save'}</button>
                         <button disabled={fbBusy} onClick={cancelFb} style={{ ...btn('ghost'), padding: '3px 10px', fontSize: 12 }}>Cancel</button>
@@ -1981,7 +1992,7 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                     </div>
                   ) : (
                     (a.rationale || canManage) && (
-                      <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                      <div style={{ fontSize: 12.5, color: 'light-dark(#475569, #b3c1c7)', marginTop: 2, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                         <span style={{ flex: 1 }}>{a.rationale || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>No feedback yet</span>}</span>
                         {/* Managers only. The client portal and agents render this same
                             drawer with canManage=false — showing them an "edited" chip
@@ -1989,7 +2000,7 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                             we rewrote the feedback, and hand them the original. */}
                         {canManage && a.rationale_ai !== undefined && (
                           <span title={`AI's original wording: ${a.rationale_ai || '(none)'}`}
-                            style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: '#8d6e00', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 999, padding: '1px 7px', cursor: 'help' }}>· edited</span>
+                            style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: 'light-dark(#8d6e00, #c9a31d)', background: 'light-dark(#fef9c3, #393613)', border: '1px solid light-dark(#fde68a, #64592b)', borderRadius: 999, padding: '1px 7px', cursor: 'help' }}>· edited</span>
                         )}
                         {canManage && (
                           <button title="Edit this feedback" onClick={() => beginFb(k, a)}
@@ -1998,33 +2009,33 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                       </div>
                     )
                   )}
-                  {(a.misses || []).length > 0 && !isNa && !isYes && <div style={{ fontSize: 12, color: '#b71c1c', marginTop: 2 }}>Missed: {a.misses.join(', ')}</div>}
-                  {a.evidence && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>“{a.evidence}”</div>}
+                  {(a.misses || []).length > 0 && !isNa && !isYes && <div style={{ fontSize: 12, color: 'light-dark(#b71c1c, #e76464)', marginTop: 2 }}>Missed: {a.misses.join(', ')}</div>}
+                  {a.evidence && <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 2, fontStyle: 'italic' }}>“{a.evidence}”</div>}
                 </div>
               )
             })}
           </Card>
 
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#1b5e20' }}>What went well</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.strengths || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
-            <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#b71c1c' }}>Coaching focus (revenue)</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.improvements || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
+            <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: 'light-dark(#1b5e20, #33b23d)' }}>What went well</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.strengths || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
+            <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: 'light-dark(#b71c1c, #e76464)' }}>Coaching focus (revenue)</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.improvements || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
           </div>
 
-          <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}><div style={{ fontWeight: 700, marginBottom: 4, color: TEAL }}>Coaching note</div><div style={{ fontSize: 13.5, color: '#134e4a' }}>{row.coaching_note || '—'}</div></Card>
+          <Card style={{ background: 'light-dark(#f0fdfa, #133931)', border: '1px solid light-dark(#99f6e4, #2b6459)' }}><div style={{ fontWeight: 700, marginBottom: 4, color: TEAL_T }}>Coaching note</div><div style={{ fontSize: 13.5, color: 'light-dark(#134e4a, #2db9af)' }}>{row.coaching_note || '—'}</div></Card>
 
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700 }}>Transcript</div>{c.recording_url && <RecordingBtn callId={c.id} />}</div>
             {transcript == null && segments == null ? <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading transcript…</div>
               : (segments && segments.length)
                 ? <TimedTranscript segments={segments} />
-                : <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{formatTranscript(transcript) || 'No transcript.'}</pre>}
+                : <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: 'light-dark(#334155, #b3c1c7)', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{formatTranscript(transcript) || 'No transcript.'}</pre>}
           </Card>
 
           <NotesCard callId={c.id} meName={meName} userId={userId} canDelete={canManage} />
 
           {canManage && (
             <Card>
-              {dirty && <input placeholder="Why are you adjusting this? (optional note)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />}
+              {dirty && <input placeholder="Why are you adjusting this? (optional note)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />}
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {dirty && <button disabled={busy === row.id} onClick={() => onAdjust(row.id, ans, note)} style={btn('primary')}>{busy === row.id ? 'Saving…' : `Save adjustments → ${pct(preview.pct)}`}</button>}
                 <button disabled={busy === c.id} onClick={() => onRescore(c.id)} title="Heads up: re-scoring regenerates every question, which replaces any feedback you've edited by hand." style={btn('ghost')}>{busy === c.id ? 'Scoring…' : '↻ Re-score with AI'}</button>
@@ -2032,13 +2043,13 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                   ? <button disabled={busy === row.id} onClick={() => onExclude(row.id, false, row.call?.id)} style={btn('ghost')}>Include in scoring</button>
                   : <button disabled={busy === row.id} onClick={() => onExclude(row.id, true, row.call?.id)} style={btn('ghost')}>Exclude from scoring</button>}
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef2f7', cursor: 'pointer', fontSize: 13.5 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, paddingTop: 12, borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer', fontSize: 13.5 }}>
                 <input type="checkbox" checked={!!row.reviewed} disabled={busy === row.id}
                   onChange={(e) => onSetReviewed(row.id, e.target.checked, row.call?.id)}
                   style={{ width: 16, height: 16, cursor: 'pointer', accentColor: TEAL }} />
                 <span style={{ fontWeight: 600 }}>This call has been reviewed</span>
                 {row.reviewed && row.reviewed_marked_at &&
-                  <span style={{ color: '#64748b', fontSize: 12 }}>· marked {fmtDate(row.reviewed_marked_at)}</span>}
+                  <span style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 12 }}>· marked {fmtDate(row.reviewed_marked_at)}</span>}
               </label>
             </Card>
           )}
@@ -2081,21 +2092,21 @@ function NotesCard({ callId, meName, userId, canDelete }) {
         ? <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>No notes yet. Add the first one below.</div>
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
             {notes.map((n) => (
-              <div key={n.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
+              <div key={n.id} style={{ background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 8, padding: '8px 10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{n.author_name || 'User'}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'light-dark(#334155, #b3c1c7)' }}>{n.author_name || 'User'}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>{n.created_at ? new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}</span>
-                    {canDelete && <button onClick={() => del(n.id)} style={{ border: 'none', background: 'none', color: '#b71c1c', cursor: 'pointer', fontSize: 12, padding: 0 }}>Delete</button>}
+                    {canDelete && <button onClick={() => del(n.id)} style={{ border: 'none', background: 'none', color: 'light-dark(#b71c1c, #e76464)', cursor: 'pointer', fontSize: 12, padding: 0 }}>Delete</button>}
                   </div>
                 </div>
-                <div style={{ fontSize: 13.5, color: '#0f172a', marginTop: 3, whiteSpace: 'pre-wrap' }}>{n.body}</div>
+                <div style={{ fontSize: 13.5, color: 'light-dark(#0f172a, #e8eef0)', marginTop: 3, whiteSpace: 'pre-wrap' }}>{n.body}</div>
               </div>
             ))}
           </div>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Add a note about this call…" rows={2}
-          style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
+          style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
         <button disabled={saving || !body.trim()} onClick={add} style={{ ...btn('primary'), opacity: saving || !body.trim() ? 0.5 : 1 }}>{saving ? 'Saving…' : 'Add note'}</button>
       </div>
     </Card>
@@ -2184,17 +2195,17 @@ function RubricTab({ campaigns }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div style={{ fontWeight: 700 }}>Scoring rubric</div>
-            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>These are the criteria the AI grades every call against. Edits apply to the next scoring run — use Re-score on a call to apply them immediately.</div>
+            <div style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 2 }}>These are the criteria the AI grades every call against. Edits apply to the next scoring run — use Re-score on a call to apply them immediately.</div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {msg && <span style={{ color: '#1b5e20', fontSize: 13 }}>{msg}</span>}
-            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Client{' '}
-              <select value={clientId || ''} onChange={(e) => setClientId(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}>
+            {msg && <span style={{ color: 'light-dark(#1b5e20, #33b23d)', fontSize: 13 }}>{msg}</span>}
+            <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>Client{' '}
+              <select value={clientId || ''} onChange={(e) => setClientId(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', fontSize: 13 }}>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Campaign{' '}
-              <select value={campaign} onChange={(e) => setCampaign(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}>
+            <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>Campaign{' '}
+              <select value={campaign} onChange={(e) => setCampaign(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', fontSize: 13 }}>
                 {list.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </label>
@@ -2203,20 +2214,20 @@ function RubricTab({ campaigns }) {
       </Card>
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 2 }}>Scoring guidance</div>
-        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8 }}>Plain-language instructions the AI follows when scoring this campaign — how strict to be, what counts as pass/fail, phrases to watch for. Applies on the next scoring run.</div>
+        <div style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 8 }}>Plain-language instructions the AI follows when scoring this campaign — how strict to be, what counts as pass/fail, phrases to watch for. Applies on the next scoring run.</div>
         <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} placeholder="e.g. Mark Next Steps N/A (don't deduct) when no appointment was booked. Reward confident language; flag phrases like 'I don't know.'"
-          style={{ width: '100%', minHeight: 90, resize: 'vertical', border: '1px solid #cbd5e1', borderRadius: 8, padding: 10, fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          style={{ width: '100%', minHeight: 90, resize: 'vertical', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 8, padding: 10, fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
         {guidance !== guidanceOrig && <div style={{ marginTop: 8 }}><button onClick={saveGuidance} style={btn('primary')}>Save guidance</button></div>}
       </Card>
-      {err && <Card style={{ borderColor: '#f5c6cb' }}><span style={{ color: '#b71c1c', fontSize: 13 }}>{err}</span></Card>}
-      {rows == null ? <Card><span style={{ color: '#64748b' }}>Loading rubric…</span></Card> : (
+      {err && <Card style={{ borderColor: 'light-dark(#f5c6cb, #642b31)' }}><span style={{ color: 'light-dark(#b71c1c, #e76464)', fontSize: 13 }}>{err}</span></Card>}
+      {rows == null ? <Card><span style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>Loading rubric…</span></Card> : (
         <>
           {rows.map((r, i) => (
             <Card key={r.key}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 2 }}>
-                  <button title="Move up" disabled={i === 0} onClick={() => move(i, -1)} style={{ ...btn('ghost'), padding: '2px 7px', color: i === 0 ? '#cbd5e1' : '#475569' }}>▲</button>
-                  <button title="Move down" disabled={i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...btn('ghost'), padding: '2px 7px', color: i === rows.length - 1 ? '#cbd5e1' : '#475569' }}>▼</button>
+                  <button title="Move up" disabled={i === 0} onClick={() => move(i, -1)} style={{ ...btn('ghost'), padding: '2px 7px', color: i === 0 ? '#cbd5e1' : 'light-dark(#475569, #b3c1c7)' }}>▲</button>
+                  <button title="Move down" disabled={i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...btn('ghost'), padding: '2px 7px', color: i === rows.length - 1 ? '#cbd5e1' : 'light-dark(#475569, #b3c1c7)' }}>▼</button>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}><RubricRow r={r} onSave={saveRow} onDelete={removeRow} /></div>
               </div>
@@ -2224,7 +2235,7 @@ function RubricTab({ campaigns }) {
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <button onClick={addRow} style={btn('primary')}>+ Add criterion</button>
-            <span style={{ fontSize: 13, color: '#64748b' }}>Total points possible: <b>{total}</b></span>
+            <span style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)' }}>Total points possible: <b>{total}</b></span>
           </div>
         </>
       )}
@@ -2243,15 +2254,15 @@ function RubricRow({ r, onSave, onDelete }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} placeholder="What the AI checks for on the call" style={{ ...inp(360), flex: 1, minWidth: 220 }} />
-        <label style={{ fontSize: 12, color: '#64748b' }}>Points <input type="number" value={d.points} onChange={(e) => setD({ ...d, points: e.target.value })} style={inp(60)} /></label>
-        <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><input type="checkbox" checked={!!d.allow_na} onChange={(e) => setD({ ...d, allow_na: e.target.checked })} /> Allow N/A</label>
+        <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>Points <input type="number" value={d.points} onChange={(e) => setD({ ...d, points: e.target.value })} style={inp(60)} /></label>
+        <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', display: 'flex', alignItems: 'center', gap: 4 }}><input type="checkbox" checked={!!d.allow_na} onChange={(e) => setD({ ...d, allow_na: e.target.checked })} /> Allow N/A</label>
         <input value={d.section || ''} list="rubric-sections" onChange={(e) => setD({ ...d, section: e.target.value })} placeholder="section" style={inp(150)} />
       </div>
       <textarea value={missesText} onChange={(e) => setD({ ...d, misses: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
         placeholder="Miss reasons the AI can cite when the answer is 'No' — one per line (optional)"
         style={{ ...inp('100%'), width: '100%', minHeight: 48, resize: 'vertical', fontFamily: 'inherit' }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={() => onDelete(r)} style={{ ...btn('ghost'), color: '#b71c1c', padding: '4px 10px' }}>Delete</button>
+        <button onClick={() => onDelete(r)} style={{ ...btn('ghost'), color: 'light-dark(#b71c1c, #e76464)', padding: '4px 10px' }}>Delete</button>
         {dirty && <button onClick={() => onSave(r, d)} style={{ ...btn('primary'), padding: '4px 12px' }}>Save changes</button>}
       </div>
     </div>
@@ -2272,16 +2283,16 @@ function SettingsTab({ settings, secretKeys, pipeline, base, onSave, busy }) {
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 10 }}>Integration status</div>
         {required.map(([k, d]) => { const on = secretKeys.includes(k); return (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
-            <Pill bg={on ? '#e8f5e9' : '#fdecea'} fg={on ? '#1b5e20' : '#b71c1c'}>{on ? 'SET' : 'MISSING'}</Pill><code style={{ fontSize: 13 }}>{k}</code><span style={{ fontSize: 12, color: '#64748b' }}>{d}</span>
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid light-dark(#f1f5f9, #2a3439)' }}>
+            <Pill bg={on ? '#e8f5e9' : '#fdecea'} fg={on ? '#1b5e20' : '#b71c1c'}>{on ? 'SET' : 'MISSING'}</Pill><code style={{ fontSize: 13 }}>{k}</code><span style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{d}</span>
           </div>
         )})}
       </Card>
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 10 }}>Per-campaign automation</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ textAlign: 'left', color: '#475569' }}>{['Campaign', 'Enabled', 'Auto-score', 'Min sec', 'Pass %', 'Model', ''].map((h) => <th key={h} style={{ padding: '6px 8px' }}>{h}</th>)}</tr></thead>
-          <tbody>{settings.map((s) => <SettingRow key={s.campaign} s={s} onSave={onSave} busy={busy} />)}{!settings.length && <tr><td colSpan={7} style={{ color: '#64748b', padding: 8 }}>No campaigns.</td></tr>}</tbody>
+          <thead><tr style={{ textAlign: 'left', color: 'light-dark(#475569, #b3c1c7)' }}>{['Campaign', 'Enabled', 'Auto-score', 'Min sec', 'Pass %', 'Model', ''].map((h) => <th key={h} style={{ padding: '6px 8px' }}>{h}</th>)}</tr></thead>
+          <tbody>{settings.map((s) => <SettingRow key={s.campaign} s={s} onSave={onSave} busy={busy} />)}{!settings.length && <tr><td colSpan={7} style={{ color: 'light-dark(#64748b, #9fb4bb)', padding: 8 }}>No campaigns.</td></tr>}</tbody>
         </table>
       </Card>
     </div>
@@ -2290,7 +2301,7 @@ function SettingsTab({ settings, secretKeys, pipeline, base, onSave, busy }) {
 function SettingRow({ s, onSave, busy }) {
   const [d, setD] = useState(s); const dirty = JSON.stringify(d) !== JSON.stringify(s)
   return (
-    <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+    <tr style={{ borderTop: '1px solid light-dark(#f1f5f9, #2a3439)' }}>
       <td style={{ padding: '6px 8px', fontWeight: 600 }}>{d.campaign}</td>
       <td style={{ padding: '6px 8px' }}><input type="checkbox" checked={d.enabled} onChange={(e) => setD({ ...d, enabled: e.target.checked })} /></td>
       <td style={{ padding: '6px 8px' }}><input type="checkbox" checked={d.auto_score} onChange={(e) => setD({ ...d, auto_score: e.target.checked })} /></td>
@@ -2304,9 +2315,9 @@ function SettingRow({ s, onSave, busy }) {
 
 function Select({ label, value, onChange, opts, disabled = false, title }) {
   return (
-    <label style={{ fontSize: 12, color: '#64748b', opacity: disabled ? 0.5 : 1 }} title={title}>
+    <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', opacity: disabled ? 0.5 : 1 }} title={title}>
       <div style={{ marginBottom: 3, fontWeight: 600 }}>{label}</div>
-      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer' }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: disabled ? '#f1f5f9' : '#fff', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer' }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
     </label>
   )
 }
@@ -2325,16 +2336,16 @@ function BrandMultiSelect({ options, value, onChange }) {
   const toggle = (b) => onChange(sel.includes(b) ? sel.filter((x) => x !== b) : [...sel, b])
   const label = sel.length === 0 ? 'All brands' : sel.length === 1 ? sel[0] : `${sel.length} brands`
   return (
-    <div ref={ref} style={{ fontSize: 12, color: '#64748b', position: 'relative' }}>
+    <div ref={ref} style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', position: 'relative' }}>
       <div style={{ marginBottom: 3, fontWeight: 600 }}>Brand</div>
       <button type="button" onClick={() => setOpen((o) => !o)} title={sel.length > 1 ? sel.join(', ') : undefined}
-        style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13, cursor: 'pointer', color: INK, minWidth: 140, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, maxWidth: 240 }}>
+        style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: 'light-dark(#fff, #161d21)', fontSize: 13, cursor: 'pointer', color: INK, minWidth: 140, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, maxWidth: 240 }}>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
         <span style={{ color: '#94a3b8', fontSize: 10 }}>▾</span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50, background: '#fff', color: INK, border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,.12)', padding: 6, minWidth: 220, maxHeight: 320, overflowY: 'auto' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50, background: 'light-dark(#fff, #161d21)', color: INK, border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,.12)', padding: 6, minWidth: 220, maxHeight: 320, overflowY: 'auto' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, borderBottom: '1px solid light-dark(#f1f5f9, #2a3439)' }}>
             <input type="checkbox" checked={sel.length === 0} onChange={() => onChange([])} style={{ accentColor: TEAL }} /> All brands
           </label>
           {options.map((b) => (
@@ -2350,9 +2361,9 @@ function BrandMultiSelect({ options, value, onChange }) {
 }
 function DateField({ label, value, onChange, min, max }) {
   return (
-    <label style={{ fontSize: 12, color: '#64748b' }}>
+    <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>
       <div style={{ marginBottom: 3, fontWeight: 600 }}>{label}</div>
-      <input type="date" value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13, fontFamily: 'inherit', color: value ? '#0f172a' : '#94a3b8' }} />
+      <input type="date" value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: 'light-dark(#fff, #161d21)', fontSize: 13, fontFamily: 'inherit', color: value ? '#0f172a' : '#94a3b8' }} />
     </label>
   )
 }
@@ -2414,11 +2425,11 @@ function exportPDFsheets(title, subtitle, sheets) {
   const body = sheets.map((s) => '<h2>' + e(s.title || '') + '</h2><table><thead><tr>' + s.cols.map((c) => '<th>' + e(c) + '</th>').join('') + '</tr></thead><tbody>' + s.rows.map((r) => '<tr>' + r.map((c) => '<td>' + e(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>').join('')
   const gen = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
   const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + e(title) + '</title><style>'
-    + '@page{margin:12mm}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f172a;padding:6px 10px;font-size:12px}'
+    + '@page{margin:12mm}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:light-dark(#0f172a, #e8eef0);padding:6px 10px;font-size:12px}'
     + 'h1{font-size:18px;margin:0 0 2px;border-bottom:3px solid ' + TEAL + ';padding-bottom:8px}h1 span{color:' + TEAL + '}'
-    + '.sub{color:#64748b;font-size:11px;margin:6px 0 4px}h2{font-size:13px;margin:16px 0 6px}'
-    + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#f1f5f9;text-align:left;padding:5px 7px;font-size:10.5px;color:#475569}td{padding:4px 7px;border-top:1px solid #eef2f7}tr{page-break-inside:avoid}'
-    + '.foot{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:6px;color:#94a3b8;font-size:10px;display:flex;justify-content:space-between}'
+    + '.sub{color:light-dark(#64748b, #9fb4bb);font-size:11px;margin:6px 0 4px}h2{font-size:13px;margin:16px 0 6px}'
+    + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:light-dark(#f1f5f9, #1b2327);text-align:left;padding:5px 7px;font-size:10.5px;color:light-dark(#475569, #b3c1c7)}td{padding:4px 7px;border-top:1px solid light-dark(#eef2f7, #2a3439)}tr{page-break-inside:avoid}'
+    + '.foot{margin-top:14px;border-top:1px solid light-dark(#e2e8f0, #2a3439);padding-top:6px;color:#94a3b8;font-size:10px;display:flex;justify-content:space-between}'
     + '.noprint{text-align:center;margin-bottom:10px}.noprint button{background:' + TEAL + ';color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer}'
     + '@media print{.noprint{display:none}body{padding:0}}'
     + '</style></head><body><div class="noprint"><button onclick="window.print()">⬇ Save as PDF / Print</button></div>'
@@ -2588,7 +2599,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
   }
   const M = METRICS[metric]
   const n = items.length
-  if (!n) return <Card style={{ color: '#64748b' }}>No data in range.</Card>
+  if (!n) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No data in range.</Card>
 
   const PADL = 46, PADR = 26, PADT = 26, PADB = 80
   const W = Math.max(760, n * 100), H = 322
@@ -2607,7 +2618,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '2px 0 12px' }}>
         <span style={{ fontSize: 12, color: '#8a97a5', fontWeight: 600 }}>Metric</span>
         {Object.entries(METRICS).map(([key, v]) => (
-          <button key={key} onClick={() => setMetric(key)} style={{ background: metric === key ? TEAL : '#fff', color: metric === key ? '#fff' : '#556372', border: `1px solid ${metric === key ? TEAL : '#e2e8f0'}`, borderRadius: 999, padding: '6px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{v.label}</button>
+          <button key={key} onClick={() => setMetric(key)} style={{ background: metric === key ? TEAL : 'light-dark(#fff, #161d21)', color: metric === key ? '#fff' : 'light-dark(#556372, #b3c1c7)', border: `1px solid ${metric === key ? TEAL : '#e2e8f0'}`, borderRadius: 999, padding: '6px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{v.label}</button>
         ))}
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -2638,9 +2649,9 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: 12, color: '#8a97a5' }}>
         <span>dot size = call volume</span>
         {M.target != null && <span>· - - - {M.target}{M.unit} target</span>}
-        <span><b style={{ color: '#1b5e20' }}>●</b> good</span>
-        <span><b style={{ color: '#8d6e00' }}>●</b> watch</span>
-        <span><b style={{ color: '#b71c1c' }}>●</b> below</span>
+        <span><b style={{ color: 'light-dark(#1b5e20, #33b23d)' }}>●</b> good</span>
+        <span><b style={{ color: 'light-dark(#8d6e00, #c9a31d)' }}>●</b> watch</span>
+        <span><b style={{ color: 'light-dark(#b71c1c, #e76464)' }}>●</b> below</span>
         {metric === 'missed' && <span>· missed bookings ÷ scored calls — lower is better</span>}
       </div>
     </div>
@@ -2661,44 +2672,44 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
 
   // clickable KPI card
   const KpiCard = ({ label, value, sub, color, onClick, wide }) => (
-    <div onClick={onClick} style={{ minWidth: 150, gridColumn: wide ? 'span 2' : 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, cursor: onClick ? 'pointer' : 'default', transition: '.12s' }}
+    <div onClick={onClick} style={{ minWidth: 150, gridColumn: wide ? 'span 2' : 'auto', background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 14, cursor: onClick ? 'pointer' : 'default', transition: '.12s' }}
       onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = TEAL; e.currentTarget.style.boxShadow = '0 4px 14px rgba(15,118,110,.10)' } }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none' }}>
-      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, lineHeight: 1.3 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6, color: color || '#0f172a', letterSpacing: '-.5px', whiteSpace: 'nowrap' }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}{onClick ? <span style={{ color: TEAL }}> ›</span> : null}</div>
+      <div style={{ fontSize: 11, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, lineHeight: 1.3 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6, color: color || 'light-dark(#0f172a, #e8eef0)', letterSpacing: '-.5px', whiteSpace: 'nowrap' }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 2 }}>{sub}{onClick ? <span style={{ color: TEAL_T }}> ›</span> : null}</div>
     </div>
   )
   const CallLine = ({ r }) => {
     const nm = agentOf(r) || 'Unknown'; const sc = Number(r.score_pct)
     const miss = (r.improvement_tags || [])[0]
     return (
-      <div onClick={() => onOpen(r)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 11, marginBottom: 8, cursor: 'pointer' }}
+      <div onClick={() => onOpen(r)} style={{ border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, padding: 11, marginBottom: 8, cursor: 'pointer' }}
         onMouseEnter={(e) => e.currentTarget.style.borderColor = TEAL} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <b>{nm}</b><span style={{ color: '#94a3b8', fontSize: 12 }}>— {(r.call || {}).brand || '—'}</span>
           <span style={{ marginLeft: 'auto', background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8, fontSize: 12.5 }}>{r.score_pct == null ? '—' : Math.round(sc) + '%'}</span>
         </div>
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{r.outcome || 'No outcome'}{miss ? ' · ' + friendlyTag(miss) : ''}</div>
+        <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 4 }}>{r.outcome || 'No outcome'}{miss ? ' · ' + friendlyTag(miss) : ''}</div>
       </div>
     )
   }
 
-  if (err) return <Card style={{ color: '#b71c1c' }}>Error: {err}</Card>
-  if (!agg && loading) return <div style={{ color: '#64748b' }}>Loading…</div>
+  if (err) return <Card style={{ color: 'light-dark(#b71c1c, #e76464)' }}>Error: {err}</Card>
+  if (!agg && loading) return <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>Loading…</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {busy && <div style={{ color: '#64748b', fontSize: 12.5 }}>Loading calls…</div>}
+      {busy && <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 12.5 }}>Loading calls…</div>}
       {focus && (
         <Card style={{ padding: 0, overflow: 'hidden', border: `1px solid ${TEAL}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, borderBottom: '1px solid #eef2f7', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, borderBottom: '1px solid light-dark(#eef2f7, #2a3439)', flexWrap: 'wrap' }}>
             <button onClick={() => setFocus(null)} style={{ ...btn('ghost'), padding: '5px 10px' }}>‹ Back</button>
             <div style={{ fontWeight: 800, fontSize: 15 }}>{focus.title}</div>
             <span style={{ color: '#94a3b8', fontSize: 13 }}>{focus.calls.length.toLocaleString()} calls · click any to open the recording &amp; transcript</span>
             <button onClick={() => onGotoTab('calls')} style={{ ...btn('ghost'), padding: '5px 10px', marginLeft: 'auto' }}>Open in Calls tab →</button>
           </div>
           <div style={{ padding: 14, maxHeight: 460, overflow: 'auto' }}>
-            {focus.calls.length ? focus.calls.slice(0, 100).map((r, i) => <CallLine key={r.id || i} r={r} />) : <div style={{ color: '#64748b' }}>No calls match in this range.</div>}
+            {focus.calls.length ? focus.calls.slice(0, 100).map((r, i) => <CallLine key={r.id || i} r={r} />) : <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No calls match in this range.</div>}
             {focus.calls.length > 100 && <div style={{ color: '#94a3b8', fontSize: 12 }}>Showing first 100 · open the Calls tab for the full list.</div>}
           </div>
         </Card>
@@ -2734,7 +2745,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
             ['No Booking Attempt', 'noask', k.noAsk], ['Pricing Objections', 'feeobj', k.feeObj],
             ['Customer Info Not Captured', 'nocontact', k.noContact], ['High Performing Calls', 'great', null],
           ].map(([label, bucket, count]) => (
-            <button key={label} onClick={() => openBucket(label, bucket)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+            <button key={label} onClick={() => openBucket(label, bucket)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, padding: '9px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = TEAL; e.currentTarget.style.color = TEAL }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = INK }}>
               {label}{count != null ? <span style={{ fontWeight: 800, color: '#94a3b8', fontSize: 12 }}>{count.toLocaleString()}</span> : null}
             </button>
@@ -2751,7 +2762,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 16 }}>
         <Card>
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Priorities</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Biggest systemic misses in this view. Click one to see the calls.</div>
+          <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 6 }}>Biggest systemic misses in this view. Click one to see the calls.</div>
           {priorities.map((p, i) => (
             <div key={p.tag} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: i ? '1px solid #eef2f7' : 'none', cursor: 'pointer' }}>
               <div style={{ width: 26, height: 26, borderRadius: 8, background: TEAL, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13 }}>{i + 1}</div>
@@ -2762,22 +2773,22 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
         </Card>
         <Card>
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Queue <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— by agent</span></div>
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Agents with the most missed bookings. Click to see their coaching calls.</div>
+          <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 8 }}>Agents with the most missed bookings. Click to see their coaching calls.</div>
           {coachAgents.length ? coachAgents.map((a) => (
-            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — missed bookings to coach', 'missed', null, a.name) }} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
+            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — missed bookings to coach', 'missed', null, a.name) }} style={{ border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
               onMouseEnter={(e) => e.currentTarget.style.borderColor = TEAL} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 15 }}>{a.name}</b>
-                <span style={{ marginLeft: 'auto', background: '#fdecea', color: '#b71c1c', fontWeight: 800, padding: '2px 8px', borderRadius: 8, fontSize: 12.5 }}>{a.missed} missed</span>
+                <span style={{ marginLeft: 'auto', background: 'light-dark(#fdecea, #391713)', color: 'light-dark(#b71c1c, #e76464)', fontWeight: 800, padding: '2px 8px', borderRadius: 8, fontSize: 12.5 }}>{a.missed} missed</span>
               </div>
-              <div style={{ display: 'flex', gap: 14, marginTop: 7, fontSize: 12.5, color: '#475569', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 14, marginTop: 7, fontSize: 12.5, color: 'light-dark(#475569, #b3c1c7)', flexWrap: 'wrap' }}>
                 <span>QA <b style={{ color: scoreColor(a.avg) }}>{pct(a.avg)}</b></span>
                 <span>Booking <b style={{ color: bookBand(a.booking) }}>{pct(a.booking)}</b></span>
                 <span>{a.scored.toLocaleString()} calls</span>
-                <span style={{ marginLeft: 'auto', color: TEAL, fontWeight: 700 }}>review calls ›</span>
+                <span style={{ marginLeft: 'auto', color: TEAL_T, fontWeight: 700 }}>review calls ›</span>
               </div>
             </div>
-          )) : <div style={{ color: '#64748b' }}>No missed bookings in this range.</div>}
+          )) : <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No missed bookings in this range.</div>}
         </Card>
       </div>
     </div>
@@ -2793,7 +2804,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
 // ===========================================================================
 function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brands = [], agent, onOpen, onPickBrand, onPickAgent }) {
   const F = 'Poppins,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
-  const C = { paper: '#f7f5f0', card: '#fff', ink: '#1a2430', ink2: '#556372', ink3: '#8a97a5', line: '#e7e2d8', line2: '#eef0ee', teal: TEAL, tan: '#a97c3f', tanbg: '#f3ead9', good: '#1b7a3d', goodbg: '#e6f4ea', warn: '#9a7400', warnbg: '#fbf1cf', bad: '#c0342b', badbg: '#fbe7e4' }
+  const C = { paper: '#f7f5f0', card: '#fff', ink: 'light-dark(#1a2430, #e8eef0)', ink2: '#556372', ink3: '#8a97a5', line: '#e7e2d8', line2: '#eef0ee', teal: TEAL, tan: '#a97c3f', tanbg: '#f3ead9', good: '#1b7a3d', goodbg: '#e6f4ea', warn: '#9a7400', warnbg: '#fbf1cf', bad: '#c0342b', badbg: '#fbe7e4' }
   const [focus, setFocus] = useState(null)
   const [busy, setBusy] = useState(false)
   const [sort, setSort] = useState('qa')
@@ -2857,8 +2868,8 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brands = [],
     </div>
   )
 
-  if (err) return <Card style={{ color: '#b71c1c' }}>Error: {err}</Card>
-  if (!agg && loading) return <div style={{ color: '#64748b' }}>Loading…</div>
+  if (err) return <Card style={{ color: 'light-dark(#b71c1c, #e76464)' }}>Error: {err}</Card>
+  if (!agg && loading) return <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>Loading…</div>
   return (
     <div style={{ fontFamily: F, background: C.paper, border: `1px solid ${C.line}`, borderRadius: 18, padding: 22, color: C.ink }}>
       {busy && <div style={{ color: C.ink3, fontSize: 12.5, marginBottom: 10 }}>Loading calls…</div>}
@@ -2992,13 +3003,13 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brands = [],
 // and legend swatches; AI_INK = a darker tan for text labels so they stay legible
 // on white (the fill tone is too light to read as text).
 const AI_HUE = '#c9a06a'
-const AI_INK = '#7a5a2e'
+const AI_INK = 'light-dark(#7a5a2e, #d9b98a)'
 function HaiBar({ color, textColor, label, value, max }) {
   const w = value == null ? 0 : Math.max(0, Math.min(100, (value / max) * 100))
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ width: 44, fontSize: 11.5, color: '#64748b', flexShrink: 0 }}>{label}</span>
-      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 6, height: 20, position: 'relative', overflow: 'hidden' }}>
+      <span style={{ width: 44, fontSize: 11.5, color: 'light-dark(#64748b, #9fb4bb)', flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, background: 'light-dark(#f1f5f9, #1b2327)', borderRadius: 6, height: 20, position: 'relative', overflow: 'hidden' }}>
         <div style={{ width: w + '%', background: color, height: '100%', borderRadius: 6, transition: 'width .3s' }} />
       </div>
       <span style={{ width: 52, textAlign: 'right', fontWeight: 700, fontSize: 12.5, color: textColor || color, flexShrink: 0 }}>{pct(value)}</span>
@@ -3112,7 +3123,7 @@ function HumanVsAI({ rows, filterText }) {
   const liftStr = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + 'pp')
   const withAi = byBrand.filter((b) => aN(b) > 0 && hN(b) > 0).sort((a, b) => (aVal(b) ?? 0) - (aVal(a) ?? 0))
 
-  const seg = (k, l) => <button key={k} onClick={() => { setMetric(k); onSort('N') }} style={{ border: 'none', background: metric === k ? TEAL : '#fff', color: metric === k ? '#fff' : '#334155', padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: metric === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
+  const seg = (k, l) => <button key={k} onClick={() => { setMetric(k); onSort('N') }} style={{ border: 'none', background: metric === k ? TEAL : 'light-dark(#fff, #161d21)', color: metric === k ? '#fff' : 'light-dark(#334155, #b3c1c7)', padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: metric === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -3128,7 +3139,7 @@ function HumanVsAI({ rows, filterText }) {
         </span>
       </div>
 
-      <div style={{ fontSize: 12.5, color: '#64748b', marginTop: -6 }}>
+      <div style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', marginTop: -6 }}>
         AI CSRs (Dane, Sophia, Jason) handle after-hours coverage and are audited for quality, not coached. The per-brand rows below cover named agents only; calls with no agent name are shown in the Unattributed tile so the totals reconcile to the portfolio.
         {!isQa && ' Close rate here is on the QA-scored sample, not the full lead-to-booked funnel.'}
       </div>
@@ -3142,7 +3153,7 @@ function HumanVsAI({ rows, filterText }) {
       </div>
 
       {unN > 0 && (
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: -6 }}>
+        <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: -6 }}>
           {attrN.toLocaleString()} of {portN.toLocaleString()} {nWord} ({covPct}%) are attributed to a named CSR; the other {unN.toLocaleString()} have no agent name and appear only in the portfolio total, not the per-brand rows below.
         </div>
       )}
@@ -3151,7 +3162,7 @@ function HumanVsAI({ rows, filterText }) {
         <Card>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             <div style={{ fontWeight: 700 }}>{isQa ? 'Avg QA by brand — human vs AI' : 'Close rate by brand — human vs AI'}</div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 12.5, color: '#475569' }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 12.5, color: 'light-dark(#475569, #b3c1c7)' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: TEAL }} />Human</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: AI_HUE }} />AI</span>
             </div>
@@ -3160,7 +3171,7 @@ function HumanVsAI({ rows, filterText }) {
             {withAi.map((b) => (
               <div key={b.brand}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
-                  <span style={{ fontWeight: 600 }}>{b.brand}{lowN(b) && <span title={'Small AI sample (<' + HAI_LOW_N + ' opportunities) — interpret with caution'} style={{ color: '#b45309', fontWeight: 600 }}> °</span>}</span>
+                  <span style={{ fontWeight: 600 }}>{b.brand}{lowN(b) && <span title={'Small AI sample (<' + HAI_LOW_N + ' opportunities) — interpret with caution'} style={{ color: 'light-dark(#b45309, #e07524)', fontWeight: 600 }}> °</span>}</span>
                   <span style={{ color: '#94a3b8', fontSize: 12 }}>{hN(b).toLocaleString()} human · {aN(b).toLocaleString()} AI {nWord} · {liftStr(lift(b))}</span>
                 </div>
                 <HaiBar color={TEAL} label="Human" value={hVal(b)} max={100} />
@@ -3169,7 +3180,7 @@ function HumanVsAI({ rows, filterText }) {
               </div>
             ))}
           </div>
-          {anyLowN && <div style={{ fontSize: 11.5, color: '#b45309', marginTop: 10 }}>° Small AI sample (&lt;{HAI_LOW_N} opportunities) — treat the difference as directional, not conclusive.</div>}
+          {anyLowN && <div style={{ fontSize: 11.5, color: 'light-dark(#b45309, #e07524)', marginTop: 10 }}>° Small AI sample (&lt;{HAI_LOW_N} opportunities) — treat the difference as directional, not conclusive.</div>}
         </Card>
       )}
 
@@ -3180,18 +3191,18 @@ function HumanVsAI({ rows, filterText }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <SortHead cols={[['Brand', 'Brand'], [isQa ? 'Human calls' : 'Human opps', 'Human n'], [isQa ? 'Human avg QA' : 'Human close', 'Human val'], [isQa ? 'AI calls' : 'AI opps', 'AI n'], [isQa ? 'AI avg QA' : 'AI close', 'AI val'], [isQa ? 'AI lift' : 'AI diff', 'AI diff']]} sort={sort} onSort={onSort} />
             <tbody>{view.pageRows.map((b) => (
-              <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
-                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}{lowN(b) && <span title={'Small AI sample (<' + HAI_LOW_N + ' opportunities)'} style={{ color: '#b45309' }}> °</span>}</td>
+              <tr key={b.brand} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)' }}>
+                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}{lowN(b) && <span title={'Small AI sample (<' + HAI_LOW_N + ' opportunities)'} style={{ color: 'light-dark(#b45309, #e07524)' }}> °</span>}</td>
                 <td style={{ padding: '8px 12px' }}>{hN(b) ? hN(b).toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                 <td style={{ padding: '8px 12px' }}>{hN(b) ? <span style={{ background: valBg(hVal(b)), color: valColor(hVal(b), false), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(hVal(b))}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                 <td style={{ padding: '8px 12px' }}>{aN(b) ? aN(b).toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                 <td style={{ padding: '8px 12px' }}>{aN(b) ? <span style={{ background: valBg(aVal(b)), color: valColor(aVal(b), true), fontWeight: 700, padding: '3px 8px', borderRadius: 8, opacity: lowN(b) ? 0.55 : 1 }}>{pct(aVal(b))}</span> : <span style={{ color: '#cbd5e1' }}>no AI</span>}</td>
-                <td style={{ padding: '8px 12px', fontWeight: 700, color: lift(b) == null ? '#cbd5e1' : lift(b) >= 0 ? '#1b5e20' : '#b71c1c', opacity: lowN(b) ? 0.55 : 1 }}>{liftStr(lift(b))}</td>
+                <td style={{ padding: '8px 12px', fontWeight: 700, color: lift(b) == null ? '#cbd5e1' : lift(b) >= 0 ? 'light-dark(#1b5e20, #33b23d)' : 'light-dark(#b71c1c, #e76464)', opacity: lowN(b) ? 0.55 : 1 }}>{liftStr(lift(b))}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
-        {anyLowN && <div style={{ fontSize: 11.5, color: '#b45309', padding: '0 14px 12px' }}>° Small AI sample (&lt;{HAI_LOW_N} opportunities) — AI close rate shown muted; treat as directional.</div>}
+        {anyLowN && <div style={{ fontSize: 11.5, color: 'light-dark(#b45309, #e07524)', padding: '0 14px 12px' }}>° Small AI sample (&lt;{HAI_LOW_N} opportunities) — AI close rate shown muted; treat as directional.</div>}
       </Card>
     </div>
   )
@@ -3206,7 +3217,7 @@ function Scorecards({ rows, prevRows, viewAll, onOpen, brands: topBrands = [], s
   const prevBrand = useMemo(() => { const m = {}; (prevData.brands || []).forEach((b) => { m[b.brand] = b }); return m }, [prevData])
   const prevAgentMap = useMemo(() => { const m = {}; (prevData.agents || []).forEach((a) => { m[a.name + '|||' + a.brand] = a }); return m }, [prevData])
 
-  const seg = (k, l) => <button key={k} onClick={() => setTier(k)} style={{ border: 'none', background: tier === k ? TEAL : '#fff', color: tier === k ? '#fff' : '#334155', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: tier === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
+  const seg = (k, l) => <button key={k} onClick={() => setTier(k)} style={{ border: 'none', background: tier === k ? TEAL : 'light-dark(#fff, #161d21)', color: tier === k ? '#fff' : 'light-dark(#334155, #b3c1c7)', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: tier === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
 
   // Selected brand/agent fall back to the top-ranked one until the user picks
   // (or drills in via a click).
@@ -3279,7 +3290,7 @@ function ScExec({ data, prevOverall, onBrand }) {
         const attrPct = o.scored ? Math.round((100 * (hc + ac)) / o.scored) : 100
         if (!ais.length && !unc) return null
         return (
-          <Card style={{ background: '#f8fafc' }}>
+          <Card style={{ background: 'light-dark(#f8fafc, #161d21)' }}>
             <div style={{ fontWeight: 700, marginBottom: 10 }}>Human vs AI performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— AI CSRs are audited for quality, not coached</span></div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <Tile label="Human CSRs — avg QA" value={pct(wavg(humans))} color={scoreColor(wavg(humans))} sub={nH + (nH === 1 ? ' CSR · ' : ' CSRs · ') + hc.toLocaleString() + ' scored calls'} />
@@ -3287,7 +3298,7 @@ function ScExec({ data, prevOverall, onBrand }) {
               {unc > 0 && <Tile label="Unattributed — avg QA" value={pct(unAvg)} color={scoreColor(unAvg)} sub={unc.toLocaleString() + ' scored calls · no agent name'} />}
             </div>
             {unc > 0 && (
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 10 }}>
                 {(hc + ac).toLocaleString()} of {(o.scored || 0).toLocaleString()} scored calls ({attrPct}%) are attributed to a CSR. The remaining {unc.toLocaleString()} have no agent name in the source data, so they land in the portfolio Avg QA ({pct(o.avg)}) but not in the Human/AI split — which is why the portfolio number can fall below both. Attribution improves as agent identity is captured (mainly a CallRail gap).
               </div>
             )}
@@ -3301,15 +3312,15 @@ function ScExec({ data, prevOverall, onBrand }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={['Brand', 'Calls', 'Avg QA', 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed']} sort={exSort} onSort={exOnSort} />
           <tbody>{exView.pageRows.map((b) => (
-            <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
+            <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL_T }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{b.calls}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.avg), color: scoreColor(b.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.avg)}</span></td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: b.conv >= 50 ? '#1b5e20' : b.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(b.conv)}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: TEAL }} title={b.cardRate == null ? 'no bookings in range' : (b.ccYes + ' of ' + b.booked + ' bookings asked')}>{pct(b.cardRate)}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f766e' }} title={b.collectRate == null ? 'no card asks in range' : (b.collYes + ' of ' + b.ccYes + ' asks collected')}>{pct(b.collectRate)}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: b.conv >= 50 ? 'light-dark(#1b5e20, #33b23d)' : b.conv >= 35 ? 'light-dark(#8d6e00, #c9a31d)' : 'light-dark(#b71c1c, #e76464)' }}>{pct(b.conv)}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: TEAL_T }} title={b.cardRate == null ? 'no bookings in range' : (b.ccYes + ' of ' + b.booked + ' bookings asked')}>{pct(b.cardRate)}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: 'light-dark(#0f766e, #1dc9bb)' }} title={b.collectRate == null ? 'no card asks in range' : (b.collYes + ' of ' + b.ccYes + ' asks collected')}>{pct(b.collectRate)}</td>
               <td style={{ padding: '8px 12px' }}>{b.missed}</td>
-              <td style={{ padding: '8px 12px', color: '#92400e', fontWeight: 700 }}>{b.large}</td>
+              <td style={{ padding: '8px 12px', color: 'light-dark(#92400e, #e1712d)', fontWeight: 700 }}>{b.large}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -3343,7 +3354,7 @@ function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
     { title: 'Agent leaderboard', sheet: 'Agents', cols: ['#', 'Agent', 'Calls', 'Avg QA %', 'Conversion %', 'Asked for booking %', 'Card asked %', 'Coaching focus'], rows: roster.map((a, i) => [i + 1, a.name, a.calls, r1(a.avg), r1(a.conv), r1(a.askRate), r1(a.cardRate), a.topFocus[0] || '']) },
     { title: 'Team coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(b?.brand).map((g) => [g[0], g[1]]) },
   ])
-  if (!b) return <Card style={{ color: '#64748b' }}>No brand data in range.</Card>
+  if (!b) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No brand data in range.</Card>
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -3364,15 +3375,15 @@ function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={[['#', null], 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked', 'Coaching focus']} sort={mgrSort} onSort={mgrOnSort} />
           <tbody>{mgrView.pageRows.map((a, i) => (
-            <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+            <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{(mgrView.page - 1) * mgrView.pageSize + i + 1}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <span style={{ color: '#cbd5e1' }}>›</span></td>
+              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL_T }}>{a.name} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{a.calls}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
-              <td style={{ padding: '8px 12px', color: a.askRate < 50 ? '#b71c1c' : '#334155' }}>{pct(a.askRate)}</td>
-              <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.cardRate)}</td>
-              <td style={{ padding: '8px 12px', maxWidth: 240, color: '#475569' }}>{a.topFocus[0] || '—'}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? 'light-dark(#1b5e20, #33b23d)' : a.conv >= 35 ? 'light-dark(#8d6e00, #c9a31d)' : 'light-dark(#b71c1c, #e76464)' }}>{pct(a.conv)}</td>
+              <td style={{ padding: '8px 12px', color: a.askRate < 50 ? 'light-dark(#b71c1c, #e76464)' : 'light-dark(#334155, #b3c1c7)' }}>{pct(a.askRate)}</td>
+              <td style={{ padding: '8px 12px', color: 'light-dark(#334155, #b3c1c7)' }}>{pct(a.cardRate)}</td>
+              <td style={{ padding: '8px 12px', maxWidth: 240, color: 'light-dark(#475569, #b3c1c7)' }}>{a.topFocus[0] || '—'}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -3384,13 +3395,13 @@ function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <SortHead cols={['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked']} sort={aiSort} onSort={aiOnSort} />
             <tbody>{sortRows(aiRoster, aiSort, mgrAcc).map((a) => (
-              <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <Pill bg="#ede9fe" fg="#6d28d9">AI</Pill> <span style={{ color: '#cbd5e1' }}>›</span></td>
+              <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL_T }}>{a.name} <Pill bg="#ede9fe" fg="#6d28d9">AI</Pill> <span style={{ color: '#cbd5e1' }}>›</span></td>
                 <td style={{ padding: '8px 12px' }}>{a.calls}</td>
                 <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
-                <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
-                <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.askRate)}</td>
-                <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.cardRate)}</td>
+                <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? 'light-dark(#1b5e20, #33b23d)' : a.conv >= 35 ? 'light-dark(#8d6e00, #c9a31d)' : 'light-dark(#b71c1c, #e76464)' }}>{pct(a.conv)}</td>
+                <td style={{ padding: '8px 12px', color: 'light-dark(#334155, #b3c1c7)' }}>{pct(a.askRate)}</td>
+                <td style={{ padding: '8px 12px', color: 'light-dark(#334155, #b3c1c7)' }}>{pct(a.cardRate)}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -3398,7 +3409,7 @@ function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
       )}
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>Top team coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— coach the pattern (human CSRs)</span></div>
-        {gaps.length === 0 ? <div style={{ color: '#64748b' }}>No data.</div> : gaps.map((g) => (
+        {gaps.length === 0 ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No data.</div> : gaps.map((g) => (
           <BarRow key={g[0]} label={g[0]} value={`${g[1]} agents`} v={(g[1] / gmax) * 100} color="#c2410c" />
         ))}
       </Card>
@@ -3411,7 +3422,7 @@ function ScAgent({ data, prevAgent, rows, aKey, setKey, onOpen }) {
   const a = data.agents.find((x) => (x.name + '|||' + x.brand) === aKey) || opts[0]
   const [acSort, acOnSort] = useSort()
   const acAcc = { Date: (r) => dnum(r.call?.call_date), Score: (r) => (isScored(r) ? Number(r.score_pct) : null), 'Opp.': (r) => (r.opportunity ? 1 : 0), Outcome: (r) => r.outcome, Topic: (r) => (r.topics || [])[0] }
-  if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
+  if (!a) return <Card style={{ color: 'light-dark(#64748b, #9fb4bb)' }}>No agent data in range.</Card>
   const prevA = prevAgent ? prevAgent[a.name + '|||' + a.brand] : null
   const isAi = a.ai
   const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
@@ -3439,8 +3450,8 @@ function ScAgent({ data, prevAgent, rows, aKey, setKey, onOpen }) {
             <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{a.avg == null ? '—' : Math.round(a.avg)}</div><div style={{ fontSize: 10, opacity: 0.9 }}>avg QA</div>
           </div>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{a.name} {isAi ? <Pill bg="#ede9fe" fg="#6d28d9">AI CSR</Pill> : null} <span style={{ color: '#64748b', fontWeight: 500 }}>· {a.brand}</span></div>
-            <div style={{ color: '#64748b', fontSize: 12.5 }}>{a.calls} calls scored in range</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{a.name} {isAi ? <Pill bg="#ede9fe" fg="#6d28d9">AI CSR</Pill> : null} <span style={{ color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 500 }}>· {a.brand}</span></div>
+            <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 12.5 }}>{a.calls} calls scored in range</div>
             <div style={{ marginTop: 8, fontSize: 13 }}>{isAi ? 'Virtual agent — audited for quality and tuned, not coached.' : ((a.avg >= 80 ? '⭐ One of the strongest voices on the team. ' : '') + 'One focus this week — small change, real money.')}</div>
           </div>
         </div>
@@ -3456,37 +3467,37 @@ function ScAgent({ data, prevAgent, rows, aKey, setKey, onOpen }) {
       {!isAi ? (
         <>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <Card style={{ flex: 1, minWidth: 240, background: '#f0fdf4', border: '1px solid #bbf7d0' }}><div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
-            <Card style={{ flex: 1, minWidth: 240, background: '#fff7ed', border: '1px solid #fed7aa' }}><div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>🎯 Your focus this week</div><div style={{ fontWeight: 600 }}>{f0}</div>{f1 ? <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>Then: {f1}</div> : null}</Card>
+            <Card style={{ flex: 1, minWidth: 240, background: 'light-dark(#f0fdf4, #13391f)', border: '1px solid light-dark(#bbf7d0, #2b643f)' }}><div style={{ fontWeight: 700, color: 'light-dark(#166534, #29bc61)', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
+            <Card style={{ flex: 1, minWidth: 240, background: 'light-dark(#fff7ed, #392813)', border: '1px solid light-dark(#fed7aa, #64492b)' }}><div style={{ fontWeight: 700, color: 'light-dark(#9a3412, #e56f48)', marginBottom: 4 }}>🎯 Your focus this week</div><div style={{ fontWeight: 600 }}>{f0}</div>{f1 ? <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 12.5, marginTop: 4 }}>Then: {f1}</div> : null}</Card>
           </div>
           <Card>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>Asked for the booking</div>
-            <div style={{ height: 10, borderRadius: 6, background: '#eef2f7', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
-            <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
+            <div style={{ height: 10, borderRadius: 6, background: 'light-dark(#eef2f7, #1b2327)', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
+            <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
           </Card>
         </>
       ) : (
-        <Card style={{ background: '#faf5ff', border: '1px solid #e9d5ff' }}>
-          <div style={{ fontWeight: 700, color: '#6d28d9', marginBottom: 4 }}>🤖 AI CSR — audit only</div>
-          <div style={{ fontSize: 13, color: '#334155' }}>This is a virtual agent. Its calls are scored for quality monitoring and tuning, not coached. It asked for the booking on <b>{pct(a.askRate)}</b> of opportunity calls, with <b>{pct(a.conv)}</b> conversion. Use the calls below to spot-check and tune the AI.</div>
+        <Card style={{ background: 'light-dark(#faf5ff, #261339)', border: '1px solid light-dark(#e9d5ff, #462b64)' }}>
+          <div style={{ fontWeight: 700, color: 'light-dark(#6d28d9, #a87fe8)', marginBottom: 4 }}>🤖 AI CSR — audit only</div>
+          <div style={{ fontSize: 13, color: 'light-dark(#334155, #b3c1c7)' }}>This is a virtual agent. Its calls are scored for quality monitoring and tuning, not coached. It asked for the booking on <b>{pct(a.askRate)}</b> of opportunity calls, with <b>{pct(a.conv)}</b> conversion. Use the calls below to spot-check and tune the AI.</div>
         </Card>
       )}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Their QA reviews <span style={{ color: '#94a3b8', fontWeight: 400 }}>— click any call to see the full breakdown, transcript &amp; recording</span></div>
-        {myCalls.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No calls in range.</div> : (
+        {myCalls.length === 0 ? <div style={{ padding: 14, color: 'light-dark(#64748b, #9fb4bb)' }}>No calls in range.</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <SortHead cols={['Date', 'Score', 'Opp.', 'Outcome', 'Topic', ['', null]]} sort={acSort} onSort={acOnSort} />
             <tbody>{sortRows(myCalls, acSort, acAcc).map((r) => {
               const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
               return (
-                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                   <td style={{ padding: '8px 12px' }}>{isScored(r)
                     ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}</span>
                     : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}</td>
                   <td style={{ padding: '8px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
                   <td style={{ padding: '8px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
-                  <td style={{ padding: '8px 12px', maxWidth: 220, color: '#475569' }}>{(r.topics || [])[0] || '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 220, color: 'light-dark(#475569, #b3c1c7)' }}>{(r.topics || [])[0] || '—'}</td>
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>›</td>
                 </tr>
               )
@@ -3535,7 +3546,7 @@ function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscri
   const risks = (row.risk_flags || []).length ? `<div class="card red"><span class="rh">⚠ Risk flags:</span> ${row.risk_flags.map((f) => esc(f)).join(' &nbsp;•&nbsp; ')}</div>` : ''
 
   const summaryCard = `<div class="card"><div class="h">Summary</div><div class="body">${esc(row.summary) || '—'}</div></div>`
-  const coachInner = `${row.coaching_note ? `<div class="body">${esc(row.coaching_note)}</div>` : ''}${(row.improvements || []).length ? `<div class="ln"><b>Focus:</b> ${row.improvements.map((s) => esc(s)).join(' · ')}</div>` : ''}${(row.strengths || []).length ? `<div class="ln" style="color:#1b5e20"><b>Strengths:</b> ${row.strengths.map((s) => esc(s)).join(' · ')}</div>` : ''}`
+  const coachInner = `${row.coaching_note ? `<div class="body">${esc(row.coaching_note)}</div>` : ''}${(row.improvements || []).length ? `<div class="ln"><b>Focus:</b> ${row.improvements.map((s) => esc(s)).join(' · ')}</div>` : ''}${(row.strengths || []).length ? `<div class="ln" style="color:light-dark(#1b5e20, #33b23d)"><b>Strengths:</b> ${row.strengths.map((s) => esc(s)).join(' · ')}</div>` : ''}`
   const coachingCard = `<div class="card teal"><div class="h">Coaching</div>${coachInner || '<div class="body">—</div>'}</div>`
 
   const scoringItems = items.length ? items.map(([k, a]) => {
@@ -3562,51 +3573,51 @@ function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscri
 <style>
   @page { margin: 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 12px 26px; font-size: 11.5px; line-height: 1.35; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: light-dark(#0f172a, #e8eef0); margin: 0; padding: 12px 26px; font-size: 11.5px; line-height: 1.35; }
   .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${TEAL}; padding-bottom: 8px; margin-bottom: 6px; }
   .top h1 { font-size: 18px; margin: 0 0 3px; }
   .brand { color: ${TEAL}; font-weight: 800; letter-spacing: .3px; }
-  .meta { color: #64748b; font-size: 11px; }
+  .meta { color: light-dark(#64748b, #9fb4bb); font-size: 11px; }
   .score { text-align: right; white-space: nowrap; }
   .score .n { font-size: 28px; font-weight: 800; color: ${scoreCol}; line-height: 1; }
-  .score .c { font-size: 10.5px; color: #64748b; }
+  .score .c { font-size: 10.5px; color: light-dark(#64748b, #9fb4bb); }
   .row { display: flex; gap: 10px; align-items: stretch; }
   .row > .card { flex: 1; }
-  .card { border: 1px solid #e2e8f0; border-radius: 9px; padding: 8px 11px; margin-top: 7px; page-break-inside: avoid; }
+  .card { border: 1px solid light-dark(#e2e8f0, #2a3439); border-radius: 9px; padding: 8px 11px; margin-top: 7px; page-break-inside: avoid; }
   .card.flow { page-break-inside: auto; }
-  .card.amber { background: #fffbeb; border-color: #fde68a; }
-  .card.red { background: #fdecea; border-color: #f5c6cb; color: #7f1d1d; }
-  .card.teal { background: #f0fdfa; border-color: #99f6e4; }
+  .card.amber { background: light-dark(#fffbeb, #393213); border-color: light-dark(#fde68a, #64592b); }
+  .card.red { background: light-dark(#fdecea, #391713); border-color: light-dark(#f5c6cb, #642b31); color: light-dark(#7f1d1d, #de6e6e); }
+  .card.teal { background: light-dark(#f0fdfa, #133931); border-color: light-dark(#99f6e4, #2b6459); }
   .h { font-weight: 700; margin-bottom: 6px; }
-  .rh { font-weight: 700; color: #b71c1c; }
+  .rh { font-weight: 700; color: light-dark(#b71c1c, #e76464); }
   .grid { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-  .fld .lbl { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+  .fld .lbl { font-size: 9px; font-weight: 700; color: light-dark(#64748b, #9fb4bb); text-transform: uppercase; letter-spacing: .4px; }
   .fld .val { font-weight: 700; font-size: 12px; }
-  .ln { margin-top: 6px; color: #334155; }
-  .lever { color: #7c2d12; }
+  .ln { margin-top: 6px; color: light-dark(#334155, #b3c1c7); }
+  .lever { color: light-dark(#7c2d12, #e47048); }
   .tags { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 5px; }
-  .tag { background: #e0f2fe; color: #075985; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
-  .tag.red { background: #fee2e2; color: #991b1b; }
-  .body { color: #334155; }
+  .tag { background: light-dark(#e0f2fe, #132a39); color: light-dark(#075985, #1f99db); font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+  .tag.red { background: light-dark(#fee2e2, #391313); color: light-dark(#991b1b, #e46767); }
+  .body { color: light-dark(#334155, #b3c1c7); }
   /* Detailed scoring — two compact columns */
   .scores { column-count: 2; column-gap: 20px; }
-  .s { break-inside: avoid; padding: 3px 0; border-top: 1px solid #f1f5f9; }
+  .s { break-inside: avoid; padding: 3px 0; border-top: 1px solid light-dark(#f1f5f9, #2a3439); }
   .s:first-child { border-top: none; }
   .sh { display: flex; align-items: baseline; gap: 5px; }
   .mk { font-weight: 800; width: 12px; display: inline-block; }
   .sh b { flex: 1; }
   .pts { color: #94a3b8; font-weight: 600; font-size: 10.5px; white-space: nowrap; }
-  .rat { color: #475569; margin: 1px 0 0 17px; }
-  .miss { color: #b71c1c; margin: 1px 0 0 17px; }
-  pre { white-space: pre-wrap; font-family: inherit; font-size: 11.5px; color: #334155; margin: 0; }
+  .rat { color: light-dark(#475569, #b3c1c7); margin: 1px 0 0 17px; }
+  .miss { color: light-dark(#b71c1c, #e76464); margin: 1px 0 0 17px; }
+  pre { white-space: pre-wrap; font-family: inherit; font-size: 11.5px; color: light-dark(#334155, #b3c1c7); margin: 0; }
   .tx { width: 100%; border-collapse: collapse; }
-  .tx td { vertical-align: top; padding: 2px 0; color: #334155; }
+  .tx td { vertical-align: top; padding: 2px 0; color: light-dark(#334155, #b3c1c7); }
   .tx .ts { color: ${TEAL}; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 9px; width: 30px; }
-  .tx .sp { font-weight: 700; color: #475569; white-space: nowrap; padding-right: 9px; width: 44px; }
-  .note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; }
-  .notehd { display: flex; justify-content: space-between; font-size: 10.5px; color: #64748b; }
+  .tx .sp { font-weight: 700; color: light-dark(#475569, #b3c1c7); white-space: nowrap; padding-right: 9px; width: 44px; }
+  .note { background: light-dark(#f8fafc, #161d21); border: 1px solid light-dark(#e2e8f0, #2a3439); border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; }
+  .notehd { display: flex; justify-content: space-between; font-size: 10.5px; color: light-dark(#64748b, #9fb4bb); }
   .pg2 { page-break-before: always; }
-  .foot { margin-top: 10px; padding-top: 7px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10.5px; display: flex; justify-content: space-between; }
+  .foot { margin-top: 10px; padding-top: 7px; border-top: 1px solid light-dark(#e2e8f0, #2a3439); color: #94a3b8; font-size: 10.5px; display: flex; justify-content: space-between; }
   .noprint { text-align: center; margin-bottom: 12px; }
   .noprint button { background: ${TEAL}; color: #fff; border: none; padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
   @media print { .noprint { display: none; } body { padding: 0; } }
@@ -3625,7 +3636,7 @@ function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscri
   <script>window.onload=function(){setTimeout(function(){window.print()},350)};window.onafterprint=function(){setTimeout(function(){window.close()},100)};</script>
 </body></html>`
 }
-const inp = (w) => ({ padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', width: w, fontSize: 13 })
+const inp = (w) => ({ padding: '5px 8px', borderRadius: 6, border: '1px solid light-dark(#cbd5e1, #3a464c)', width: w, fontSize: 13 })
 // ---- Lightspeed bulk import (managers) ------------------------------------
 // Upload a .zip of Lightspeed WAVs (or the WAVs directly) to a brand's folder.
 // The persistent `callqa-lightspeed-pump` cron ingests + transcribes + scores
@@ -3780,7 +3791,7 @@ function ImportPanel() {
 
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Bulk import — Lightspeed recordings</div>
-        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 12 }}>
           Drop a <b>.zip</b> of Lightspeed WAVs (or select the WAVs). They upload to the brand's folder and the
           pipeline transcribes + scores them automatically within a couple of minutes — inbound &amp; outbound
           are scored; internal/fragment calls are kept but held. Recording links and per-line timestamps are
@@ -3792,10 +3803,10 @@ function ImportPanel() {
             opts={[...(knownBrands.length ? [] : [['', 'No brands registered yet']]), ...knownBrands.map((b) => [b, b]), ['__new__', '+ New brand…']]} />
           {addingBrand && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>New brand name</label>
+              <label style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', fontWeight: 600 }}>New brand name</label>
               <input value={newBrand} onChange={(e) => setNewBrand(e.target.value)} placeholder="Apple Door"
-                style={{ padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14 }} />
-              <div style={{ fontSize: 11.5, color: '#8d6e00', maxWidth: 260 }}>
+                style={{ padding: '7px 10px', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 8, fontSize: 14 }} />
+              <div style={{ fontSize: 11.5, color: 'light-dark(#8d6e00, #c9a31d)', maxWidth: 260 }}>
                 Must match the brand name already used elsewhere, character for character, or these calls
                 will not merge with the existing ones.
               </div>
@@ -3806,23 +3817,23 @@ function ImportPanel() {
       </Card>
 
       <Card>
-        <label style={{ display: 'block', border: '2px dashed #cbd5e1', borderRadius: 12, padding: 24, textAlign: 'center', cursor: busyUp ? 'default' : 'pointer', background: '#f8fafc', opacity: busyUp ? 0.6 : 1 }}>
+        <label style={{ display: 'block', border: '2px dashed light-dark(#cbd5e1, #3a464c)', borderRadius: 12, padding: 24, textAlign: 'center', cursor: busyUp ? 'default' : 'pointer', background: 'light-dark(#f8fafc, #161d21)', opacity: busyUp ? 0.6 : 1 }}>
           <input type="file" accept=".zip,.wav,.mp3,.m4a,.gsm,.ogg,.flac" multiple style={{ display: 'none' }}
             onChange={(e) => onFiles(e.target.files)} disabled={busyUp} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: TEAL }}>Choose a .zip or WAV files…</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Large zips stream file-by-file — you can leave this tab open.</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: TEAL_T }}>Choose a .zip or WAV files…</div>
+          <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 4 }}>Large zips stream file-by-file — you can leave this tab open.</div>
         </label>
 
-        {phase === 'preparing' && <div style={{ marginTop: 12, color: '#64748b' }}>Preparing destination…</div>}
+        {phase === 'preparing' && <div style={{ marginTop: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>Preparing destination…</div>}
         {(phase === 'uploading' || phase === 'done') && (
           <div style={{ marginTop: 14 }}>
             <Bar v={prog.total ? (prog.done + prog.failed) / prog.total * 100 : 0} />
-            <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}>
+            <div style={{ fontSize: 13, color: 'light-dark(#475569, #b3c1c7)', marginTop: 6 }}>
               {prog.done + prog.failed} / {prog.total} uploaded{prog.failed ? ` · ${prog.failed} failed` : ''}{phase === 'uploading' && prog.cur ? ` · ${prog.cur}` : ''}
             </div>
           </div>
         )}
-        {err && <div style={{ marginTop: 12, color: '#b71c1c', fontSize: 13 }}>{err}</div>}
+        {err && <div style={{ marginTop: 12, color: 'light-dark(#b71c1c, #e76464)', fontSize: 13 }}>{err}</div>}
       </Card>
 
       {status && (
@@ -3840,7 +3851,7 @@ function ImportPanel() {
               {tsOk ? '✓' : '…'} timestamps present{status.scored_missing_timestamps ? ` (${status.scored_missing_timestamps} missing)` : ''}
             </Pill>
           </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Auto-refreshing every 5s. Scored calls appear on the scorecards under this brand.</div>
+          <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 8 }}>Auto-refreshing every 5s. Scored calls appear on the scorecards under this brand.</div>
         </Card>
       )}
     </div>
@@ -3871,14 +3882,14 @@ function ImportStatusCard({ ov, err, onRefresh }) {
         <div style={{ fontWeight: 700 }}>Import status</div>
         <button onClick={onRefresh} style={{ ...btn('ghost'), padding: '4px 10px', fontSize: 12.5 }}>↻ Refresh</button>
       </div>
-      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+      <div style={{ fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 12 }}>
         Every Lightspeed brand, refreshed automatically every 15 seconds. “Held” calls are
         internal/parked/transfer fragments kept on file but never scored — that’s by design, not a backlog.
       </div>
 
-      {err && <div style={{ color: '#b71c1c', fontSize: 13 }}>Could not load status: {err}</div>}
-      {!err && !brands && <div style={{ color: '#64748b', fontSize: 13 }}>Loading status…</div>}
-      {!err && brands && brands.length === 0 && <div style={{ color: '#64748b', fontSize: 13 }}>No Lightspeed brands registered yet.</div>}
+      {err && <div style={{ color: 'light-dark(#b71c1c, #e76464)', fontSize: 13 }}>Could not load status: {err}</div>}
+      {!err && !brands && <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 13 }}>Loading status…</div>}
+      {!err && brands && brands.length === 0 && <div style={{ color: 'light-dark(#64748b, #9fb4bb)', fontSize: 13 }}>No Lightspeed brands registered yet.</div>}
 
       <div style={{ display: 'grid', gap: 12 }}>
         {(brands || []).map((b) => {
@@ -3887,13 +3898,13 @@ function ImportStatusCard({ ov, err, onRefresh }) {
           const done = waiting === 0 && inFlight === 0
           const denom = (b.scored || 0) + inFlight + (b.error || 0)
           const pct = denom ? ((b.scored || 0) / denom) * 100 : (b.rows ? 100 : 0)
-          const tone = done ? { bg: '#e8f5e9', fg: '#1b5e20', bar: '#2e7d32' }
-            : { bg: '#fff8e1', fg: '#8d6e00', bar: '#f9a825' }
+          const tone = done ? { bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)', bar: '#2e7d32' }
+            : { bg: 'light-dark(#fff8e1, #393013)', fg: 'light-dark(#8d6e00, #c9a31d)', bar: '#f9a825' }
           const label = waiting ? `Waiting to ingest — ${waiting} file${waiting === 1 ? '' : 's'}`
             : inFlight ? `Processing — ${inFlight} to go`
               : 'Complete'
           return (
-            <div key={b.brand} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 12 }}>
+            <div key={b.brand} style={{ border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{b.brand}</div>
                 <Pill bg={tone.bg} fg={tone.fg}>{done ? '✓ ' : '⏳ '}{label}</Pill>
@@ -3904,10 +3915,10 @@ function ImportStatusCard({ ov, err, onRefresh }) {
 
               <Bar v={pct} color={tone.bar} />
 
-              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 12.5, color: '#475569' }}>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 12.5, color: 'light-dark(#475569, #b3c1c7)' }}>
                 <span><b>{(b.files || 0).toLocaleString()}</b> files uploaded</span>
                 <span><b>{(b.rows || 0).toLocaleString()}</b> rows</span>
-                <span style={{ color: '#1b5e20' }}><b>{(b.scored || 0).toLocaleString()}</b> scored</span>
+                <span style={{ color: 'light-dark(#1b5e20, #33b23d)' }}><b>{(b.scored || 0).toLocaleString()}</b> scored</span>
                 <span><b>{inFlight.toLocaleString()}</b> in flight</span>
                 <span style={{ color: '#94a3b8' }}><b>{(b.held || 0).toLocaleString()}</b> held</span>
               </div>
@@ -3926,5 +3937,5 @@ function ImportStatusCard({ ov, err, onRefresh }) {
 
 function btn(kind) {
   if (kind === 'primary') return { background: TEAL, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
-  return { background: '#fff', color: '#334155', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
+  return { background: 'light-dark(#fff, #161d21)', color: 'light-dark(#334155, #b3c1c7)', border: '1px solid light-dark(#cbd5e1, #3a464c)', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
 }

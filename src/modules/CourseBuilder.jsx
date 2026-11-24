@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { RichEditor, RichContent } from '../lib/RichEditor'
+import { useAuth } from '../lib/auth'
+import { exportCoursePdf } from '../lib/courseExport'
 
 // Blocks live in a JSONB array with no ids of their own. Assign a client-side
 // id on load so React can key by identity — otherwise deleting block 0 makes
@@ -117,6 +119,9 @@ export default function CourseBuilder() {
   const [err, setErr] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [creating, setCreating] = useState(false)
+  const { user } = useAuth()
+  const [dlMenu, setDlMenu] = useState(null)        // course whose Download menu is open
+  const [exporting, setExporting] = useState(null)  // course being prepared for download
 
   useEffect(() => { load() }, [])
 
@@ -131,6 +136,15 @@ export default function CourseBuilder() {
       setCourses(cRes.data || [])
       setCerts(certRes.data || [])
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
+  }
+
+  // Download a course as a PDF (lessons, or lessons + quiz with the answers marked). Course authors only:
+  // the database refuses anyone else, and every download is logged.
+  async function downloadCourse(c, withQuiz) {
+    setDlMenu(null); setExporting(c.id); setErr('')
+    try {
+      await exportCoursePdf({ supabase, course: c, certName: certs.find(x => x.id === c.certification_id)?.name || '', withQuiz, generatedBy: user?.email || '' })
+    } catch (e) { setErr('Could not download "' + c.title + '": ' + e.message) } finally { setExporting(null) }
   }
 
   async function deleteCourse(id, title) {
@@ -187,6 +201,18 @@ export default function CourseBuilder() {
               <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost" onClick={() => setEditingId(c.id)}>Edit content</button>
                 <button className="btn btn-ghost" onClick={() => setSettingsCourse(c)}>Settings</button>
+                <div style={{ position: 'relative' }}>
+                  <button className="btn btn-ghost" disabled={exporting === c.id} aria-haspopup="menu" aria-expanded={dlMenu === c.id}
+                    onClick={() => setDlMenu(m => m === c.id ? null : c.id)}>{exporting === c.id ? 'Preparing…' : '⬇ Download'}</button>
+                  {dlMenu === c.id && <>
+                    <div onClick={() => setDlMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
+                    <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, marginTop: 4, minWidth: 270, padding: 6, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>
+                      <button role="menuitem" className="btn btn-ghost" style={{ display: 'block', width: '100%', textAlign: 'left', border: 0 }} onClick={() => downloadCourse(c, false)}>Lessons (PDF)</button>
+                      <button role="menuitem" className="btn btn-ghost" style={{ display: 'block', width: '100%', textAlign: 'left', border: 0 }} onClick={() => downloadCourse(c, true)}>Lessons + quiz with answers (PDF)</button>
+                      <div className="page-sub" style={{ fontSize: 11.5, padding: '6px 10px 4px' }}>Opens your print window. Choose <b>Save as PDF</b> as the printer.</div>
+                    </div>
+                  </>}
+                </div>
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)', borderColor: 'var(--failed-bg)' }} onClick={() => deleteCourse(c.id, c.title)}>Delete</button>
               </div>
             </div>
@@ -670,7 +696,7 @@ function LessonBody({ lesson, onSave }) {
           onClick={() => onSave({ ...lesson, title, content_blocks: stripIds(blocks) })}>Save lesson</button>
       </div>
 
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', background: '#fbfcfd' }}>
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', background: 'light-dark(#fbfcfd, #161d21)' }}>
         <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', fontWeight: 600, marginRight: 4 }}>Add to end:</span>
         <AddBtn onClick={() => addBlock('heading')}>▤ Heading</AddBtn>
         <AddBtn onClick={() => addBlock('text')}>¶ Text</AddBtn>
@@ -1037,7 +1063,7 @@ function InsertBar({ onAdd }) {
           <div style={{ flex: 1, height: 1, background: show ? 'var(--accent)' : 'transparent' }} />
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', background: '#fbfcfd', border: '1px solid var(--accent)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', background: 'light-dark(#fbfcfd, #161d21)', border: '1px solid var(--accent)', borderRadius: 8 }}>
           <AddBtn onClick={() => pick('heading')}>▤ Heading</AddBtn>
           <AddBtn onClick={() => pick('text')}>¶ Text</AddBtn>
           <AddBtn onClick={() => pick('image')}>🖼 Image</AddBtn>

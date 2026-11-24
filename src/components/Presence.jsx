@@ -156,7 +156,7 @@ export function useTeamPresence(pollMs = 30000) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
-    const { data } = await supabase.from('profiles').select(SELECT).eq('is_active', true).order('full_name')
+    const { data } = await supabase.from('profiles').select(SELECT).is('client_id', null).eq('is_active', true).order('full_name')
     setRows(data || [])
     setLoading(false)
   }, [])

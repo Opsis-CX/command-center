@@ -14,10 +14,10 @@ import { RichEditor, RichContent, sanitizeHtml, isEmptyHtml } from '../lib/RichE
 // ============================================================
 
 const CATS = [
-  { key: 'general', label: 'General', color: '#6b7280' },
-  { key: 'command_center', label: 'Command Center', color: '#0077b6' },
-  { key: 'client', label: 'Client', color: '#1f8a53' },
-  { key: 'operational', label: 'Operational', color: '#b45309' },
+  { key: 'general', label: 'General', color: 'light-dark(#6b7280, #9fb4bb)' },
+  { key: 'command_center', label: 'Command Center', color: 'light-dark(#0077b6, #1f9adb)' },
+  { key: 'client', label: 'Client', color: 'light-dark(#1f8a53, #2abb71)' },
+  { key: 'operational', label: 'Operational', color: 'light-dark(#b45309, #e07524)' },
 ]
 const catMeta = (k) => CATS.find(c => c.key === k) || CATS[0]
 const when = (d) => new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -191,7 +191,7 @@ export default function Updates() {
         </div>
       </div>
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
 
       {editing && <Composer key={editing === 'new' ? 'new' : editing.id} user={user} teams={teams}
         editItem={editing === 'new' ? null : editing}
@@ -199,7 +199,7 @@ export default function Updates() {
 
       {/* category filter */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
-        <span style={{ ...chip(tab === 'new', '#DC2626'), fontWeight: 800, ...(tab !== 'new' && unreadForMe ? { color: '#DC2626', borderColor: '#FCA5A5' } : {}) }} onClick={() => setFilter('new')}>NEW!{unreadForMe ? ` (${unreadForMe})` : ''}</span>
+        <span style={{ ...chip(tab === 'new', '#DC2626'), fontWeight: 800, ...(tab !== 'new' && unreadForMe ? { color: 'light-dark(#DC2626, #e76c6c)', borderColor: 'light-dark(#FCA5A5, #642b2b)' } : {}) }} onClick={() => setFilter('new')}>NEW!{unreadForMe ? ` (${unreadForMe})` : ''}</span>
         <span style={chip(tab === 'week')} onClick={() => setFilter('week')}>This Week</span>
         {(() => {
           const onFilter = tab === 'all' || CATS.some(c => c.key === tab)
@@ -245,7 +245,7 @@ export default function Updates() {
                       <span>{when(a.created_at)}</span>
                       <span>·</span>
                       <span title="Who can see this">📣 {audienceLabel(a)}</span>
-                      {a.archived_at && <span style={{ color: '#B45309', fontWeight: 600 }}>· 🗄 Archived — removed {new Date(new Date(a.archived_at).getTime() + 9 * 864e5).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (pin it to keep it)</span>}
+                      {a.archived_at && <span style={{ color: 'light-dark(#B45309, #e07524)', fontWeight: 600 }}>· 🗄 Archived — removed {new Date(new Date(a.archived_at).getTime() + 9 * 864e5).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (pin it to keep it)</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-soft)', paddingTop: 8 }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: readByMe(a) ? 'default' : 'pointer', color: readByMe(a) ? '#16A34A' : 'var(--ink)' }}>

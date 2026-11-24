@@ -23,10 +23,10 @@ export default function Welcome() {
 
   return (
     <div style={{ maxWidth: 560, margin: '80px auto', textAlign: 'center', padding: 24 }}>
-      {status === 'checking' && <><h1>Setting up your account…</h1><p style={{ color: '#666' }}>This takes a few seconds.</p></>}
-      {status === 'ready' && <><h1>You're all set 🎉</h1><p style={{ color: '#666' }}>Your 14-day trial has started.</p>
+      {status === 'checking' && <><h1>Setting up your account…</h1><p style={{ color: 'light-dark(#666, #b3c1c7)' }}>This takes a few seconds.</p></>}
+      {status === 'ready' && <><h1>You're all set 🎉</h1><p style={{ color: 'light-dark(#666, #b3c1c7)' }}>Your 14-day trial has started.</p>
         <a href="/" style={{ display: 'inline-block', marginTop: 16, padding: '12px 20px', background: '#4f46e5', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>Go to your dashboard</a></>}
-      {status === 'slow' && <><h1>Almost there…</h1><p style={{ color: '#666' }}>Your payment went through. If your dashboard isn't ready in a minute, refresh or contact support.</p></>}
+      {status === 'slow' && <><h1>Almost there…</h1><p style={{ color: 'light-dark(#666, #b3c1c7)' }}>Your payment went through. If your dashboard isn't ready in a minute, refresh or contact support.</p></>}
     </div>
   )
 }

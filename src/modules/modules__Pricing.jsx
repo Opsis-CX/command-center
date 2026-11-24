@@ -27,19 +27,19 @@ export default function Pricing({ companyName = '' }) {
   return (
     <div style={{ maxWidth: 1040, margin: '0 auto', padding: 24 }}>
       <h1 style={{ textAlign: 'center' }}>Choose your plan</h1>
-      <p style={{ textAlign: 'center', color: '#666' }}>14-day free trial. Cancel anytime.</p>
-      {err && <p style={{ color: '#b00020', textAlign: 'center' }}>{err}</p>}
+      <p style={{ textAlign: 'center', color: 'light-dark(#666, #b3c1c7)' }}>14-day free trial. Cancel anytime.</p>
+      {err && <p style={{ color: 'light-dark(#b00020, #e9637b)', textAlign: 'center' }}>{err}</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 24 }}>
         {PLANS.map((p) => (
           <div key={p.plan} style={{
             border: p.highlight ? '2px solid #4f46e5' : '1px solid #e5e7eb',
-            borderRadius: 12, padding: 24, background: '#fff',
+            borderRadius: 12, padding: 24, background: 'light-dark(#fff, #161d21)',
           }}>
             <h2 style={{ margin: '0 0 4px' }}>{p.label}</h2>
             <div style={{ fontSize: 32, fontWeight: 700 }}>{p.price}
-              <span style={{ fontSize: 14, fontWeight: 400, color: '#666' }}>/mo</span></div>
-            <p style={{ color: '#666', minHeight: 40 }}>{p.blurb}</p>
-            <ul style={{ paddingLeft: 18, color: '#333' }}>
+              <span style={{ fontSize: 14, fontWeight: 400, color: 'light-dark(#666, #b3c1c7)' }}>/mo</span></div>
+            <p style={{ color: 'light-dark(#666, #b3c1c7)', minHeight: 40 }}>{p.blurb}</p>
+            <ul style={{ paddingLeft: 18, color: 'light-dark(#333, #e8eef0)' }}>
               {p.features.map((f) => <li key={f} style={{ marginBottom: 6 }}>{f}</li>)}
             </ul>
             <button onClick={() => pick(p.plan)} disabled={!!busy} style={{

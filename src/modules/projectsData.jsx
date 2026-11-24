@@ -18,18 +18,25 @@ const ProjectsDataContext = createContext(null)
 // always load the complete set. Each query MUST carry a deterministic order
 // (unique tiebreaker) or paging could skip/duplicate rows across pages.
 const PAGE_SIZE = 1000
+const BATCH = 4   // pages requested at the same time once a table is known to be bigger than one page
 async function fetchAllRows(buildQuery) {
-  let from = 0
-  let all = []
-  for (;;) {
-    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1)
-    if (error) { console.error('fetchAllRows failed:', error.message); break }
-    if (!data || data.length === 0) break
-    all = all.concat(data)
-    if (data.length < PAGE_SIZE) break
-    from += PAGE_SIZE
+  // first page on its own: most tables fit in one page and stop here
+  const first = await buildQuery().range(0, PAGE_SIZE - 1)
+  if (first.error) { console.error('fetchAllRows failed:', first.error.message); return [] }
+  let all = first.data || []
+  if (all.length < PAGE_SIZE) return all
+  // bigger tables: ask for the next few pages in parallel instead of one after another
+  for (let from = PAGE_SIZE; ; from += PAGE_SIZE * BATCH) {
+    const pages = await Promise.all(Array.from({ length: BATCH }, (_, i) =>
+      buildQuery().range(from + i * PAGE_SIZE, from + (i + 1) * PAGE_SIZE - 1)))
+    let done = false
+    for (const { data, error } of pages) {
+      if (error) { console.error('fetchAllRows failed:', error.message); return all }
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE_SIZE) { done = true; break }
+    }
+    if (done) return all
   }
-  return all
 }
 
 export function ProjectsDataProvider({ children }) {
@@ -59,12 +66,12 @@ export function ProjectsDataProvider({ children }) {
       if (!user) { setLoading(false); return }
       setUserId(user.id)
 
-      const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, timeRes, subRes] = await Promise.all([
+      const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, subRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         // Project Management assigns work inside Command Center, which agents and
         // clients cannot open — so they must never appear in an owner, member or
         // assignee picker. Deactivated people are gone entirely.
-        fetchAllRows(() => supabase.from('profiles').select('*').eq('is_active', true).not('role', 'in', '(agent,client)').order('full_name').order('id')),
+        fetchAllRows(() => supabase.from('profiles').select('*').is('client_id', null).eq('is_active', true).not('role', 'in', '(agent,client)').order('full_name').order('id')),
         fetchAllRows(() => supabase.from('projects').select('*').order('name', { ascending: true }).order('id')),
         fetchAllRows(() => supabase.from('clients').select('*').order('name').order('id')),
         fetchAllRows(() => supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }).order('id')),
@@ -74,7 +81,6 @@ export function ProjectsDataProvider({ children }) {
         fetchAllRows(() => supabase.from('task_comments').select('*').order('created_at', { ascending: true }).order('id')),
         supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
         fetchAllRows(() => supabase.from('task_attachments').select('*').order('created_at', { ascending: false }).order('id')),
-        fetchAllRows(() => supabase.from('time_entries').select('*').order('created_at', { ascending: false }).order('id')),
         fetchAllRows(() => supabase.from('task_subtasks').select('*').order('task_id').order('sort_order').order('id')),
       ])
 
@@ -90,7 +96,6 @@ export function ProjectsDataProvider({ children }) {
       setComments(comRes || [])
       setActivity(actRes.data || [])
       setAttachments(attRes || [])
-      setTimeEntries(timeRes || [])
       setSubtasks(subRes || [])
       setError(null)
     } catch (e) {
@@ -98,6 +103,12 @@ export function ProjectsDataProvider({ children }) {
     } finally {
       setLoading(false)
     }
+    // Time entries (5,000+ rows) are only needed by the task timer panel and the CSV exports, so they load
+    // right after the page is on screen instead of holding it up.
+    try {
+      const timeRes = await fetchAllRows(() => supabase.from('time_entries').select('*').order('created_at', { ascending: false }).order('id'))
+      setTimeEntries(timeRes || [])
+    } catch (e) { /* the timer panel re-checks the database before starting anyway */ }
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])

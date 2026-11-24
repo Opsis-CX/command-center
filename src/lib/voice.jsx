@@ -124,6 +124,12 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       sub: ['Inbound', p.get('queueLabel')].filter(Boolean).join(' · '),
     })
     setOpen(true)
+    // CX engine calls ring by REST (no custom parameters): look the caller up (2026-11-13)
+    if (!p.get('inboundId')) {
+      supabase.rpc('csr_cx_my_call').then(({ data }) => {
+        if (data && incomingRef.current === call) patch({ label: data.customer_name || 'Caller', sub: ['Inbound', data.queue, data.line_name].filter(Boolean).join(' · ') })
+      })
+    }
     const clear = () => {
       if (incomingRef.current !== call) return
       incomingRef.current = null
@@ -134,31 +140,67 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     call.on('disconnect', clear)
   }, [patch])
 
-  const getDevice = useCallback(async () => {
-    if (deviceRef.current) return deviceRef.current
+  // One device per page, even if two callers ask at once (2026-11-22).
+  const devicePromiseRef = useRef(null)
+  const getDevice = useCallback(() => {
+    if (deviceRef.current) return Promise.resolve(deviceRef.current)
+    if (!devicePromiseRef.current) devicePromiseRef.current = makeDevice().catch(e => { devicePromiseRef.current = null; throw e })
+    return devicePromiseRef.current
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const makeDevice = async () => {
     const Twilio = await loadSdk()
     const token = await fetchToken()
     const device = new Twilio.Device(token, {
       codecPreferences: ['opus', 'pcmu'], closeProtection: true, logLevel: 'error', allowIncomingWhileBusy: false,
     })
+    // Token refresh (10/29): the 1-hour token also expires while the laptop sleeps or the tab is in the
+    // background, when tokenWillExpire never fires. Refresh on wake, and recover from AccessTokenExpired (20104).
+    let tokenAt = Date.now()
+    const refreshToken = async () => { device.updateToken(await fetchToken()); tokenAt = Date.now() }
     device.on('tokenWillExpire', async () => {
-      try { device.updateToken(await fetchToken()) } catch (e) { console.warn('voice token refresh failed', e) }
+      try { await refreshToken() } catch (e) { console.warn('voice token refresh failed', e) }
     })
-    device.on('error', err => patch({ status: 'error', error: err?.message || 'Calling error' }))
-    device.on('registered', () => setRegistered(true))
-    device.on('unregistered', () => setRegistered(false))
+    const onWake = async () => {
+      if (document.visibilityState !== 'visible' || Date.now() - tokenAt < 30 * 60 * 1000) return
+      try { await refreshToken(); if (device._wantRegistered && device.state !== 'registered') await device.register() } catch (e) { console.warn('voice token refresh failed', e) }
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    device.on('error', async err => {
+      if (err?.code === 20104 || /AccessTokenExpired|token.*expired/i.test(err?.message || '')) {
+        try {
+          await refreshToken()
+          if (device._wantRegistered && device.state !== 'registered') await device.register()
+          patch({ status: 'idle', error: '' })
+          return
+        } catch (e) { console.warn('voice token refresh failed', e) }
+      }
+      patch({ status: 'error', error: err?.message || 'Calling error' })
+    })
+    // 2026-11-18 (Becky): the server only rings CSRs whose phone is really connected. While registered, the phone
+    // checks in every 30s (csr_phone_heartbeat); cx_offer skips anyone without a check-in in the last 90s, so a quick
+    // Offline → Ready toggle can't send a call to a phone that is still connecting.
+    const beat = (ok) => { supabase.rpc('csr_phone_heartbeat', { p_ok: ok }).then(() => {}, () => {}) }
+    let beatTimer = null
+    device.on('registered', () => {
+      setRegistered(true); beat(true)
+      clearInterval(beatTimer); beatTimer = setInterval(() => { if (device.state === 'registered') beat(true) }, 30000)
+    })
+    device.on('unregistered', () => { setRegistered(false); clearInterval(beatTimer); beatTimer = null; beat(false) })
     device.on('incoming', handleIncoming)
     deviceRef.current = device
     return device
-  }, [patch, handleIncoming])
+  }
 
   // ---------- single agent status ----------
   const applyRegistration = useCallback(async (a) => {
     try {
       if (a.state === 'ready' && a.inbound_member) {
         const d = await getDevice()
-        if (d.state !== 'registered') await d.register()
+        d._wantRegistered = true
+        if (!['registered', 'registering'].includes(d.state)) await d.register()
       } else if (deviceRef.current?.state === 'registered' && !['on_call', 'wrap'].includes(a.state)) {
+        deviceRef.current._wantRegistered = false
         await deviceRef.current.unregister()
       }
     } catch (e) { console.warn('inbound registration failed', e) }
@@ -187,6 +229,15 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       setStatusBusy(false)
     }
   }, [applyRegistration, patch])
+
+  // 2026-11-22 (Becky): Ready took forever on the CSR phone — the Ready button there saves the status and
+  // re-reads it, but only setStatus() connected the phone. Now ANY status change (button, poll, another screen)
+  // connects or disconnects the phone right away.
+  useEffect(() => {
+    if (agent.loaded) applyRegistration(agent)
+  }, [agent.loaded, agent.state, agent.inbound_member]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Load the calling library in the background so the first Ready doesn't wait on the download.
+  useEffect(() => { loadSdk().catch(() => {}) }, [])
 
   // On load: read my status and, if I'm Ready on an inbound line, register this browser.
   useEffect(() => {
@@ -225,6 +276,12 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     start({ QueueId: queueId }, name || 'Customer')
   }, [start])
 
+  // Supervisors: join a live CX call to listen, whisper or barge (2026-11-13)
+  const monitorCall = useCallback((interactionId, mode = 'listen', label = 'Live call') => {
+    if (!interactionId) return
+    start({ CxI: interactionId, CxMode: mode }, `${mode === 'listen' ? 'Listening' : mode === 'whisper' ? 'Whispering' : 'Joined'} · ${label}`)
+  }, [start])
+
   const callNumber = useCallback((number) => {
     const to = toE164(number)
     setOpen(true)
@@ -250,6 +307,21 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       inboundRef.current = info
       setInboundCall(info)
       setAgent(a => ({ ...a, state: 'on_call', since: new Date().toISOString() }))
+      if (!info.id) {
+        // CX engine call: find its inbound call record once the server has connected it
+        ;(async () => {
+          for (let n = 0; n < 8; n++) {
+            await new Promise(r => setTimeout(r, 900))
+            const { data } = await supabase.rpc('csr_cx_my_call')
+            if (data?.inbound_call_id && inboundRef.current === info) {
+              const next = { ...info, id: data.inbound_call_id, cxId: data.interaction_id, callerName: data.customer_name || info.callerName, queueLabel: data.queue || info.queueLabel, lineName: data.line_name || info.lineName }
+              inboundRef.current = next
+              setInboundCall(next)
+              return
+            }
+          }
+        })()
+      }
     } catch (e) {
       callRef.current = null
       const msg = /Permission|NotAllowed/i.test(e?.message || '') ? 'Microphone access is blocked. Allow the mic for this site and try again.' : (e?.message || 'Could not answer.')
@@ -296,7 +368,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   const worksCalls = agent.inbound_member || agent.campaigns > 0
   const value = {
     ...state, open, setOpen, canDialNumbers, canCallPeople,
-    callPerson, callQueue, callNumber, hangUp, toggleMute, sendDigit, reset,
+    callPerson, callQueue, callNumber, monitorCall, hangUp, toggleMute, sendDigit, reset,
     acceptIncoming, declineIncoming,
     agent, setStatus, refreshStatus, statusBusy, registered, worksCalls,
     inboundCall, clearInbound,
@@ -338,4 +410,13 @@ export function CallButton({ profileId, name, label, hasPhone = true, style }) {
       <span aria-hidden="true">📞</span>{label ? <span>{label}</span> : null}
     </button>
   )
+}
+
+// Calls onRing() when a call starts ringing this browser (or one was just answered). Used by the portals to
+// jump the CSR to the phone page — the guided call screen with the script — from wherever they are (2026-11-22).
+export function RingBounce({ onRing }) {
+  const voice = useVoice()
+  const ringing = !!(voice?.incoming || voice?.inboundCall)
+  useEffect(() => { if (ringing) onRing?.() }, [ringing]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
 }

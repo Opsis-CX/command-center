@@ -87,18 +87,18 @@ export function formatFileSize(bytes) {
 // colors used by the status/priority badges (maps to inline styles since this
 // module keeps its own palette rather than the command-center CSS vars)
 export const STATUS_COLORS = {
-  todo:       { bg: '#EFEEEA', fg: '#6B6860', dot: '#C8C5BB' },
-  inprogress: { bg: '#EFF6FF', fg: '#1D4ED8', dot: '#2563EB' },
-  review:     { bg: '#F5F3FF', fg: '#6D28D9', dot: '#7C3AED' },
-  blocked:    { bg: '#FEF2F2', fg: '#B91C1C', dot: '#DC2626' },
-  done:       { bg: '#F0FDF4', fg: '#15803D', dot: '#16A34A' },
+  todo:       { bg: 'light-dark(#EFEEEA, #222c31)', fg: 'light-dark(#6B6860, #b3c1c7)', dot: '#C8C5BB' },
+  inprogress: { bg: 'light-dark(#EFF6FF, #1b2327)', fg: 'light-dark(#1D4ED8, #7090eb)', dot: '#2563EB' },
+  review:     { bg: 'light-dark(#F5F3FF, #1a1339)', fg: 'light-dark(#6D28D9, #a87fe8)', dot: '#7C3AED' },
+  blocked:    { bg: 'light-dark(#FEF2F2, #391313)', fg: 'light-dark(#B91C1C, #e86464)', dot: '#DC2626' },
+  done:       { bg: 'light-dark(#F0FDF4, #13391f)', fg: 'light-dark(#15803D, #20c55e)', dot: '#16A34A' },
 }
 
 export const PRIORITY_COLORS = {
-  low:      { bg: '#F0FDF4', fg: '#15803D' },
-  medium:   { bg: '#FFFBEB', fg: '#B45309' },
-  high:     { bg: '#FFFBEB', fg: '#B91C1C' },
-  critical: { bg: '#FEF2F2', fg: '#B91C1C' },
+  low:      { bg: 'light-dark(#F0FDF4, #13391f)', fg: 'light-dark(#15803D, #20c55e)' },
+  medium:   { bg: 'light-dark(#FFFBEB, #393213)', fg: 'light-dark(#B45309, #e07524)' },
+  high:     { bg: 'light-dark(#FFFBEB, #393213)', fg: 'light-dark(#B91C1C, #e86464)' },
+  critical: { bg: 'light-dark(#FEF2F2, #391313)', fg: 'light-dark(#B91C1C, #e86464)' },
 }
 
 export const DUE_COLORS = {

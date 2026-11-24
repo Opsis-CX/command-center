@@ -8,15 +8,23 @@
 //  Dialer and Inbound pages. Answering an inbound call opens the guided call
 //  screen on the Dialer page.
 // ============================================================
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useVoice } from '../lib/voice'
 import AgentStatus, { statusLook } from './AgentStatus'
+import CxCallPanel from './CxCallPanel'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#']
 const STATUS_TEXT = { connecting: 'Connecting…', ringing: 'Ringing…', 'in-call': 'Connected', ended: 'Call ended' }
 
 function mmss(s) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+
+// The ☎ button can be dragged anywhere (2026-11-10, Becky: it covered Chat's Send button).
+// Position is remembered per browser; double-click puts it back in the corner.
+const POS_KEY = 'cc-softphone-pos'
+const DEF_POS = { right: 20, bottom: 20 }
+function loadPos() { try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); if (p && isFinite(p.right) && isFinite(p.bottom)) return clampPos(p) } catch (e) { } return DEF_POS }
+function clampPos(p) { const w = window.innerWidth || 1200, h = window.innerHeight || 800; return { right: Math.max(4, Math.min(w - 56, p.right)), bottom: Math.max(4, Math.min(h - 56, p.bottom)) } }
 
 export default function Softphone() {
   const v = useVoice()
@@ -24,7 +32,15 @@ export default function Softphone() {
   const location = useLocation()
   const [dial, setDial] = useState('')
   const [showKeys, setShowKeys] = useState(false)
+  const [pos, setPos] = useState(loadPos)
+  const drag = useRef(null)
   if (!v) return null
+  const onDown = (e) => { if (e.button !== undefined && e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, r: pos.right, b: pos.bottom, moved: false }; try { e.currentTarget.setPointerCapture(e.pointerId) } catch (x) { } }
+  const onMove = (e) => { const d = drag.current; if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; if (!d.moved && Math.abs(dx) + Math.abs(dy) < 6) return; d.moved = true; setPos(clampPos({ right: d.r - dx, bottom: d.b - dy })) }
+  const onUp = () => { const d = drag.current; drag.current = null; if (!d) return; if (d.moved) { try { localStorage.setItem(POS_KEY, JSON.stringify(pos)) } catch (x) { } } else v.setOpen(!v.open) }
+  const resetPos = () => { setPos(DEF_POS); try { localStorage.removeItem(POS_KEY) } catch (x) { } }
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const panelPos = { right: Math.max(8, Math.min(pos.right, vw - 316)), bottom: pos.bottom + 64, maxHeight: `calc(100vh - ${pos.bottom + 74}px)`, overflowY: 'auto' }
 
   const active = v.busy || v.status === 'ended'
   const onWorkspace = location.pathname === '/dialer'
@@ -36,15 +52,18 @@ export default function Softphone() {
 
   return (
     <>
-      <button onClick={() => v.setOpen(!v.open)} aria-label="Phone" title="Phone"
-        style={{ ...S.fab, background: fabColor, animation: v.incoming ? 'ccRing 1s ease-in-out infinite' : 'none' }}>
+      <CxCallPanel />
+      <button onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onDoubleClick={resetPos}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); v.setOpen(!v.open) } }}
+        aria-label="Phone" title="Phone (drag to move, double-click to reset)"
+        style={{ ...S.fab, right: pos.right, bottom: pos.bottom, touchAction: 'none', cursor: 'grab', background: fabColor, animation: v.incoming ? 'ccRing 1s ease-in-out infinite' : 'none' }}>
         {v.incoming ? '🔔' : v.busy ? '📞' : '☎'}
         {v.worksCalls && !v.busy && !v.incoming && <span style={{ ...S.dot, background: statusLook(v.agent.state).color }} />}
       </button>
       <style>{'@keyframes ccRing{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}75%{transform:rotate(12deg)}}'}</style>
 
       {v.open && (
-        <div style={S.panel} role="dialog" aria-label="Phone">
+        <div style={{ ...S.panel, ...panelPos }} role="dialog" aria-label="Phone">
           <div style={S.head}>
             <strong>Phone</strong>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -127,7 +146,7 @@ export default function Softphone() {
 
 const S = {
   fab: { position: 'fixed', right: 20, bottom: 20, zIndex: 1000, width: 52, height: 52, borderRadius: '50%', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },
-  dot: { position: 'absolute', right: 3, top: 3, width: 12, height: 12, borderRadius: '50%', border: '2px solid #fff' },
+  dot: { position: 'absolute', right: 3, top: 3, width: 12, height: 12, borderRadius: '50%', border: '2px solid light-dark(#fff, #2a3439)' },
   panel: { position: 'fixed', right: 20, bottom: 84, zIndex: 1000, width: 300, maxWidth: 'calc(100vw - 40px)', padding: 14, borderRadius: 16, background: 'var(--card, #fff)', color: 'var(--text, #0f172a)', border: '1px solid rgba(100,116,139,0.25)', boxShadow: '0 12px 40px rgba(0,0,0,0.25)' },
   head: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 },
   x: { background: 'none', border: 'none', fontSize: 22, lineHeight: 1, cursor: 'pointer', color: 'inherit', opacity: 0.6 },

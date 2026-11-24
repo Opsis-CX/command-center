@@ -909,7 +909,7 @@ function WebLeadsView({ mode }) {
   const [me, setMe] = useState(null)
   useEffect(() => {
     let active = true
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).then(({ data }) => { if (active) setProfiles(data || []) })
+    supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true).then(({ data }) => { if (active) setProfiles(data || []) })
     supabase.auth.getUser().then(({ data }) => {
       const uid = data?.user?.id
       if (!uid) return

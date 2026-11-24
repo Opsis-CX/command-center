@@ -57,6 +57,7 @@ const NAV_MAIN = [
           { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
           { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
+          { to: '/workforce', label: 'Workforce (WFM)', perm: '__caller' }, // Erlang C forecasting + capacity planning (2026-11-09); data gated by is_staff()
           { to: '/live', label: "Who's On", perm: 'live_status' },
           { to: '/time', label: 'Time', perm: '__admin' }, // TimeAdmin is admin-only (it renders "This page is for admins" otherwise)
         ],
@@ -74,6 +75,7 @@ const NAV_MAIN = [
           { to: '/dialer', label: 'Dialer', perm: '__dialer' },
           { to: '/phone', label: 'Phone', perm: '__caller' },
           { to: '/campaigns', label: 'Campaigns', perm: '__caller' },
+          { to: '/ai-speed-to-lead', label: 'AI Speed to Lead', perm: '__caller' }, // AI agent calls new leads in seconds (2026-11-09)
           { to: '/inbound', label: 'Inbound', perm: '__caller' },
         ],
       },
@@ -91,6 +93,7 @@ const NAV_MAIN = [
         children: [
           { to: '/reporting', label: 'Reporting hub', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+          { to: '/business-reviews', label: 'Business reviews', perm: '__admin' }, // WBR/MBR/QBR/Annual for Opsis CX (Becky 11/19)
         ],
       },
       {

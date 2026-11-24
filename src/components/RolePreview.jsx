@@ -73,11 +73,11 @@ export function RolePreviewPill() {
       {Array.isArray(p.accounts) && p.accounts.length > 1 && (
         <select disabled={busy} value={p.roleKey} onChange={e => switchTo(e.target.value)}
           style={{ border: '1px solid rgba(255,255,255,.4)', background: 'rgba(255,255,255,.15)', color: '#fff', borderRadius: 999, padding: '3px 8px', fontSize: 12.5, fontFamily: 'inherit' }}>
-          {p.accounts.map(a => <option key={a.role_key} value={a.role_key} style={{ color: '#000' }}>{a.label}</option>)}
+          {p.accounts.map(a => <option key={a.role_key} value={a.role_key} style={{ color: 'light-dark(#000, #e8eef0)' }}>{a.label}</option>)}
         </select>
       )}
       <button onClick={back} disabled={busy}
-        style={{ border: 0, background: '#fff', color: '#5B21B6', borderRadius: 999, padding: '4px 12px', fontWeight: 700, fontSize: 12.5, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+        style={{ border: 0, background: 'light-dark(#fff, #161d21)', color: 'light-dark(#5B21B6, #a479e7)', borderRadius: 999, padding: '4px 12px', fontWeight: 700, fontSize: 12.5, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
         {busy ? 'Switching…' : `Return to ${String(p.admin?.name || 'my account').split(' ')[0]}`}
       </button>
     </div>
