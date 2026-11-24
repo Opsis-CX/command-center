@@ -965,13 +965,13 @@ export function mountOpsisQA(ROOT, cfg) {
       // Management summary layout (Becky 11/2): intro, numbered drivers, one priority coaching opportunity, key takeaway.
       var rules = ' ' + 'Write a short management summary in EXACTLY this markdown layout (fill in the brackets, keep the headings):' + '\n' + '' + '\n' + '[Two sentences: how ' + (kind === 'brand' ? 'the brand' : 'this CSR') + ' is trending on QA score and booking, and the main behaviors behind it.]' + '\n' + '[One sentence on the result, e.g. bookings vs call volume.]' + '\n' + '' + '\n' + '## What\'s Driving the Change' + '\n' + '### 1. [Short title] ([key change, e.g. +8 percentage points])' + '\n' + '- [Fact with the before and after numbers]' + '\n' + '- [What it means or why it matters]' + '\n' + '- Individual improvements include:' + '\n' + '  - [CSR name]: [+x.x points in average QA score]' + '\n' + '### 2. [Short title]' + '\n' + '[Optional one-sentence description]' + '\n' + '- [Metric]: Increased from [x]% to [y]%.' + '\n' + '### 3. [Short title]' + '\n' + '[One or two short sentences]' + '\n' + '' + '\n' + '## Priority Coaching Opportunity' + '\n' + '### [CSR name] – [Skill to work on]' + '\n' + '[One sentence: why this is the clearest opportunity.]' + '\n' + '- Booking rate: [x]% across [n] decided opportunities.' + '\n' + '- Booking requests: Asked for the appointment on [a] of [b] opportunities.' + '\n' + '- Primary coaching focus: [Step and name]' + '\n' + '[One or two sentences describing a real example call from this period, with its [call:<id>] link if you have it.]' + '\n' + '**Recommended action this week:** [One or two sentences.]' + '\n' + '' + '\n' + '## Key Takeaway' + '\n' + '[Two sentences: what is working, and the next opportunity.]' + '\n' + '' + '\n' + 'RULES: Use 2 or 3 drivers, only changes big enough to matter (about 5 points or more on a rate, or 10 or more calls on a reason); if ' + (kind === 'brand' ? 'the brand' : 'this CSR') + ' declined, use the same layout but title the section "What\'s Behind the Change". Leave out "Individual improvements" if no CSR clearly drove it. In Priority Coaching Opportunity pick ONE CSR with enough calls to matter; if no single CSR stands out, use a team-wide skill as the title instead. Every number must come from the data; never invent one. Say "call dropped or cut off" instead of "call ended before booking". No intro line like "Here is", no arrows, emoji or symbols.' + '\n' + 'TONE: managers read this and CSRs may see it. Professional, supportive and specific. Describe behaviors and opportunities, never label a person. Never call anyone a drag, weak link, weakest, worst, poor, bad, struggling, failing, a problem, an underperformer or a liability.';
       var q = (kind === 'brand' ? 'Explain why ' + name + ' is trending the way it is this period compared with the one before.' : 'Explain why CSR ' + name + ' is trending the way they are this period compared with the one before, and how to coach them.') + ' ' + facts + rules;
-      (whyCache[ckey] || (whyCache[ckey] = api({ action: 'ask', mode: 'summary', question: q, start: S.start, end: S.end, brands: brand ? [brand] : null }))).then(function (r) {
+      (CURWHY = whyCache[ckey] || (whyCache[ckey] = api({ action: 'ask', mode: 'summary', question: q, start: S.start, end: S.end, brands: brand ? [brand] : null }))).then(function (r) {
         if (tok !== T) return; var el = document.querySelector('#why .md'); if (el) el.innerHTML = md(whyTidy(r.answer));
       }).catch(function (e) { delete whyCache[ckey]; if (tok !== T) return; var el = document.querySelector('#why .md'); if (el) el.innerHTML = '<span class="mut">' + esc(e.message) + '</span>'; });
     };
     FOCUSWHY = runWhy;
   }
-  var whyCache = {}, FOCUSWHY = null;
+  var whyCache = {}, FOCUSWHY = null, CURWHY = null;
   function whyTidy(t) {
     var lines = String(t || '').replace(/\r/g, '').split('\n'), out = [], started = false;
     lines.forEach(function (l) { var tr = l.trim();
@@ -3781,6 +3781,8 @@ export function mountOpsisQA(ROOT, cfg) {
     // Becky 11/24: the Ask AI bar isn't part of an export.
     c.querySelectorAll('#askq').forEach(function (x) { var f = x.closest('form') || x.parentElement; if (f && f !== c) f.remove(); });
     c.querySelectorAll('.pop, #layer, [data-tip], .sr, script, .skel').forEach(function (x) { x.remove(); });
+    // Becky 11/24: "Why … is trending this way" is part of the export even when it's collapsed on screen.
+    c.querySelectorAll('#why').forEach(function (w) { var b = w.querySelector('.md'); if (b) b.style.display = ''; w.querySelectorAll('[data-whytog] span.mut, #whychev').forEach(function (x) { x.remove(); }); if (b && b.querySelector('.dots')) w.remove(); });
     c.querySelectorAll('button.sel, button.more, button.lnk[data-ask], [data-ask], [data-act="pexp"], .np').forEach(function (x) { if (!x.classList.contains('on') && !/btnd/.test(x.className) || x.hasAttribute('data-ask')) x.remove(); });
     c.querySelectorAll('button.sel.btnd').forEach(function (x) { if (x.closest('[role="group"],.row') && /weeks?|days?/i.test(x.textContent || '')) { var sp = document.createElement('span'); sp.className = 'pill'; sp.textContent = x.textContent; x.replaceWith(sp); } else x.remove(); });
     c.querySelectorAll('button').forEach(function (b) { var d = document.createElement(/\blnk\b/.test(b.className || '') ? 'span' : 'div'); d.innerHTML = b.innerHTML; d.setAttribute('style', b.getAttribute('style') || ''); d.className = (b.className || '').replace(/\bclick\b/, ''); b.replaceWith(d); });
@@ -3823,7 +3825,10 @@ export function mountOpsisQA(ROOT, cfg) {
     } finally { holder.remove(); }
     return { sheet: 'Page', title: 'What’s on the page', cols: ['Section', 'Shown'], rows: rows };
   }
-  function pageExport(fmt) {
+  function pageExport(fmt, waited) {
+    // Wait for the "Why … is trending this way" summary if it's still being written, so it's in the export.
+    var wb = document.querySelector('#why .md');
+    if (!waited && wb && wb.querySelector('.dots') && CURWHY) { toast('Adding the “Why … is trending” summary…'); CURWHY.then(function () { setTimeout(function () { pageExport(fmt, true); }, 50); }, function () { pageExport(fmt, true); }); return; }
     var label = expPageName(), shown = expTables($('main')), data = [], lists = [];
     var filters = Array.prototype.map.call(($('main') || document).querySelectorAll('.chip.on'), function (c) { return (c.innerText || c.textContent || '').replace(/[✕×]/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
     if (EXP.sig === expSig()) EXP.order.forEach(function (k) { var r = EXP.data[k]; if (expIsCallList(k, r)) { if (k === EXP.list) lists.push([k, r]); } else if (!EXP_LISTS[k.split(':')[0]]) expFlat(r, expHum(k.split(':')[0]), data, 0); });
