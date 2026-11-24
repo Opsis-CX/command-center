@@ -289,7 +289,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (CFG.staff ? '<div class="banner"><b>Opsis view</b> · You’re seeing ' + esc(CLIENT) + '’s portal as an account admin. Changes you make here are real and are logged.</div>' : '');
   }
   function popHtml() {
-    if (S.pop === 'export') return '<div class="pop" style="right:150px;top:52px;min-width:250px"><div class="cap" style="margin-bottom:6px">Export this page</div><div class="mut" style="font-size:12.5px;margin-bottom:10px">Everything this page shows for the dates and brands at the top.</div>' +
+    if (S.pop === 'export') return '<div class="pop" style="right:150px;top:52px;min-width:250px"><div class="cap" style="margin-bottom:6px">Export this page</div><div class="mut" style="font-size:12.5px;margin-bottom:10px">Exactly what’s on this page, for the dates, brands and filters you have set.</div>' +
       [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="pgexp" data-fmt="' + f[0] + '" style="width:100%;justify-content:flex-start;margin-bottom:6px">' + f[1] + '</button>'; }).join('') + '</div>';
     if (S.pop === 'range') {
       return '<div class="pop" style="right:0;top:52px"><div class="cap" style="margin-bottom:8px">Date range</div><div style="display:flex;flex-direction:column;gap:4px">' +
@@ -3764,16 +3764,69 @@ export function mountOpsisQA(ROOT, cfg) {
     var m = {}; cs.rows.forEach(function (r) { var k = r[2] || 'Unknown'; var x = m[k] || (m[k] = { n: 0, sum: 0, sc: 0 }); x.n++; if (typeof r[6] === 'number') { x.sum += r[6]; x.sc++; } });
     return { sheet: 'By CSR', title: 'Calls by CSR', cols: ['CSR', 'Calls', 'Avg QA score %'], rows: Object.keys(m).sort(function (a, b) { return m[b].n - m[a].n; }).map(function (k) { return [k, m[k].n, m[k].sc ? Math.round(m[k].sum / m[k].sc * 10) / 10 : '']; }) };
   }
+  // ---------- Export = exactly what's on screen (Becky 11/24) ----------
+  // "Every export needs to be exactly what it is… what we are viewing, just in an exportable format to share."
+  // PDF: a copy of the page as shown (same cards, tiles, charts, tables), without buttons and tooltips, with the
+  // page name, dates, brands and filters on top. Excel / CSV: every section of the page as text in screen order,
+  // each table on screen as its own sheet, and (on call-list pages) the full filtered list. No raw data dumps.
+  function expHeader(label, filters) {
+    return { title: label, sub: fdate(S.start) + ' – ' + fdate(S.end) + ' · ' + (S.brands.length ? S.brands.join(', ') : (LOCK || 'All brands')) + (filters && filters.length ? ' · ' + filters.join(' · ') : '') };
+  }
+  function expCleanClone(src) {
+    var c = src.cloneNode(true);
+    c.querySelectorAll('.pop, #layer, [data-tip], .sr, script, .skel').forEach(function (x) { x.remove(); });
+    c.querySelectorAll('button.sel, button.more, button.lnk[data-ask], [data-ask], [data-act="pexp"], .np').forEach(function (x) { if (!x.classList.contains('on') && !/btnd/.test(x.className) || x.hasAttribute('data-ask')) x.remove(); });
+    c.querySelectorAll('button.sel.btnd').forEach(function (x) { if (x.closest('[role="group"],.row') && /weeks?|days?/i.test(x.textContent || '')) { var sp = document.createElement('span'); sp.className = 'pill'; sp.textContent = x.textContent; x.replaceWith(sp); } else x.remove(); });
+    c.querySelectorAll('button').forEach(function (b) { var d = document.createElement(/\blnk\b/.test(b.className || '') ? 'span' : 'div'); d.innerHTML = b.innerHTML; d.setAttribute('style', b.getAttribute('style') || ''); d.className = (b.className || '').replace(/\bclick\b/, ''); b.replaceWith(d); });
+    c.querySelectorAll('select').forEach(function (x) { var o = x.options[x.selectedIndex]; var sp = document.createElement('b'); sp.textContent = o ? o.text : ''; x.replaceWith(sp); });
+    c.querySelectorAll('input').forEach(function (x) { if (x.type === 'checkbox' || x.type === 'radio') { if (!x.checked) { var l = x.closest('label'); if (l) l.remove(); else x.remove(); } else x.remove(); } else { var sp = document.createElement('span'); sp.textContent = x.value || ''; x.replaceWith(sp); } });
+    c.querySelectorAll('[id]').forEach(function (x) { if (x.id !== 'main') x.removeAttribute('id'); });
+    return c;
+  }
+  function expPdfSnapshot(label, filters, srcEl) {
+    var src = srcEl || $('main'); if (!src) { toast('Nothing to export yet.'); return; }
+    if (src.querySelector('.skel')) toast('Some parts are still loading; they won’t be in the PDF. Export again once the page finishes.');
+    var w = pdfWin(); if (!w) return;
+    var H = expHeader(label, filters), body = expCleanClone(src).innerHTML;
+    var gen = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    w.document.open();
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + esc(H.title) + '</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap"><style>' + CSS +
+      '\n@page{size:letter landscape;margin:8mm}html,body{margin:0;background:#fff}#oqa{background:#fff;min-height:0}#oqa #main{padding:8px 4px;max-width:none}#oqa .oq-card{break-inside:avoid;page-break-inside:avoid;box-shadow:none}' +
+      '#oqa [style*="overflow"]{overflow:visible!important;max-height:none!important}#oqa .xh{border-bottom:3px solid #14302A;padding:0 0 8px;margin:0 0 12px}#oqa .xh h1{font-size:20px;margin:0;color:#14302A}#oqa .xh p{margin:4px 0 0;color:#5F6763;font-size:12px}' +
+      '#oqa .xf{margin-top:12px;border-top:1px solid #E8E4DC;padding-top:6px;color:#8A918D;font-size:10px;display:flex;justify-content:space-between}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>' +
+      '<div id="oqa"><div id="main"><div class="xh"><h1>' + esc(H.title) + '</h1><p>' + esc(H.sub) + '</p></div>' + body +
+      '<div class="xf"><span>Exported ' + esc(gen) + ' · exactly as shown on screen</span><span>Opsis QA · Opsis CX</span></div></div></div></body></html>');
+    w.document.close();
+  }
+  // Every visible section of the page as rows of text, in screen order. Tables inside a section are exported as their own sheet.
+  function expScreenSheet(root) {
+    var rows = []; if (!root) return { sheet: 'Page', title: 'What’s on the page', cols: ['Section', 'Shown'], rows: rows };
+    // Read the same cleaned copy the PDF uses (no buttons, tooltips or unpicked options), laid out off screen so text keeps its lines.
+    var holder = document.createElement('div'); holder.style.cssText = 'position:absolute;left:-20000px;top:0;width:' + (root.offsetWidth || 1100) + 'px';
+    (root.closest('#oqa') || document.body).appendChild(holder);
+    var c = expCleanClone(root); c.removeAttribute('id'); holder.appendChild(c);
+    try {
+      Array.prototype.filter.call(c.querySelectorAll('.oq-card'), function (x) { return !(x.parentElement && x.parentElement.closest('.oq-card')); }).forEach(function (card) {
+        var h = card.querySelector('h1, h2, .ttl, .cap'), title = (h ? (h.innerText || h.textContent || '') : '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        Array.prototype.forEach.call(card.children, function (ch) {
+          if (ch.tagName === 'TABLE' || (ch.querySelector && ch.querySelector('table'))) return;
+          String(ch.innerText || ch.textContent || '').split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(function (l) { return l && l !== 'i' && l !== '›'; })
+            .forEach(function (l) { if (l !== title) rows.push([title, l]); });
+        });
+      });
+    } finally { holder.remove(); }
+    return { sheet: 'Page', title: 'What’s on the page', cols: ['Section', 'Shown'], rows: rows };
+  }
   function pageExport(fmt) {
     var label = expPageName(), shown = expTables($('main')), data = [], lists = [];
     var filters = Array.prototype.map.call(($('main') || document).querySelectorAll('.chip.on'), function (c) { return (c.innerText || c.textContent || '').replace(/[✕×]/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
     if (EXP.sig === expSig()) EXP.order.forEach(function (k) { var r = EXP.data[k]; if (expIsCallList(k, r)) { if (k === EXP.list) lists.push([k, r]); } else if (!EXP_LISTS[k.split(':')[0]]) expFlat(r, expHum(k.split(':')[0]), data, 0); });
     data = data.filter(function (s) { return !(s.cols[0] === 'Field' && s.rows.every(function (r) { return /^(Total|Can decide|Ok|Allowed)$/i.test(r[0]); })); });
+    if (fmt === 'pdf') { expPdfSnapshot(label, filters); return; }
+    var screen = expScreenSheet($('main'));
     var finish = function (callSheets) {
-      callSheets = callSheets.reduce(function (acc, cs) { return acc.concat([cs, expByCsr(cs)]); }, []);
-      var sheets = callSheets.concat(shown.map(function (s) { s.sheet = 'Shown – ' + s.sheet; return s; })).concat(data);
-      var pdf = callSheets.map(function (cs) { return cs.sheet !== 'Calls' ? cs : { title: cs.title, cols: cs.cols.slice(0, 11), rows: cs.rows.map(function (r) { return r.slice(0, 11); }) }; }).concat(shown).concat(data.filter(function (s) { return s.cols[0] === 'Field'; }));
-      expRun(fmt, label, sheets, pdf, filters);
+      var sheets = (screen.rows.length ? [screen] : []).concat(shown.map(function (s) { s.sheet = 'Table – ' + s.sheet; return s; })).concat(callSheets.map(function (cs) { cs.sheet = 'All ' + cs.sheet.toLowerCase(); cs.title = 'Every call in this list (' + cs.rows.length + ')'; return cs; }));
+      expRun(fmt, label, sheets, null, filters);
     };
     if (!lists.length) return finish([]);
     toast('Gathering every call for the export…');
@@ -3781,10 +3834,11 @@ export function mountOpsisQA(ROOT, cfg) {
       .then(finish).catch(function (e) { toast((e && e.message) || 'Couldn’t gather the calls. Try again.'); });
   }
   function callExport(fmt) {
-    var c = S.cur; if (!c) return;
+    var c = S.cur, el = $('cd'); if (!c || !el) return;
     var label = 'Call review – ' + (c.agent || 'CSR') + ' – ' + (c.call_date || c.date || '');
-    var sheets = []; expFlat(c, 'Call', sheets, 0);
-    expRun(fmt, label, sheets);
+    if (fmt === 'pdf') { expPdfSnapshot(label, [], el); return; }
+    var rows = String(el.innerText || '').split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(function (l) { return l && l !== 'i' && !/^(Excel|CSV|PDF|Export|Close|Copy link)$/.test(l); }).map(function (l) { return [l]; });
+    expRun(fmt, label, [{ sheet: 'Call', title: label, cols: ['Shown'], rows: rows }].concat(expTables(el)));
   }
   function expButtons(act) { return '<span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="' + act + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join(''); }
   // Reports open in an in-page preview (2026-10-27): a pop-up window's print dialog froze the portal until it was closed and reopened.
@@ -3924,7 +3978,7 @@ export function mountOpsisQA(ROOT, cfg) {
       RP.busy = ''; drawReporting();
       if (!rows.length) { toast('No calls match these filters'); return; }
       var cols = RP.trans ? RP_COLS.concat(['transcript']) : RP_COLS;
-      var lines = [cols.join(',')]; rows.forEach(function (r) { lines.push(cols.map(function (k) { var v = k === 'recording_link' ? (r.review_id ? location.origin + location.pathname + '#call=' + r.review_id : '') : r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
+      var lines = [cols.join(',')]; rows.forEach(function (r) { lines.push(cols.map(function (k) { var v = k === 'recording_link' ? (r.review_id ? location.origin + location.pathname + location.search + '#v=calls&call=' + r.review_id : '') : r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
       var tag = RP.scope === 'notbooked' ? 'not-booked-opportunities' : RP.scope === 'opps' ? 'revenue-opportunities' : 'all-calls';
       saveBlob('opsis-qa-' + tag + (RP.agent ? '-' + RP.agent.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + rpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
       toast('Downloaded ' + rows.length.toLocaleString() + ' calls');
@@ -4046,42 +4100,77 @@ export function mountOpsisQA(ROOT, cfg) {
       pdfShell(w, short(brand) + ' — executive scorecard', rangeLabel() + ' · ' + brand, OP_CSS + tiles + (why ? '<div class="ai"><b>AI insights</b>' + md(why) + '</div>' : '') + csrT + '<div class="two"><div>' + stepT + '</div><div>' + catT + whyT + '</div></div>');
     });
   }
-  // CSR scorecard (redesigned 2026-10-27, Becky): colourful, one page, built to grab a CSR's attention in a 1:1.
+  // CSR scorecard (redesigned 2026-10-27; rebuilt 2026-11-24, Becky + Rob: "something helpful that can be sent to a CSR").
+  // Same numbers as the CSR page on screen: QA, booking rate and booking ask rate from `focus` (kpis.cur / prev),
+  // card ask rate from `cardcap` (booked residential service calls), the call-flow steps, and the same
+  // "doing great" / "work on" picks as the coaching card. Written to the CSR, one page, with calls to listen to (links).
+  function csrCardData(name, brand) {
+    return Promise.all([
+      api({ action: 'focus', start: S.start, end: S.end, brand: brand || null, agent: name }),
+      OPSIS ? Promise.resolve(null) : api(Object.assign({ action: 'cardcap' }, win())).catch(function () { return null; }),
+      api({ action: 'calls', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null), agent: name, score_min: 90, outcome: 'Booked', limit: 2 }).catch(function () { return { rows: [] }; }),
+      api({ action: 'calls', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null), agent: name, score_max: 60, limit: 3 }).catch(function () { return { rows: [] }; })
+    ]).then(function (r) {
+      var f = r[0] || {}, c = (f.kpis || {}).cur || {}, p = (f.kpis || {}).prev || {}, cb = 0, ca = 0;
+      ((r[1] && r[1].by_agent) || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; if (brand && x.brand !== brand) return; if (String(x.agent || '').toLowerCase() !== String(name).toLowerCase()) return; cb += +x.booked || 0; ca += +x.asked_cc || 0; });
+      var steps = (f.steps || []).filter(function (s) { return s.applies > 0; }), solid = steps.filter(function (s) { return s.applies >= 3; });
+      return { name: name, brand: brand || (S.brands.length === 1 ? S.brands[0] : LOCK || ''), f: f, steps: steps,
+        qa: c.avg != null ? +c.avg : null, qaP: p.avg != null ? +p.avg : null,
+        br: pct(c.booked, c.decided), brP: pct(p.booked, p.decided), booked: c.booked || 0, decided: c.decided || 0,
+        ask: pct(c.asked, c.opps), askP: pct(p.asked, p.opps), asked: c.asked || 0, opps: c.opps || 0,
+        card: r[1] ? (cb ? 100 * ca / cb : null) : null, cardA: ca, cardB: cb, showCard: !OPSIS && CARD_SKIP.indexOf(brand) < 0,
+        best: solid.slice().sort(function (a, b) { return b.rate - a.rate; }).filter(function (s) { return s.rate >= 70; }).slice(0, 2),
+        work: solid.slice().sort(function (a, b) { return a.rate - b.rate; }).filter(function (s) { return s.rate < 70; }).slice(0, 2),
+        good: ((r[2] || {}).rows || []).slice(0, 1), learn: ((r[3] || {}).rows || []).slice(0, 2) };
+    });
+  }
+  function csrCallLink(c) { return c && c.id ? location.origin + location.pathname + location.search + '#v=calls&call=' + encodeURIComponent(c.id) : ''; }
+  function csrStepHow(s) { var t = String(s.label || '').split(':').slice(1).join(':').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).replace(/\.?$/, '.') : ''; }
   function opCsr(w, name, brand) {
-    return Promise.all([api({ action: 'report', start: S.start, end: S.end, brands: [brand], agent: name }).then(perCall), api({ action: 'focus', start: S.start, end: S.end, brand: brand, agent: name }), api(Object.assign({ action: 'qaextras' }, { start: S.start, end: S.end, brands: [brand] })).catch(function () { return {}; }), opWhy(brand, name),
-      api({ action: 'calls', start: S.start, end: S.end, brands: [brand], agent: name, score_max: 60, limit: 2 }).catch(function () { return { rows: [] }; }),
-      api({ action: 'calls', start: S.start, end: S.end, brands: [brand], agent: name, score_min: 90, outcome: 'Booked', limit: 1 }).catch(function () { return { rows: [] }; })]).then(function (r) {
-      var rep = r[0] || {}, f = r[1] || {}, X = r[2] || {}, why = r[3], low = (r[4] || {}).rows || [], best = ((r[5] || {}).rows || [])[0], k = rep.kpis || {}, kp = rep.prev || {}, x = askNb((X.asknb || {}).by_agent, brand, name);
-      var ini = String(name || '?').split(/\s+/).map(function (p) { return p.charAt(0); }).join('').slice(0, 2).toUpperCase();
+    return csrCardData(name, brand).then(function (D) {
+      var nm = function (s) { return STEPNAMES[s.key] || exStep(s.label); };
+      var ini = String(name || '?').split(/\s+/).map(function (x) { return x.charAt(0); }).join('').slice(0, 2).toUpperCase();
       var lvl = function (v) { return v == null ? '#B5B9B6' : v >= 80 ? '#2F7D5B' : v >= 60 ? '#D9A520' : '#C2562A'; };
-      var css = '<style>@page{size:letter;margin:9mm}body{font-size:11px}h1,.sub,.foot{display:none}' +
+      var days = daysBetween(S.start, S.end);
+      var css = '<style>@page{size:letter;margin:9mm}body{font-size:11px}h1,.sub,.foot{display:none}a{color:#14302A}' +
         '.cb{background:linear-gradient(120deg,#14302A 0%,#2F7D5B 100%);color:#fff;border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:14px}.av{width:46px;height:46px;border-radius:50%;background:#D9A520;color:#14302A;font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;flex:none}' +
         '.cb .n{font-size:20px;font-weight:800;letter-spacing:-.01em}.cb .m{font-size:11px;color:#CFE5DF;margin-top:2px}.cb .sc{margin-left:auto;text-align:right}.cb .sc b{display:block;font-size:30px;line-height:1}.cb .sc span{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#CFE5DF}' +
-        '.tl{display:flex;gap:8px;margin:10px 0}.tl>div{flex:1;border-radius:12px;padding:9px 12px;color:#14302A}.tl>div>span{display:block;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;opacity:.75}.tl b{display:block;font-size:22px;margin:2px 0}.tl i{font-style:normal;font-size:10px;font-weight:700}' +
-        '.c1{background:#E3F1E8}.c2{background:#E6ECF8}.c3{background:#FDF1D8}.c4{background:#F6E6F1}.up{color:#1F5A41}.dn{color:#B4461F}.fl{color:#6B726E;font-weight:600}' +
+        '.tl{display:flex;gap:8px;margin:10px 0}.tl>div{flex:1;border-radius:12px;padding:9px 12px;color:#14302A}.tl>div>span{display:block;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;opacity:.75}.tl b{display:block;font-size:22px;margin:2px 0}.tl i{display:block;font-style:normal;font-size:10px;font-weight:700}.tl em{display:block;font-style:normal;font-size:9.5px;color:#56605B;margin-top:1px}' +
+        '.c2{background:#E6ECF8}.c3{background:#FDF1D8}.c4{background:#F6E6F1}.up{color:#1F5A41}.dn{color:#B4461F}.fl{color:#6B726E;font-weight:600}' +
         '.sec{font-size:12.5px;font-weight:800;color:#14302A;margin:12px 0 6px;display:flex;align-items:center;gap:6px}.sec:before{content:"";width:4px;height:14px;border-radius:2px;background:#2F7D5B}' +
-        '.st{display:grid;grid-template-columns:150px 1fr 46px 58px;gap:4px 10px;align-items:center;font-size:11px}.bar{height:11px;background:#F1EEE8;border-radius:6px;overflow:hidden}.bar div{height:100%;border-radius:6px}.st b{text-align:right}.st i{font-style:normal;font-size:10px;font-weight:700;text-align:right}' +
-        '.two{display:flex;gap:10px}.two>div{flex:1;border-radius:12px;padding:10px 12px;font-size:11px;line-height:1.45}.win{background:#E3F1E8;border:1px solid #BFDCCB}.grow{background:#FFF1E6;border:1px solid #F3CDAE}.two h3{margin:0 0 4px;font-size:11.5px}' +
-        '.ai{background:#F3F8F5;border-left:4px solid #2F7D5B;border-radius:0 10px 10px 0;padding:8px 12px;margin:10px 0;font-size:11px;line-height:1.45}.ai p,.ai li{margin:2px 0}.ai ul{margin:2px 0 2px 16px;padding:0}' +
-        '.cl{display:flex;gap:8px}.cl>div{flex:1;border:1px solid #E8E4DC;border-radius:10px;padding:8px 10px;font-size:10.5px;line-height:1.4}.cl b.s{display:inline-block;color:#fff;border-radius:99px;padding:1px 8px;font-size:10px;margin-right:6px}</style>';
-      var dl = function (a, b, u, dec) { if (a == null || b == null) return '<span class="fl">first period</span>'; var d = a - b; if (Math.abs(d) < 0.05) return '<span class="fl">no change</span>'; return '<span class="' + (d > 0 ? 'up' : 'dn') + '">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(dec == null ? 1 : dec) + u + ' vs before</span>'; };
-      var head = '<div class="cb"><div class="av">' + esc(ini) + '</div><div><div class="n">' + esc(name) + '</div><div class="m">' + esc(short(brand)) + ' · ' + esc(rangeLabel()) + (S.range === 'custom' ? '' : ' (' + fdate(S.start) + ' – ' + fdate(S.end) + ')') + '</div></div><div class="sc"><span>Avg QA score</span><b>' + (k.avg != null ? (+k.avg).toFixed(1) : '—') + '</b><span style="text-transform:none;letter-spacing:0;font-weight:700">' + dl(k.avg, kp.avg, '').replace(/class="(up|dn|fl)"/, 'style="color:#fff"') + '</span></div></div>';
+        '.two{display:flex;gap:10px}.two>div{flex:1;border-radius:12px;padding:10px 12px;font-size:11px;line-height:1.45}.win{background:#E3F1E8;border:1px solid #BFDCCB}.grow{background:#FFF1E6;border:1px solid #F3CDAE}.two h3{margin:0 0 6px;font-size:12px}.two .it{margin:0 0 6px}.two .it:last-child{margin:0}.two .how{color:#56605B;font-size:10.5px}' +
+        '.st{display:grid;grid-template-columns:150px 1fr 46px 58px;gap:4px 10px;align-items:center;font-size:11px}.st .h{font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#56605B}.bar{height:11px;background:#F1EEE8;border-radius:6px;overflow:hidden}.bar div{height:100%;border-radius:6px}.st b{text-align:right}.st i{font-style:normal;font-size:10px;font-weight:700;text-align:right}' +
+        '.cl{display:flex;gap:8px}.cl>div{flex:1;border:1px solid #E8E4DC;border-radius:10px;padding:8px 10px;font-size:10.5px;line-height:1.4}.cl b.s{display:inline-block;color:#fff;border-radius:99px;padding:1px 8px;font-size:10px;margin-right:6px}.cl .tag{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}</style>';
+      var dl = function (a, b, u) { if (a == null || b == null) return '<span class="fl">first period</span>'; var d = a - b; if (Math.abs(d) < 0.05) return '<span class="fl">no change</span>'; return '<span class="' + (d > 0 ? 'up' : 'dn') + '">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + u + '</span>'; };
+      var bf = function (v, isPct) { return v == null ? '—' : isPct ? v.toFixed(1) + '%' : v.toFixed(1); };
+      var head = '<div class="cb"><div class="av">' + esc(ini) + '</div><div><div class="n">' + esc(name) + '</div><div class="m">' + esc(D.brand ? short(D.brand) + ' · ' : '') + esc(fdate(S.start) + ' – ' + fdate(S.end)) + ' · compared with the ' + days + ' days before</div></div>' +
+        '<div class="sc"><span>Avg QA score</span><b>' + bf(D.qa) + '</b><span style="text-transform:none;letter-spacing:0;font-weight:700">' + dl(D.qa, D.qaP, '').replace(/class="(up|dn|fl)"/, 'style="color:#fff"') + ' · before ' + bf(D.qaP) + '</span></div></div>';
+      var tile = function (cls, cap, big, chg, sub) { return '<div class="' + cls + '"><span>' + cap + '</span><b>' + big + '</b><i>' + chg + '</i><em>' + sub + '</em></div>'; };
       var tiles = '<div class="tl">' +
-        '<div class="c1"><span>Calls handled</span><b>' + fmt((rep.funnel || {}).conversations || 0) + '</b><i class="fl">customer conversations</i></div>' +
-        '<div class="c2"><span>Booked</span><b>' + fmt(k.booked_calls || 0) + '</b><i class="fl">of ' + fmt(k.decided_calls || 0) + ' decided opportunities</i></div>' +
-        '<div class="c3"><span>Booking rate</span><b>' + p1(k.booking_rate) + '</b><i>' + dl(k.booking_rate, kp.booking_rate, ' pts') + '</i></div>' +
-        '<div class="c4"><span>Asked when it didn’t book</span><b>' + (x ? Math.round(x.pct) + '%' : '—') + '</b><i class="fl">' + (x ? x.asked + ' of ' + x.nb + ' calls' : '') + '</i></div></div>';
-      var steps = (f.steps || []).filter(function (s) { return s.applies > 0; });
-      var stepT = '<div class="sec">Your call flow</div><div class="st">' + steps.map(function (s) { var d = s.prev_rate == null || s.applies < 5 ? null : s.rate - s.prev_rate; return '<span>' + esc(exStep(s.label)) + '</span><div class="bar"><div style="width:' + (s.rate || 0) + '%;background:' + lvl(s.rate) + '"></div></div><b>' + (s.rate != null ? s.rate + '%' : '—') + '</b><i class="' + (d == null ? 'fl' : d >= 0 ? 'up' : 'dn') + '">' + (d == null ? s.applies + ' calls' : (d > 0 ? '▲' : d < 0 ? '▼' : '±') + Math.abs(d)) + '</i>'; }).join('') + '</div>';
-      var solid = steps.filter(function (s) { return s.applies >= 5; }), wins = solid.slice().sort(function (a, b) { return b.rate - a.rate; }).slice(0, 2), grow = solid.slice().sort(function (a, b) { return b.missed * b.points - a.missed * a.points; })[0];
-      var ww = '<div class="two"><div class="win"><h3>⭐ Doing great</h3>' + (wins.length ? wins.map(function (s) { return '<div><b>' + esc(exStep(s.label)) + '</b>: ' + s.rate + '% of calls</div>'; }).join('') : 'Shows once more calls are scored.') + '</div>' +
-        '<div class="grow"><h3>🎯 Focus for next week</h3>' + (grow ? '<b>' + esc(exStep(grow.label)) + '</b> (' + grow.rate + '% now). ' + esc((function (t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) + '.' : ''; })(String(grow.label || '').split(':').slice(1).join(':').trim())) : 'Keep it up.') + '</div></div>';
+        tile('c2', 'Booking rate', bf(D.br, true), dl(D.br, D.brP, ' pts'), fmt(D.booked) + ' booked of ' + fmt(D.decided) + ' that reached a decision · before ' + bf(D.brP, true)) +
+        tile('c3', 'Booking ask rate', bf(D.ask, true), dl(D.ask, D.askP, ' pts'), 'asked to book on ' + fmt(D.asked) + ' of ' + fmt(D.opps) + ' opportunities · before ' + bf(D.askP, true)) +
+        (D.showCard ? tile('c4', 'Card ask rate', bf(D.card, true), '<span class="fl">' + fmt(D.cardA) + ' of ' + fmt(D.cardB) + '</span>', 'booked residential service calls where you asked for a card') : '') + '</div>';
+      var item = function (s, good) { return '<div class="it"><b>' + esc(nm(s)) + '</b> — ' + (good ? 'done on ' + Math.round(s.rate) + '% of calls' : 'done on ' + Math.round(s.rate) + '% of calls · ' + fmt(s.missed) + ' missed') + (good ? '' : '<div class="how">' + esc(csrStepHow(s)) + '</div>') + '</div>'; };
+      var ww = '<div class="two"><div class="win"><h3>⭐ What you’re doing great</h3>' + (D.best.length ? D.best.map(function (s) { return item(s, true); }).join('') : '<div class="it">Shows once a few more of your calls are scored.</div>') + '</div>' +
+        '<div class="grow"><h3>🎯 Your focus for next week</h3>' + (D.work.length ? D.work.map(function (s) { return item(s, false); }).join('') : '<div class="it">Every step is at 70% or better. Keep it up!</div>') + '</div></div>';
+      var stepT = '<div class="sec">Your call flow, step by step</div><div class="st"><span class="h">Step</span><span></span><span class="h" style="text-align:right">Done</span><span class="h" style="text-align:right">Change</span>' + D.steps.map(function (s) { var d = s.prev_rate == null || s.applies < 5 ? null : s.rate - s.prev_rate; return '<span>' + esc(nm(s)) + '</span><div class="bar"><div style="width:' + (s.rate || 0) + '%;background:' + lvl(s.rate) + '"></div></div><b>' + (s.rate != null ? Math.round(s.rate) + '%' : '—') + '</b><i class="' + (d == null ? 'fl' : d >= 0 ? 'up' : 'dn') + '">' + (d == null ? (s.prev_rate == null ? 'new step' : s.applies + ' calls') : (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '± ') + Math.abs(d).toFixed(1)) + '</i>'; }).join('') + '</div>';
       var trim = function (t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; };
-      var calls = (best ? [best] : []).concat(low).slice(0, 3);
-      var callT = calls.length ? '<div class="sec">Calls to listen to together</div><div class="cl">' + calls.map(function (c) { var sc = c.score != null ? +c.score : null; return '<div><b class="s" style="background:' + lvl(sc) + '">' + (sc != null ? sc : '—') + '</b><b>' + esc(fdate(c.date || c.call_date || '')) + '</b> · ' + esc(c.outcome || '') + (c === best ? ' · <b style="color:#1F5A41">great example</b>' : '') + '<div style="margin-top:4px">' + esc(trim(c.summary, 150)) + '</div></div>'; }).join('') + '</div>' : '';
-      var ai = why ? '<div class="ai"><b>Coach’s notes</b>' + md(String(why).length > 750 ? String(why).slice(0, 750).replace(/\s+\S*$/, '') + '…' : String(why)) + '</div>' : '';
-      pdfShell(w, name + ' — CSR scorecard', rangeLabel() + ' · ' + brand, css + head + tiles + stepT + ww + ai + callT +
-        '<div style="display:flex;justify-content:space-between;font-size:9px;color:#8A918D;margin-top:10px;border-top:1px solid #E8E4DC;padding-top:5px"><span>Bars: green 80%+ · amber 60–79% · orange under 60%. % = calls where you did the step, out of the calls where it applied.</span><span>Opsis QA · Opsis CX</span></div>');
+      var calls = D.good.map(function (c) { return [c, 'Great example', '#1F5A41']; }).concat(D.learn.map(function (c) { return [c, 'Listen and learn', '#A8441A']; })).slice(0, 3);
+      var callT = calls.length ? '<div class="sec">Calls to listen to</div><div class="cl">' + calls.map(function (x) { var c = x[0], sc = c.score != null ? Math.round(+c.score) : null, u = csrCallLink(c); return '<div><div class="tag" style="color:' + x[2] + '">' + x[1] + '</div><b class="s" style="background:' + lvl(sc) + '">' + (sc != null ? sc + '%' : '—') + '</b><b>' + esc(fdate(c.date || c.call_date || '')) + '</b> · ' + esc(c.outcome || '') + '<div style="margin-top:4px">' + esc(trim(c.summary, 140)) + '</div>' + (u ? '<div style="margin-top:4px"><a href="' + esc(u) + '">▶ Listen to this call</a></div>' : '') + '</div>'; }).join('') + '</div>' : '';
+      pdfShell(w, name + ' — CSR scorecard', rangeLabel() + (D.brand ? ' · ' + D.brand : ''), css + head + tiles + ww + stepT + callT +
+        '<div style="display:flex;justify-content:space-between;gap:12px;font-size:9px;color:#8A918D;margin-top:10px;border-top:1px solid #E8E4DC;padding-top:5px"><span>Done % = calls where you did the step, out of the calls where it applied. Booking rate = booked ÷ calls that reached a decision. Bars: green 80%+ · amber 60–79% · orange under 60%.</span><span style="white-space:nowrap">Opsis QA · Opsis CX</span></div>');
+    });
+  }
+  // CSR page Excel / CSV: the same numbers as the screen and the PDF, plus every scored call with a link to hear it.
+  function csrSheets(name, brand) {
+    return Promise.all([csrCardData(name, brand), rpPull({ scope: 'all', agent: name, brands: brand ? [brand] : (S.brands.length ? S.brands : null) }).catch(function () { return []; })]).then(function (r) {
+      var D = r[0], rows = r[1] || [], v = function (x) { return x == null ? '' : Math.round(x * 10) / 10; }, nm = function (s) { return STEPNAMES[s.key] || exStep(s.label); };
+      return [{ sheet: 'Scorecard', title: name + ' — scorecard', cols: ['Measure', 'This period', 'Before', 'Detail'], rows: [
+          ['Avg QA score', v(D.qa), v(D.qaP), ''], ['Booking rate %', v(D.br), v(D.brP), D.booked + ' booked of ' + D.decided + ' that reached a decision'],
+          ['Booking ask rate %', v(D.ask), v(D.askP), D.asked + ' of ' + D.opps + ' opportunities']].concat(D.showCard ? [['Card ask rate %', v(D.card), '', D.cardA + ' of ' + D.cardB + ' booked residential service calls']] : [])
+          .concat(D.best.map(function (s) { return ['Doing great', nm(s), '', Math.round(s.rate) + '% of calls']; })).concat(D.work.map(function (s) { return ['Focus for next week', nm(s), '', Math.round(s.rate) + '% of calls · ' + s.missed + ' missed']; })) },
+        { sheet: 'Call flow', title: 'Call flow, step by step', cols: ['Step', 'Done %', 'Before %', 'Calls it applied to', 'Missed'], rows: D.steps.map(function (s) { return [nm(s), v(s.rate), v(s.prev_rate), s.applies, s.missed]; }) },
+        { sheet: 'Calls', title: 'Calls', cols: ['Date', 'Time', 'QA score %', 'Outcome', 'Why it didn’t book', 'Steps missed', 'Summary', 'Listen'], rows: rows.map(function (x) { return [x.call_date, x.call_time || '', x.score_pct, x.outcome || '', x.not_booked_reason || '', String(x.steps_missed || '').split(' | ').filter(Boolean).map(function (k) { return STEPNAMES[k] || k; }).join(', '), x.summary || '', x.review_id ? location.origin + location.pathname + location.search + '#v=calls&call=' + x.review_id : '']; }) }];
     });
   }
   // Weekly call-flow scorecard (rebuilt 2026-10-26): every step, every CSR, this week vs the week before, as a colour-coded grid.
@@ -4131,7 +4220,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     if (id === 'csr') {
       var p = RP.csr.split('|||'); RP.busy = 'csr'; drawReporting();
-      rpPull({ scope: 'all', agent: p[0], brands: [p[1]] }).then(function (rows) { RP.busy = ''; drawReporting(); return go(bCsr(sc, RP.csr, rows)); }).catch(fail);
+      csrSheets(p[0], p[1]).then(function (sh) { RP.busy = ''; drawReporting(); return go(sh); }).catch(fail);
       return;
     }
     var sheets = id === 'exec' ? bExec(sc) : id === 'team' ? bTeam(sc, RP.team) : bHai(sc);
@@ -5950,8 +6039,6 @@ export function mountOpsisQA(ROOT, cfg) {
     if (q.v === 'calls' && !q.bucket) { if (q.q) S.calls.q = q.q.slice(0, 120); if (q.out && OUTCOMES.some(function (o) { return o[0] === q.out; })) S.calls.outcome = q.out; if (q.step && STEPNAMES[q.step]) S.calls.step = q.step; S.calls.offset = 0; }
     if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
     if (q.b) S.brands = q.b.split('|'); if (q.brand) S.brand = q.brand; if (q.agent) S.agent = q.agent;
-    // Deep link to one call (Becky 11/24): #call=<review id> from the call-back emails and the Export Calls recording links.
-    if (q.call && /^[0-9a-f-]{36}$/i.test(q.call)) { var cid = q.call; if (!q.v) S.view = 'calls'; setTimeout(function () { if (!$('layer')) return; S.callId = cid; callDrawer(); }, 400); }
     applyRange();
   }
   function render() {
