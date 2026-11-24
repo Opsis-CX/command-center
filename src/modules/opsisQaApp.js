@@ -938,9 +938,11 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' + (kind === 'brand' && DASHON() ? ';display:none' : '') + '">' + skel(90, 1).repeat(4) + '</div>' +
       (kind === 'brand' && DASHON() ? '<div class="oq-card" id="fweek">' + skel(200, 1) + '</div>' : '<div class="row" style="align-items:flex-start"><div style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:12px"><div class="oq-card" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" id="feff">' + skel(30, 5) + '</div></div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>') +
       // 11/20 Becky: Call Center Efficiency sits under the week-by-week chart (left column) so it isn't pushed below Call Flow Performance
-      (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' + (DASHON() ? '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' : '') : (CFG.csrNotes ? '<div class="oq-card" id="fnotes">' + skel(30, 3) + '</div>' : '') + '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
+      (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' + (DASHON() ? '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' : '') : (CFG.csrNotes ? '<div class="oq-card" id="fnotes">' + skel(30, 3) + '</div>' : '')) +
       '<div class="row" style="align-items:flex-start" id="fmix">' + skel(20, 10) + '</div>' +
-      (kind === 'brand' && DASHON() ? '' : '<div class="oq-card" id="fmood">' + skel(30, 4) + '</div>'));
+      (kind === 'brand' && DASHON() ? '' : '<div class="oq-card" id="fmood">' + skel(30, 4) + '</div>') +
+      // Becky 11/24: recent calls go at the bottom of the CSR page (and so at the bottom of its export).
+      (kind === 'csr' ? '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>' : ''));
     var brand = kind === 'brand' ? name : null, agent = kind === 'csr' ? name : null;
     focusEff(tok, kind, brand, agent); focusMood(tok, kind, brand, agent);
     if (kind === 'brand' && DASHON()) { DASH.open = null; loadDash([brand]).then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
@@ -3774,6 +3776,8 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function expCleanClone(src) {
     var c = src.cloneNode(true);
+    // Becky 11/24: the Ask AI bar isn't part of an export.
+    c.querySelectorAll('#askq').forEach(function (x) { var f = x.closest('form') || x.parentElement; if (f && f !== c) f.remove(); });
     c.querySelectorAll('.pop, #layer, [data-tip], .sr, script, .skel').forEach(function (x) { x.remove(); });
     c.querySelectorAll('button.sel, button.more, button.lnk[data-ask], [data-ask], [data-act="pexp"], .np').forEach(function (x) { if (!x.classList.contains('on') && !/btnd/.test(x.className) || x.hasAttribute('data-ask')) x.remove(); });
     c.querySelectorAll('button.sel.btnd').forEach(function (x) { if (x.closest('[role="group"],.row') && /weeks?|days?/i.test(x.textContent || '')) { var sp = document.createElement('span'); sp.className = 'pill'; sp.textContent = x.textContent; x.replaceWith(sp); } else x.remove(); });
