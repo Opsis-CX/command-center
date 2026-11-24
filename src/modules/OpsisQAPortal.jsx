@@ -63,8 +63,14 @@ async function invoke(body) {
   return data
 }
 
-export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, csrMode = 'manager', onSignOut, onClassic, staff = false, csrSelf = false }) {
+// embedded (11/24, one-platform Command Center): rendered inside Command Center's shell at /w/<view>. No portal sidebar,
+// no second phone (Command Center already has one), `view` picks the page and onView reports page changes back.
+export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, csrMode = 'manager', onSignOut, onClassic, staff = false, csrSelf = false, embedded = false, view = null, onView = null }) {
   const ref = useRef(null)
+  const onViewRef = useRef(onView)
+  onViewRef.current = onView
+  // Command Center's menu picked another portal page → switch without remounting.
+  useEffect(() => { if (embedded && view && ref.current && ref.current.__oqGo) ref.current.__oqGo(view) }, [embedded, view])
   const [me, setMe] = useState(null)
   const [err, setErr] = useState('')
   // portal_role rm / gm / admin / manager (client logins) or Opsis staff → supervisor tools
@@ -117,7 +123,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   const phoneRef = useRef(null)
   useEffect(() => {
     // No phone on the setup interview (Becky 11/23): it mounts once setup is done.
-    if (!sup || csrSelf || setup === null || needsSetup) return
+    if (!sup || csrSelf || setup === null || needsSetup || embedded) return
     const phoneEl = document.createElement('div')
     Object.entries(PORTAL_THEME).forEach(([k, v]) => { if (k.startsWith('--')) phoneEl.style.setProperty(k, v); else phoneEl.style[k] = v })
     const parking = document.createElement('div'); parking.style.display = 'none'; parking.appendChild(phoneEl)
@@ -146,7 +152,10 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
 
   useEffect(() => {
     if (!me || !ref.current || sup === null || accounts === null || setup === null || needsSetup) return
+    if (embedded && view) { try { history.replaceState(history.state, '', location.pathname + location.search + '#v=' + encodeURIComponent(view)) } catch { /* ignore */ } }
     const destroy = mountOpsisQA(ref.current, {
+      embedded,
+      onView: embedded ? (v) => { if (onViewRef.current) onViewRef.current(v) } : null,
       supervisor: !!sup,
       portalRole: prole,
       portalLocation: ploc,
@@ -419,7 +428,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       </div>
     )
   }
-  if (!me || setup === null) return <div className="loading-screen">Loading…</div>
+  if (!me || setup === null) return embedded ? <p className="page-sub" style={{ padding: 16 }}>Loading…</p> : <div className="loading-screen">Loading…</div>
   if (needsSetup) {
     return <QaSetupInterview clientId={clientId || me.client} company={setup.company}
       onDone={() => setSetup({ ...setup, needs_setup: false })} />

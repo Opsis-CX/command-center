@@ -10,6 +10,8 @@ import { canAny, hasPerm, usingNewPermissions } from '../lib/permissions'
 import { useRsnAccess } from '../lib/rsnAccess'
 import { useFinanceAccess } from '../lib/financeAccess'
 import ChangePassword from './ChangePassword'
+import { isPortalStaff } from './PortalMenu'
+import WorkspaceSwitcher from './WorkspaceSwitcher'
 // Sidebar navigation, organized into labelled GROUPS.
 //
 // NAV = [ { group: 'Main', items: [ ...items ] }, ... ]
@@ -152,6 +154,130 @@ const NAV_MAIN = [
     ],
   },
 ]
+
+// ONE PLATFORM menu (Becky's "Command Center + Portal merged" mockup, 11/24 — staging).
+// Command Center pages and the client-portal pages live in one menu. Portal pages open
+// inside Command Center at /w/<page> for the workspace picked at the top of the sidebar.
+// tag = where the page came from: 'cc' Command Center, 'p' portal, 'b' in both today, 'n' new.
+// Same perm keys as NAV_MAIN; '__portal' = Opsis staff who can open client portals.
+const NAV_ONE = [
+  { group: '', items: [
+    { type: 'link', to: '/overview', label: 'Overview', ic: '📊', perm: 'dashboard', tag: 'n' },
+    { type: 'link', to: '/dashboard', label: 'Staffing dashboard', ic: '📋', perm: 'dashboard', tag: 'cc' },
+    { type: 'link', to: '/profile', label: 'My Profile', ic: '👤', perm: null, tag: 'cc' },
+    { type: 'link', to: '/w/insights', label: 'Insights', ic: '💡', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/reviews', label: 'Business reviews', ic: '🗓️', perm: '__portal', tag: 'b' },
+  ] },
+  { group: 'Performance', items: [
+    { type: 'link', to: '/w/trends', label: 'Call trends', ic: '📈', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/phone', label: 'Phone stats', ic: '☎️', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/csrs', label: 'Agents', ic: '🧑‍💼', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/calls', label: 'Call reviews', ic: '🎧', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard', tag: 'cc' },
+    { type: 'link', to: '/my-call-reviews', label: 'My call reviews', ic: '🎧', perm: 'call_reviews.mine', tag: 'cc' },
+  ] },
+  { group: 'Quality & coaching', items: [
+    { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews', tag: 'b' },
+    { type: 'link', to: '/w/calib', label: 'Calibration', ic: '⚖️', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/hub', label: 'Coaching Hub', ic: '🏅', perm: '__portal', tag: 'b' },
+    { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching', tag: 'cc' },
+    { type: 'link', to: '/w/practice', label: 'Practice calls', ic: '🎙️', perm: '__portal', tag: 'b' },
+    { type: 'link', to: '/quality', label: 'Quality audits', ic: '✅', perm: 'quality_audit.call_reviews', tag: 'cc' },
+    { type: 'section', key: 'certifications', label: 'Certifications', ic: '✦', tag: 'cc', children: [
+      { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+      { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+      { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
+      { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
+    ] },
+  ] },
+  { group: 'Phone & AI', items: [
+    { type: 'link', to: '/phone', label: 'Phone', ic: '📞', perm: '__caller', tag: 'b' },
+    { type: 'link', to: '/dialer', label: 'Dialer', ic: '☎️', perm: '__dialer', tag: 'cc' },
+    { type: 'link', to: '/campaigns', label: 'Campaigns', ic: '📣', perm: '__caller', tag: 'cc' },
+    { type: 'link', to: '/inbound', label: 'Inbound', ic: '📥', perm: '__caller', tag: 'cc' },
+    { type: 'link', to: '/ai-speed-to-lead', label: 'AI Speed to Lead', ic: '⚡', perm: '__caller', tag: 'b' },
+    { type: 'link', to: '/w/receptionist', label: 'AI CSR', ic: '🤖', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/web-chat', label: 'Web Chat', ic: '🌐', perm: 'web_chat', tag: 'cc' },
+  ] },
+  { group: 'Workforce', items: [
+    { type: 'link', to: '/schedule', label: 'Schedule', ic: '◷', perm: 'schedule.view_my_schedule', tag: 'cc' },
+    { type: 'link', to: '/schedule-builder', label: 'Schedule builder', ic: '🧱', perm: 'schedule.create_schedules', tag: 'cc' },
+    { type: 'link', to: '/insights', label: 'Schedule insights', ic: '🔎', perm: 'schedule.view_insights_assigned', tag: 'cc' },
+    { type: 'link', to: '/workforce', label: 'Workforce (WFM)', ic: '📐', perm: '__caller', tag: 'b' },
+    { type: 'link', to: '/w/intraday', label: 'Intraday', ic: '⏱️', perm: '__portal', tag: 'b' },
+    { type: 'link', to: '/w/wallboard', label: 'Wallboard', ic: '🖥️', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/live', label: "Who's On", ic: '🟢', perm: 'live_status', tag: 'cc' },
+    { type: 'link', to: '/time', label: 'Time', ic: '⏲️', perm: '__admin', tag: 'cc' },
+  ] },
+  { group: 'Team', items: [
+    { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat', tag: 'cc' },
+    { type: 'link', to: '/knowledge', label: 'Knowledge base', ic: '📚', perm: null, tag: 'b' },
+    { type: 'link', to: '/projects', label: 'Projects', ic: '🗂️', perm: 'project_management', tag: 'cc' },
+    { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring', tag: 'cc' },
+    { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings', tag: 'cc' },
+    { type: 'section', key: 'my-tools', label: 'My tools', ic: '🧰', tag: 'cc', children: [
+      { to: '/notes', label: 'My Notes', perm: null },
+      { to: '/calendar', label: 'Calendar', perm: null },
+      { to: '/tokens', label: 'Tokens', perm: 'tokens' },
+      { to: '/get-to-know-you', label: 'Get to Know You', perm: null },
+      { to: '/help', label: 'Help Center', perm: null },
+    ] },
+    { type: 'section', key: 'team-updates', label: 'Team updates', ic: '📣', tag: 'cc', children: [
+      { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
+      { to: '/eod', label: 'End of Day Report', perm: '__eod' },
+    ] },
+    { type: 'section', key: 'business', label: 'Business', ic: '💼', tag: 'cc', children: [
+      { to: '/sales', label: 'Sales', perm: 'sales' },
+      { to: '/rsn', label: 'RSN Pipeline', perm: '__rsn' },
+      { to: '/finance', label: 'Finance', perm: '__finance' },
+      { to: '/submit-purchase', label: 'Submit a purchase', perm: '__finance_submit' },
+    ] },
+  ] },
+  { group: 'Reporting', items: [
+    { type: 'link', to: '/reporting', label: 'Reporting hub', ic: '📈', perm: 'reporting', tag: 'b' },
+    { type: 'link', to: '/reporting/hourly', label: 'Hourly', ic: '🕐', perm: 'reporting', tag: 'cc' },
+    { type: 'link', to: '/w/reporting', label: 'Client reports', ic: '📑', perm: '__portal', tag: 'p' },
+  ] },
+  { group: 'Setup', items: [
+    { type: 'link', to: '/w/connect', label: 'Connect your calls', ic: '🔌', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/callflow', label: 'Call flow', ic: '🔀', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/qasettings', label: 'QA settings', ic: '🧾', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/team', label: 'Client team & access', ic: '👥', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/integrations', label: 'Integrations', ic: '🧩', perm: '__admin', tag: 'cc' },
+    { type: 'link', to: '/roles', label: 'Access & Permissions', ic: '🔐', perm: '__admin', tag: 'b' },
+    { type: 'section', key: 'backend', label: 'Configuration', ic: '⚙', tag: 'cc', children: [
+      { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
+      { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
+      { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
+      { to: '/branding', label: 'Branding', perm: '__admin' },
+      { to: '/dashboard-settings', label: 'Dashboard', perm: '__admin' },
+      { to: '/schedule-settings', label: 'Schedule', perm: '__admin' },
+      { to: '/schedule-rules', label: 'Schedule rules', perm: '__admin' },
+      { to: '/chat-support', label: 'Chat support lines', perm: '__admin' },
+      { to: '/alerts', label: 'Alerts', perm: '__admin' },
+      { to: '/service-account', label: 'Service account', perm: '__admin' },
+      { to: '/w/brandset', label: 'Client portal settings', perm: '__portal' },
+    ] },
+    { type: 'section', key: 'content-backend', label: 'Backend', ic: '🗄️', tag: 'cc', children: [
+      { to: '/updates', label: 'Updates', perm: '__updates_post' },
+      { to: '/backend/quotes', label: 'Daily Quotes', perm: '__admin' },
+      { to: '/backend/spotlight', label: 'Spotlight', perm: '__admin' },
+      { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },
+      { to: '/survey', label: 'New Hire Survey', perm: '__admin' },
+    ] },
+  ] },
+]
+const TAGS = { cc: ['CC', 'Command Center'], p: ['P', 'Client portal'], b: ['Both', 'In both today'], n: ['New', 'New'] }
+// One-platform menu is on by default on staging; Settings → "Classic menu" switches back (per browser).
+export function useOneMenu() {
+  const [on, setOn] = useState(() => { try { return localStorage.getItem('cc_classic_nav') !== '1' } catch { return true } })
+  const set = (v) => { try { localStorage.setItem('cc_classic_nav', v ? '0' : '1') } catch { /* ignore */ } setOn(v); window.dispatchEvent(new Event('cc-nav-mode')) }
+  useEffect(() => {
+    const h = () => { try { setOn(localStorage.getItem('cc_classic_nav') !== '1') } catch { /* ignore */ } }
+    window.addEventListener('cc-nav-mode', h); return () => window.removeEventListener('cc-nav-mode', h)
+  }, [])
+  return [on, set]
+}
 const NAV_DEFAULT = NAV_MAIN
 const NAV_ADMIN = NAV_MAIN
 // Roles that can NOT place calls. Keep in step with NO_CALL_ROLES in App.jsx and
@@ -206,7 +332,7 @@ export default function Sidebar({ open, onNavigate }) {
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
-    '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
+    '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/overview': ['dashboard.overview', 'dashboard.client'], '/dashboard': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
     '/knowledge': 'kb.view', '/chat-support': 'chat.support_manage', '/integrations': 'admin.integrations', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.dashboard_settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
@@ -223,9 +349,14 @@ export default function Sidebar({ open, onNavigate }) {
     : p === '__updates_post' ? (isAdmin || isOwner || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r)))
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
+    : p === '__portal' ? isPortalStaff(isAdmin, appRole)
     : (!p || canAny(appRole, p))
   // One shared ordering now; both names resolve to the same array.
-  const NAV = (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
+  const [oneMenu, setOneMenu] = useOneMenu()
+  const NAV = oneMenu ? NAV_ONE : (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
+  const [showTags, setShowTags] = useState(() => { try { return localStorage.getItem('cc_nav_tags') !== '0' } catch { return true } })
+  const flipTags = () => setShowTags(v => { try { localStorage.setItem('cc_nav_tags', v ? '0' : '1') } catch { /* ignore */ } return !v })
+  const tagEl = (t) => (oneMenu && showTags && t && TAGS[t]) ? <span className={'nav-tag nav-tag-' + t} title={TAGS[t][1]}>{TAGS[t][0]}</span> : null
   // Show the person's real name. useAuth only gives us the auth user (email),
   // so pull full_name from their profile. Fall back to the email prefix only
   // if the profile has no name yet.
@@ -284,6 +415,7 @@ export default function Sidebar({ open, onNavigate }) {
           onClick={() => onNavigate && onNavigate()}
           className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
           <NavIcon ic={item.ic} line={lineIcons} /> {item.label}
+          {item.to !== '/chat' || !(unreadTotal > 0) ? <span style={{ marginLeft: 'auto' }}>{tagEl(item.tag)}</span> : null}
           {item.to === '/chat' && unreadTotal > 0 && (
             <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
               {unreadTotal > 99 ? '99+' : unreadTotal}
@@ -301,7 +433,8 @@ export default function Sidebar({ open, onNavigate }) {
         <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(item.key)}
           aria-expanded={isOpen}>
           <NavIcon ic={item.ic} line={lineIcons} /> {item.label}
-          <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
+          <span style={{ marginLeft: 'auto' }}>{tagEl(item.tag)}</span>
+          <span className="nav-caret" style={{ marginLeft: oneMenu && showTags && item.tag ? 6 : 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {isOpen && (
           <div className="nav-section-body">
@@ -323,6 +456,7 @@ export default function Sidebar({ open, onNavigate }) {
       <div className="brand">
         <img className="brand-logo" src={logoFor(branding, true)} alt={branding?.company_name || 'Opsis'} />
       </div>
+      {oneMenu && isPortalStaff(isAdmin, appRole) && <WorkspaceSwitcher onNavigate={onNavigate} />}
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
       <div className="nav-scroll">
@@ -343,6 +477,13 @@ export default function Sidebar({ open, onNavigate }) {
           )
         })}
       </div>
+      {oneMenu && showTags && (
+        <div className="nav-legend">
+          <div style={{ fontWeight: 700, color: '#fff', display: 'flex', justifyContent: 'space-between' }}>Where each page came from <button type="button" onClick={flipTags} title="Hide these labels" aria-label="Hide where-it-came-from labels">✕</button></div>
+          <div><span className="nav-tag nav-tag-cc">CC</span> Command Center <span className="nav-tag nav-tag-p">P</span> Portal</div>
+          <div><span className="nav-tag nav-tag-b">Both</span> In both today <span className="nav-tag nav-tag-n">New</span> New</div>
+        </div>
+      )}
       <div className="user-chip" role="link" tabIndex={0} title="My profile" style={{ cursor: 'pointer' }}
         onClick={() => { navigate('/profile'); onNavigate && onNavigate() }}
         onKeyDown={e => { if (e.key === 'Enter') { navigate('/profile'); onNavigate && onNavigate() } }}>
@@ -375,6 +516,14 @@ export default function Sidebar({ open, onNavigate }) {
               style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
               {themeLabel(theme)}
             </button>
+            <button className="nav-item nav-subitem" onClick={() => setOneMenu(!oneMenu)}
+              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+              {oneMenu ? 'Classic menu' : 'One-platform menu'}
+            </button>
+            {oneMenu && !showTags && <button className="nav-item nav-subitem" onClick={flipTags}
+              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+              Show page origin labels
+            </button>}
             <button className="nav-item nav-subitem" onClick={() => setPwOpen(true)}
               style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
               Change password

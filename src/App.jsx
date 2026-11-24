@@ -53,6 +53,11 @@ import CallQA from './modules/CallQA'
 // Opsis QA client portal v2 (2026-10-20): new look for garageco.opsiscx.com. Client logins get it
 // when clients.portal_v2 = true; Opsis QA staff can preview it at /opsis-qa.
 import OpsisQAPortal from './modules/OpsisQAPortal'
+// One-platform shell (Becky's merged mockup, 11/24): new Overview + client portal pages inside Command Center at /w/<page>
+import Overview from './modules/Overview'
+import WorkspacePage from './modules/WorkspacePage'
+import { isPortalStaff } from './components/PortalMenu'
+import { useOneMenu } from './components/Sidebar'
 import HelpCenter from './modules/HelpCenter'
 import Coaching from './modules/Coaching'
 import Tokens from './modules/Tokens'
@@ -492,6 +497,8 @@ function TraineePortal({ session }) {
 // check can run with a session guaranteed to exist.
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
   // Dashboard (redesign 2026-11-04): Overview or Client/Project access (new permissions), else the old rule.
+  // One-platform menu (11/24): Overview is the home page; the staffing Dashboard moves to /dashboard.
+  const [oneMenu] = useOneMenu()
   const canSeeDashboard = usingNewPermissions() ? (hasPerm('dashboard.overview') || hasPerm('dashboard.client')) : canAny(appRole, 'dashboard')
   // RSN pipeline visibility — DB-gated (admins, marketing role, or 'access/rsn' tag).
   const rsnOk = useRsnAccess()
@@ -540,7 +547,10 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <PushEnrollmentBanner profileId={session.user.id} />
             <RefreshBoundary>
             <Routes>
-              <Route path="/" element={canSeeDashboard ? <Dashboard /> : <Profile />} />
+              <Route path="/" element={canSeeDashboard ? (oneMenu ? <Overview /> : <Dashboard />) : <Profile />} />
+              <Route path="/dashboard" element={canSeeDashboard ? <Dashboard /> : <NoAccess />} />
+              <Route path="/overview" element={canSeeDashboard ? <Overview /> : <NoAccess />} />
+              <Route path="/w/:view" element={isPortalStaff(isAdmin, appRole) ? <WorkspacePage /> : <NoAccess />} />
               <Route path="/calendar" element={<Calendar />} />
               {/* Mock-call booking for anyone signed in but no longer in_training
                   (e.g. unlocked early) — trainees get it as a tab instead. */}
@@ -657,7 +667,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
 }
 function titleFor(path) {
   const map = {
-    '/': 'Dashboard', '/certifications': 'Certifications',
+    '/': 'Overview', '/dashboard': 'Dashboard', '/overview': 'Overview', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync', '/business-reviews': 'Business reviews',
@@ -669,6 +679,10 @@ function titleFor(path) {
   // /sales/scorecard, etc.) -- Pipeline itself stays at the bare /sales so
   // existing bookmarks keep working, but every nested tab should still read
   // "Sales" in the header rather than falling through to "Command Center".
+  if (path.startsWith('/w/')) {
+    const W = { insights: 'Insights', reviews: 'Business reviews', trends: 'Call trends', phone: 'Phone stats', csrs: 'Agents', csr: 'Agent', calls: 'Call reviews', calib: 'Calibration', hub: 'Coaching Hub', hubqs: 'Coaching Hub', practice: 'Practice calls', receptionist: 'AI CSR', intraday: 'Intraday', wallboard: 'Wallboard', reporting: 'Client reports', connect: 'Connect your calls', callflow: 'Call flow', qasettings: 'QA settings', team: 'Client team & access', brandset: 'Client portal settings', overview: 'Client overview', brands: 'Brands', brand: 'Brand', cardcap: 'Card capture', pricetalk: 'Price talk', money: 'Revenue', kb: 'Knowledge base', aistl: 'AI Speed to Lead', wfm: 'Workforce', coach: 'Coach view', tasks: 'Tasks', callbacks: 'Callbacks', leadtime: 'Booking lead time', repeat: 'Repeat callers', kpi: 'KPI', supervisor: 'Supervisor', phonesetup: 'Phone setup' }
+    return W[path.slice(3)] || 'Client workspace'
+  }
   if (path.startsWith('/sales/')) return 'Sales'
   return map[path] || 'Command Center'
 }

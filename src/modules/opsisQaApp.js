@@ -60,6 +60,17 @@ export function mountOpsisQA(ROOT, cfg) {
   if (!document.getElementById('oqa-font')) { var ln = document.createElement('link'); ln.id = 'oqa-font'; ln.rel = 'stylesheet'; ln.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap'; document.head.appendChild(ln); }
   ROOT.id = 'oqa';
   ROOT.innerHTML = MARKUP;
+  // One-platform Command Center (11/24): the portal page sits inside Command Center's own shell, so its sidebar is
+  // hidden (Command Center's menu drives it) and it takes the Opsis colors.
+  if (cfg && cfg.embedded) {
+    ROOT.classList.add('emb');
+    if (!document.getElementById('oqa-emb-style')) { var es = document.createElement('style'); es.id = 'oqa-emb-style';
+      es.textContent = '#oqa.emb{min-height:0;--bg:transparent;--side:#021116;--g:#0089A6;--gd:#00708A;--gl:#E1F3FA;--line:#DCE7EA;--line2:#EDF3F5;--hl:#0A2A33}' +
+        '#oqa.emb .oq-app{min-height:0;display:block}#oqa.emb .oq-app>aside{display:none!important}#oqa.emb .oq-sidehide,#oqa.emb .oq-sideshow{display:none!important}' +
+        '#oqa.emb main{padding:0 0 24px}#oqa.emb .ttl{color:#021116}#oqa.emb .btnd{background:#0089A6;border-color:#0089A6}#oqa.emb .seg button.on,#oqa.emb .chip.on{background:#021116;border-color:#021116}' +
+        '#oqa.emb .oq-card{border-color:#DCE7EA}#oqa.emb .tbl thead th{background:#F3F7F8}';
+      document.head.appendChild(es); }
+  }
   oqSideToggle(ROOT);
   var destroy = (function () {
   'use strict';
@@ -5921,6 +5932,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
+    if (CFG.onView) { try { CFG.onView(S.view); } catch (e) {} }
     var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, callbacks: vCallbacks, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     var gk = GATE[S.view];
     if (gk && CFG.features && !(FEAT && FEAT[gk])) {
@@ -6029,6 +6041,8 @@ export function mountOpsisQA(ROOT, cfg) {
     if (a === 'obhide') { if (OB.d) OB.d.hidden = true; obDraw(); if (CFG.onboardingSet) CFG.onboardingSet('onboarding_hidden', true).catch(function () {}); if (obNext()) toast('Checklist hidden. Turn it back on in Portal settings.'); }
   }
   function go(view) { S.view = view; S.pop = null; window.scrollTo(0, 0); render(); }
+  // Command Center's menu opens a portal page (one-platform shell, 11/24).
+  ROOT.__oqGo = function (v) { if (v && S.view !== v) go(v); };
   var XWHY = {};
   function xferWhy(c) {
     var k = [c.xfer, c.xferWith, S.callsAgent, S.start, S.end, S.brands.join('|')].join('~');
