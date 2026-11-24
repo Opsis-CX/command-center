@@ -3633,7 +3633,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- Reporting & exports (same options as the classic portal) ----------
   var RP = { sc: null, bill: null, key: '', busy: '', n: 0, scope: 'notbooked', allTypes: false, trans: false, agent: '', team: '', csr: '' };
   var RP_SCOPES = [['notbooked', 'Revenue opportunities — not booked', 'The list to check against your CRM. Includes customer name and phone.'], ['opps', 'All revenue opportunities', 'Booked and not booked.'], ['all', 'All scored calls', 'Every call the AI scored.']];
-  var RP_COLS = ['call_date', 'call_time', 'brand', 'agent', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state', 'direction', 'duration_sec', 'call_type',
+  var RP_COLS = ['call_date', 'call_time', 'recording_link', 'brand', 'agent', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state', 'direction', 'duration_sec', 'call_type',
     'call_leg', 'leg_no', 'legs', 'transferred', 'journey', 'customer_type', 'commercial', 'opportunity', 'outcome', 'not_booked_reason', 'fcr', 'first_person_resolution', 'sentiment', 'sentiment_score',
     'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
     'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_expert', 'sell_offer', 'sell_ask', 'sell_card', 'sell_objection', 'sell_appointment', 'confirm_thank', 'steps_missed',
@@ -3871,7 +3871,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!RP.csr || !agents.some(function (a) { return a.name + '|||' + a.brand === RP.csr; })) RP.csr = agents.length ? agents[0].name + '|||' + agents[0].brand : '';
     var names = agents.map(function (a) { return a.name; }).filter(function (n, i, L) { return L.indexOf(n) === i; });
     var row = function (title, sub, ctl, id) { return '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;padding:14px 0;border-top:1px solid var(--line2)"><div style="flex:1 1 260px"><b>' + title + '</b><div class="mut" style="font-size:12.5px;margin-top:2px">' + sub + '</div>' + (ctl || '') + '</div>' + rpBtns(id) + '</div>'; };
-    var exp = '<div class="oq-card" style="flex:1 1 380px;align-self:flex-start"><h2 class="ttl">Export Calls</h2><p class="sub">A spreadsheet of every matching call — date, brand, CSR, customer, outcome, score, each step and the AI’s notes. Uses the date range and brands at the top.</p>' +
+    var exp = '<div class="oq-card" style="flex:1 1 380px;align-self:flex-start"><h2 class="ttl">Export Calls</h2><p class="sub">A spreadsheet of every matching call — date, a link to hear the recording, brand, CSR, customer, outcome, score, each step and the AI’s notes. Uses the date range and brands at the top.</p>' +
       '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px" role="radiogroup" aria-label="Which calls">' + RP_SCOPES.map(function (s) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid ' + (RP.scope === s[0] ? '#14302A' : 'var(--line2)') + ';border-radius:10px;cursor:pointer"><input type="radio" name="rpscope" data-rpscope="' + s[0] + '"' + (RP.scope === s[0] ? ' checked' : '') + ' style="margin-top:3px;accent-color:#14302A"><span><b style="font-size:13.5px">' + s[1] + '</b><span class="mut" style="display:block;font-size:12px">' + s[2] + '</span></span></label>'; }).join('') + '</div>' +
       '<div style="margin-top:12px"><label class="l" for="rpag">CSR</label><select id="rpag" class="oq-field" data-rpagent><option value="">All CSRs</option>' + names.map(function (n) { return '<option' + (RP.agent === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></div>' +
       '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input type="checkbox" style="accent-color:#14302A" data-rptypes' + (RP.allTypes ? ' checked' : '') + '> Include voicemail, IVR, wrong-number and spam calls</label>' +
@@ -3924,7 +3924,7 @@ export function mountOpsisQA(ROOT, cfg) {
       RP.busy = ''; drawReporting();
       if (!rows.length) { toast('No calls match these filters'); return; }
       var cols = RP.trans ? RP_COLS.concat(['transcript']) : RP_COLS;
-      var lines = [cols.join(',')]; rows.forEach(function (r) { lines.push(cols.map(function (k) { var v = r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
+      var lines = [cols.join(',')]; rows.forEach(function (r) { lines.push(cols.map(function (k) { var v = k === 'recording_link' ? (r.review_id ? location.origin + location.pathname + '#call=' + r.review_id : '') : r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
       var tag = RP.scope === 'notbooked' ? 'not-booked-opportunities' : RP.scope === 'opps' ? 'revenue-opportunities' : 'all-calls';
       saveBlob('opsis-qa-' + tag + (RP.agent ? '-' + RP.agent.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + rpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
       toast('Downloaded ' + rows.length.toLocaleString() + ' calls');
@@ -5950,6 +5950,8 @@ export function mountOpsisQA(ROOT, cfg) {
     if (q.v === 'calls' && !q.bucket) { if (q.q) S.calls.q = q.q.slice(0, 120); if (q.out && OUTCOMES.some(function (o) { return o[0] === q.out; })) S.calls.outcome = q.out; if (q.step && STEPNAMES[q.step]) S.calls.step = q.step; S.calls.offset = 0; }
     if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
     if (q.b) S.brands = q.b.split('|'); if (q.brand) S.brand = q.brand; if (q.agent) S.agent = q.agent;
+    // Deep link to one call (Becky 11/24): #call=<review id> from the call-back emails and the Export Calls recording links.
+    if (q.call && /^[0-9a-f-]{36}$/i.test(q.call)) { var cid = q.call; if (!q.v) S.view = 'calls'; setTimeout(function () { if (!$('layer')) return; S.callId = cid; callDrawer(); }, 400); }
     applyRange();
   }
   function render() {
