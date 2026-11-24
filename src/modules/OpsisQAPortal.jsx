@@ -288,6 +288,11 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) throw new Error(error.message)
         return data
       },
+      excludedExport: csrSelf ? null : async ({ start, end }) => {
+        const { data, error } = await supabase.rpc('qa_excluded_calls_export', { p_client: clientId || me.client, p_from: start, p_to: end })
+        if (error) throw new Error(error.message)
+        return data
+      },
       excludedNumbers: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_excluded_numbers_list', { p_client: clientId || me.client })
         if (error) throw new Error(error.message)
