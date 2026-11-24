@@ -1264,7 +1264,8 @@ export function mountOpsisQA(ROOT, cfg) {
       var rows = (ph.agents || []).filter(function (a) { return !agent || nmMatch(a.agent, agent); }).map(function (a) { var talk = (+a.in_talk || 0) + (+a.out_talk || 0), calls = (+a.in_calls || 0) + (+a.out_calls || 0), days = +a.days || 0;
         return { name: a.agent, brand: a.brand, inc: +a.in_calls || 0, out: +a.out_calls || 0, talk: talk, avg: calls ? talk / calls : null, tta: a.tta == null ? null : +a.tta, days: days, util: days ? talk / (days * 8 * 3600) * 100 : null }; });
       var hm = function (sec) { sec = Math.round(sec || 0); var h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60); return h ? h + 'h ' + m + 'm' : m + 'm'; }, ms = function (sec) { if (sec == null) return '—'; sec = Math.round(sec); return Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); };
-      var head = '<h2 class="ttl">Call Center Efficiency</h2><p class="sub">Straight from LightSpeed, separate from QA' + ((ph.kpis || {}).data_last && !ph.agents_fallback ? ' · data runs through ' + esc(fdate(ph.kpis.data_last)) : '') + '. Utilization = talk time as a share of an 8-hour day for each day they took calls.</p>';
+      var head = '<h2 class="ttl">Call Center Efficiency</h2><p class="sub">Straight from LightSpeed, separate from QA' + ((ph.kpis || {}).data_last && !ph.agents_fallback ? ' · data runs through ' + esc(fdate(ph.kpis.data_last)) : '') + '. Utilization = talk time as a share of an 8-hour day for each day they took calls.</p>' +
+        '<details style="margin-top:6px;font-size:12.5px"><summary style="cursor:pointer;font-weight:600">Why fewer calls are QA-scored than answered here</summary><div style="line-height:1.6;margin-top:6px">A call is scored when it is inbound, answered by a CSR on your CSR list for that ' + esc(W_BRAND.toLowerCase()) + ', and a real conversation long enough to judge. Calls left out: voicemail, phone-menu hang-ups, after-hours and AI CSR calls, internal or line-to-line calls, calls answered by anyone not on the CSR list, and known vendor or solicitor numbers. ' + esc(W_BRANDS) + ' with more after-hours, AI CSR or off-list answering have a lower share of calls scored.</div></details>';
       var dl = (ph.kpis || {}).data_last, e0 = String(S.end || '').slice(0, 10);
       var fb = ph.agents_fallback;
       if (fb && fb.from) head += '<div class="banner" style="margin-top:10px;background:#F1F6F3;border-color:#CFE3D8;color:#1F5A41">Switchboard’s phone file stops at ' + esc(fdate(dl)) + '. Calls and talk time from ' + esc(fdate(fb.from)) + ' on come from Opsis’ own LightSpeed connection, which counts every answered call (including direct-dial calls), so it can run a little higher than Switchboard. Answer times for those days fill in once Switchboard’s file catches up.</div>';
@@ -2272,11 +2273,36 @@ export function mountOpsisQA(ROOT, cfg) {
   var PTK = { none: 'Price never came up', asked_answered: 'Customer asked · CSR gave a number', asked_no_number: 'Customer asked · left to the tech', volunteered: 'CSR brought it up first' };
   var PTC = { none: ['#E6F0EA', '#1F5A41'], asked_answered: ['#EEF2FB', '#2B3A67'], asked_no_number: ['#F3F1EC', '#3B4541'], volunteered: ['#FCEBDD', '#A8441A'] };
   function vPrice(tok) {
-    setMain(crumb([['Price talk']]) + '<div id="ptwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    setMain(crumb([['Price talk']]) + '<div id="ptwrap"><div class="oq-card">' + skel(36, 6) + '</div></div><div id="iftrend"></div>');
+    ifTrend(tok);
     var key = S.start + '|' + S.end + '|' + S.brands.join(',');
     if (PT.d && PT.key === key) { drawPrice(); return; }
     api(win({ action: 'pricetalk' })).then(function (r) { if (tok !== T) return; PT.d = r || {}; PT.key = key; PT.ag = null; PT.b = null; PT.shown = 50; drawPrice(); })
       .catch(function (e) { if (tok === T && $('ptwrap')) $('ptwrap').innerHTML = errBox(e); });
+  }
+  // Info before price, week over week (Rob 11/23, item 12): of the calls where price came up, how often the CSR
+  // collected or confirmed the customer's information first. By brand and by CSR.
+  var IF = { by: 'brand' };
+  function ifTrend(tok) {
+    var el = $('iftrend'); if (!el || !CFG.infoFirst) return;
+    el.innerHTML = '<div class="oq-card" style="margin-top:16px">' + skel(24, 5) + '</div>';
+    CFG.infoFirst({ end: S.end, brands: S.brands }).then(function (r) { if (tok !== T) return; IF.d = r || {}; drawIf(); })
+      .catch(function (e) { if (tok === T && $('iftrend')) $('iftrend').innerHTML = '<div class="oq-card" style="margin-top:16px">' + errBox(e) + '</div>'; });
+  }
+  function drawIf() {
+    var el = $('iftrend'); if (!el || !IF.d) return; var d = IF.d, wk = d.weeks || [], by = IF.by;
+    var cell = function (y, n, py, pn) { if (!n) return '<td class="num mut" style="text-align:center">—</td>'; var c = Math.round(100 * y / n), pv = pn ? Math.round(100 * py / pn) : null, dl = pv == null ? '' : ' <span style="font-size:11px;color:' + (c >= pv ? '#1F5A41' : '#B4461F') + '">' + (c >= pv ? '▲' : '▼') + Math.abs(c - pv) + '</span>';
+      return '<td class="num" style="text-align:center"><b>' + c + '%</b>' + dl + '<div class="mut" style="font-size:11px">' + y + ' of ' + n + '</div></td>'; };
+    var src = by === 'csr' ? (d.csrs || []) : (d.brands || []), keyOf = function (x) { return by === 'csr' ? x.agent : x.brand; };
+    var M = {}; src.forEach(function (x) { var k = keyOf(x); (M[k] = M[k] || { brand: x.brand, w: {}, n: 0 }).w[x.wk] = x; M[k].n += x.n; });
+    var names = Object.keys(M).filter(function (k) { return by !== 'csr' || M[k].n >= 5; }).sort(function (a, b) { return M[b].n - M[a].n; });
+    var T0 = {}; (d.total || []).forEach(function (x) { T0[x.wk] = x; });
+    var row = function (label, W, bold) { return '<tr><td' + (bold ? ' style="font-weight:700"' : '') + '>' + label + '</td>' + wk.map(function (w, i) { var a = W[w] || {}, b = i ? (W[wk[i - 1]] || {}) : {}; return cell(a.y || 0, a.n || 0, b.y || 0, b.n || 0); }).join('') + '</tr>'; };
+    el.innerHTML = '<div class="oq-card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Info before price, week by week</h2><p class="sub">Of the calls where price came up, how often the CSR collected or confirmed the customer’s information before giving a price. ▲▼ is the change from the week before.</p></div>' +
+      '<div style="display:flex;gap:6px"><button class="chip' + (by === 'brand' ? ' on' : '') + '" data-act="ifby" data-k="brand">By ' + esc(W_BRAND.toLowerCase()) + '</button><button class="chip' + (by === 'csr' ? ' on' : '') + '" data-act="ifby" data-k="csr">By CSR</button></div></div>' +
+      (wk.length ? '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13px"><thead><tr><th>' + (by === 'csr' ? 'CSR' : W_BRAND) + '</th>' + wk.map(function (w) { return '<th style="text-align:center">Week of ' + esc(fdate(w)) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        row('All', T0, true) + names.slice(0, 80).map(function (k) { return row(esc(by === 'csr' ? k + ' · ' + short(M[k].brand) : short(k)), M[k].w, false); }).join('') + '</tbody></table></div>' + (by === 'csr' ? '<p class="mut" style="font-size:12px;margin-top:6px">CSRs with at least 5 pricing calls in these weeks.</p>' : '')
+        : '<p class="mut" style="margin-top:12px">No calls where price came up yet.</p>') + '</div>';
   }
   function ptPct(a, b) { return b ? pc(100 * a / b) : '—'; }
   function ptRows() {
@@ -4365,6 +4391,8 @@ export function mountOpsisQA(ROOT, cfg) {
     h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">' + focus + week + '</div>';
     // coaching calls
     var good = (d.picks || []).filter(function (p) { return p.kind === 'good'; }), grow = (d.picks || []).filter(function (p) { return p.kind === 'grow'; });
+    // Rob 11/23 (item 16): keep the CSR's own view short — two strengths and one call to learn from.
+    if (SELF) { good = good.slice(0, 2); grow = grow.slice(0, 1); }
     var pickRow = function (p, i) {
       var g = p.kind === 'good';
       return '<div class="hubpick" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;background:' + (g ? '#F3F8F5' : '#FFF8F1') + ';border:1px solid ' + (g ? '#D5E6DC' : '#F6DCC4') + ';border-radius:14px;padding:14px"' + (g && i === 0 ? ' id="hubgood0"' : '') + '>' +
@@ -4705,7 +4733,9 @@ export function mountOpsisQA(ROOT, cfg) {
       var rate = phonePct(k.abandoned, k.calls), prate = phonePct(pv.abandoned, pv.calls);
       var note = (cov.first && S.start < cov.first) ? '<div class="banner" style="margin:0 0 12px;background:#F3F1EC;border-color:#E2DDD2;color:#3B4541">Phone data from LightSpeed starts <b>' + fdate(cov.first) + '</b>, so this range only covers ' + fdate(cov.first) + ' onward' + (cov.last ? ' (latest ' + fdate(cov.last) + ')' : '') + '.</div>' : '';
       var card = function (label, val, sub, d) { return '<div class="oq-card" style="flex:1 1 190px;padding:16px 18px 14px"><span class="cap">' + label + '</span><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (d || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>'; };
-      $('phtop').innerHTML = note + '<div class="row">' +
+      var cvA = cov.first && cov.first > S.start ? cov.first : S.start, cvB = k.data_last && String(k.data_last).slice(0, 10) < S.end ? String(k.data_last).slice(0, 10) : S.end;
+      var cvLine = (k.calls ? '<p style="font-size:12.5px;margin:0 0 10px;color:#3B4541">These numbers cover <b>' + esc(fdate(cvA)) + ' – ' + esc(fdate(cvB)) + '</b>' + (cvA !== S.start || cvB !== S.end ? ' (you picked ' + esc(fdate(S.start)) + ' – ' + esc(fdate(S.end)) + ')' : '') + '.</p>' : '');
+      $('phtop').innerHTML = note + cvLine + '<div class="row">' +
         card('Inbound CSR calls', fmt(k.calls || 0), (k.wd_days ? fmt(Math.round(k.wd_calls / k.wd_days)) + ' per weekday on average' : 'No weekday data in range'), '') +
         card('Abandoned calls', rate != null ? rate.toFixed(1) + '%' : '—', fmt(k.abandoned || 0) + ' callers hung up in the CSR queue before anyone answered' + (k.wd_days ? ' · ' + (k.wd_ab / k.wd_days).toFixed(1) + ' per weekday on average' : ''), delta(rate, prate, ' pts', false)) +
         card('Avg time to answer', k.tta != null ? k.tta + 's' : '—', 'From the call reaching the CSR queue to pickup', delta(k.tta, pv.tta, 's', false)) +
@@ -6225,6 +6255,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcpsave') { recapSave(); }
       else if (a === 'locsave') { locSave(); }
       else if (a === 'cbosave') { cbOwnerSave(d); }
+      else if (a === 'ifby') { IF.by = d.k; drawIf(); }
       else if (a === 'exnadd') { var ph = (($('exnp') || {}).value || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); if (ph.length !== 10) { toast('Enter a 10-digit phone number.'); return; } exnSave(ph, (($('exnl') || {}).value || '').trim(), true); }
       else if (a === 'exndel') { if (confirm('Score calls from ' + fphone(d.p) + ' again?')) exnSave(d.p, null, false); }
       else if (/^ob(go|min|open|hide|show)$/.test(a)) { obAct(a, d); }

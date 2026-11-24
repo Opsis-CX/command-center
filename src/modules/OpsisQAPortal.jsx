@@ -283,6 +283,11 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_callback_owner_set', { p_client: clientId || me.client, p_brand: brand, p_emails: emails })
         if (error) throw new Error(error.message || 'Could not save.')
       },
+      infoFirst: csrSelf ? null : async ({ end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_info_first_trend', { p_client: clientId || me.client, p_to: end, p_weeks: 8, p_brands: brands && brands.length ? brands : null })
+        if (error) throw new Error(error.message)
+        return data
+      },
       excludedNumbers: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_excluded_numbers_list', { p_client: clientId || me.client })
         if (error) throw new Error(error.message)
