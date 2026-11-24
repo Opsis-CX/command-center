@@ -3846,6 +3846,31 @@ export function mountOpsisQA(ROOT, cfg) {
     var rows = String(el.innerText || '').split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(function (l) { return l && l !== 'i' && !/^(Excel|CSV|PDF|Export|Close|Copy link)$/.test(l); }).map(function (l) { return [l]; });
     expRun(fmt, label, [{ sheet: 'Call', title: label, cols: ['Shown'], rows: rows }].concat(expTables(el)));
   }
+  // Ask AI answer export (Rob 11/24). Same look as the panel: the "Why … is trending this way" summary from that page
+  // (when the question was asked from a CSR or brand page), then the question and the answer. "open call" becomes a real link.
+  function askExport(mi, fmt) {
+    var m = S.ask.msgs[mi]; if (!m || m.error) return;
+    var cx = m.ctx || {}, q = cx.q || ((S.ask.msgs[mi - 1] || {}).content) || '';
+    var plan = /coaching plan/i.test(q), nm = (q.match(/coaching plan for (.+?)(?::|\.|$)/i) || [])[1];
+    var label = plan ? 'Coaching plan – ' + (nm || cx.title || 'CSR') : 'Ask AI' + (cx.title ? ' – ' + cx.title : '');
+    var base = location.origin + location.pathname + location.search + '#v=calls&call=';
+    var whyP = cx.whyKey && whyCache[cx.whyKey] ? whyCache[cx.whyKey].then(function (r) { return whyTidy(r.answer); }).catch(function () { return null; }) : Promise.resolve(null);
+    var linkify = function (h) { return h.replace(/<span class="lnk" data-call="([0-9a-f-]{36})"[^>]*>open call ↗<\/span>/gi, function (x, id) { return '<a href="' + esc(base + id) + '" style="color:#2F7D5B;font-weight:600">open call ↗</a>'; }); };
+    var plain = function (t) { return String(t || '').split('\n').map(function (l) { return l.replace(/\[call:([0-9a-f-]{36})\]/gi, function (x, id) { return base + id; }).replace(/\*\*/g, '').replace(/^\s*#{1,4}\s+/, '').replace(/^(\s*)[-*]\s+/, '$1• ').replace(/\s+$/, ''); }).filter(function (l) { return l.trim() && !/^(-{3,}|\*{3,})$/.test(l.trim()); }).map(function (l) { return [l]; }); };
+    toast('Preparing the export…');
+    whyP.then(function (why) {
+      if (fmt === 'pdf') {
+        var box = document.createElement('div');
+        box.innerHTML = (why ? '<div class="oq-card"><h2 class="ttl" style="margin:0 0 8px">Why ' + esc(cx.title) + ' is trending this way</h2><div class="md">' + linkify(md(why)) + '</div></div>' : '') +
+          '<div class="oq-card"><h2 class="ttl" style="margin:0 0 4px">' + esc(plan ? 'Coaching plan' : 'Question') + '</h2><p class="mut" style="margin:0 0 10px;font-size:12.5px">' + esc(q) + '</p><div class="md">' + linkify(md(m.content)) + '</div></div>';
+        expPdfSnapshot(label, ['Asked: ' + q.slice(0, 120)], box); return;
+      }
+      var sheets = [];
+      if (why) sheets.push({ sheet: 'Why trending', title: 'Why ' + cx.title + ' is trending this way', cols: ['Shown'], rows: plain(why) });
+      sheets.push({ sheet: plan ? 'Coaching plan' : 'Answer', title: q, cols: ['Shown'], rows: [['Question: ' + q]].concat(plain(m.content)) });
+      expRun(fmt, label, sheets);
+    });
+  }
   function expButtons(act) { return '<span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="' + act + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join(''); }
   // Reports open in an in-page preview (2026-10-27): a pop-up window's print dialog froze the portal until it was closed and reopened.
   // pdfWin() hands back a window-like object; whatever is written to it is shown in a full-screen frame with Save as PDF / Print and Close.
@@ -5633,6 +5658,8 @@ export function mountOpsisQA(ROOT, cfg) {
     A.msgs.forEach(function (m, mi) {
       if (m.role === 'user') h += '<div style="align-self:flex-end;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;max-width:85%;font-size:13.5px">' + esc(m.content) + '</div>';
       else h += '<div class="ai" style="max-width:100%"><div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div>' +
+        // Rob 11/24: every answer can be exported (with the "Why … is trending this way" summary when asked from a CSR or brand page).
+        (m.error ? '' : '<div class="row" style="gap:6px;margin-top:10px;align-items:center"><span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="askexp" data-mi="' + mi + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join('') + '</div>') +
         ((m.downloads || []).length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">' + m.downloads.map(function (d, di) { return '<button class="sel btnd" data-act="askdl" data-mi="' + mi + '" data-di="' + di + '" style="justify-content:flex-start;gap:8px;text-align:left"' + (RP.busy ? ' disabled' : '') + '><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Download ' + esc(d.label) + ' (' + (d.format === 'xlsx' ? 'Excel' : String(d.format || 'pdf').toUpperCase()) + ')</button>'; }).join('') + '<span class="mut" style="font-size:12px">' + fdate(m.downloads[0].start) + ' – ' + fdate(m.downloads[0].end) + '</span></div>' : '') + '</div>';
     });
     if (A.busy) h += '<div class="ai"><span class="dots"><span></span><span></span><span></span></span> <span class="mut" style="font-size:13px">Looking through your calls…</span></div>';
@@ -5649,8 +5676,11 @@ export function mountOpsisQA(ROOT, cfg) {
     var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6).map(function (m) { return { role: m.role, content: m.content }; });
     A.msgs.push({ role: 'user', content: q }); A.busy = true; askPanel();
     var pg = S.view === 'brand' || S.view === 'csr' ? { view: S.view, brand: S.brand || null, agent: S.view === 'csr' ? (S.agent || null) : null } : null;
+    var anm = pg ? (S.view === 'brand' ? S.brand : S.agent) : null;
+    var actx = { q: q, start: S.start, end: S.end, brands: S.brands.slice(), kind: pg && anm ? S.view : null, name: anm || null, title: anm ? (S.view === 'brand' ? short(anm) : anm) : null,
+      whyKey: anm ? 'why7|' + S.view + '|' + anm + '|' + S.start + '|' + S.end : null };
     api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null, page: pg, dl: 1 }).then(function (r) {
-      A.msgs.push({ role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [] }); A.busy = false; if (A.open) askPanel();
+      A.msgs.push({ role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [], ctx: actx }); A.busy = false; if (A.open) askPanel();
     }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message, error: true }); A.busy = false; if (A.open) askPanel(); });
   }
 
@@ -6375,6 +6405,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'jvcancel') { MN.edit = null; drawMoney(); }
       else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
+      else if (a === 'askexp') { askExport(+d.mi, d.fmt); }
       else if (a === 'askdl') { var am = S.ask.msgs[+d.mi]; if (am && am.downloads) askDownload(am.downloads[+d.di]); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
