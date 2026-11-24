@@ -4311,9 +4311,16 @@ export function mountOpsisQA(ROOT, cfg) {
   function sayFill(t) { return String(t || '').replace(/\{day1\}/g, 'Thursday at 9').replace(/\{day2\}/g, 'Friday at 1').replace(/\{day\}/g, 'Thursday').replace(/\{window\}/g, '8 and 12').replace(/\{problem\}/g, 'won’t open').replace(/\{when\}/g, 'this morning'); }
   function greet() { var h = +new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
   function tile(label, val, sub) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:10px 12px;min-width:0"><div class="cap">' + label + '</div><div class="num" style="font-weight:700;font-size:19px;margin-top:2px">' + val + '</div><div class="mut" style="font-size:11.5px">' + (sub || '&nbsp;') + '</div></div>'; }
+  // Multi-part calls (Becky 11/23): play the linked follow-up parts one after another.
+  function hubNextPart(rid) { var a = HUB.audio[rid]; if (!a || !(a.parts || []).length || (a.pi || 0) >= a.parts.length) return; a.pi = (a.pi || 0) + 1; a.at = 0;
+    document.querySelectorAll('[data-hubslot="' + rid + '"]').forEach(function (s) { s.innerHTML = playBtn(rid, '#14302A'); }); }
+  var hubEnded = function (e) { var el = e.target; if (el && el.getAttribute && el.getAttribute('data-hubchain')) hubNextPart(el.getAttribute('data-hubchain')); };
+  document.addEventListener('ended', hubEnded, true); LISTENERS.push([document, 'ended', hubEnded, true]);
   function playBtn(rid, color, label) {
     var a = HUB.audio[rid];
-    if (a && a.url) return '<audio controls autoplay src="' + esc(a.url + (a.at ? '#t=' + Math.max(0, a.at - 2) : '')) + '" style="width:min(460px,72vw);height:48px"></audio>';
+    if (a && a.url) { var np = (a.parts || []).length, pi = a.pi || 0, cur = pi ? a.parts[pi - 1].url : a.url;
+      return '<div style="display:flex;flex-direction:column;gap:4px"><audio controls autoplay data-hubchain="' + rid + '" src="' + esc(cur + (!pi && a.at ? '#t=' + Math.max(0, a.at - 2) : '')) + '" style="width:min(460px,72vw);height:48px"></audio>' +
+        (np ? '<div class="mut" style="font-size:11.5px">Part ' + (pi + 1) + ' of ' + (np + 1) + ' · the call continued after a hold or callback, and plays straight through' + (pi < np ? ' · <button class="more" data-hubnext="' + rid + '" style="font-size:11.5px">Skip to part ' + (pi + 2) + '</button>' : '') + '</div>' : '') + '</div>'; }
     return '<button class="hubplay" data-hubplay="' + rid + '" aria-label="' + esc(label || 'Play call') + '" style="width:44px;height:44px;border-radius:999px;border:0;background:' + color + ';display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">' + (a && a.busy ? '<span class="dots"><span></span><span></span><span></span></span>' : PLAY) + '</button>';
   }
 
@@ -4707,11 +4714,12 @@ export function mountOpsisQA(ROOT, cfg) {
       HUB.pendingAt = HUB.pendingAt || {}; HUB.pendingAt[rid0] = at0;
       var pb0 = document.querySelector('[data-hubslot="' + rid0 + '"] [data-hubplay]'); if (pb0) pb0.click(); return;
     }
+    if ((x = t.closest('[data-hubnext]'))) { hubNextPart(x.getAttribute('data-hubnext')); return; }
     if ((x = t.closest('[data-hubplay]'))) {
       var rid = x.getAttribute('data-hubplay'); if (HUB.audio[rid] && HUB.audio[rid].busy) return;
       HUB.audio[rid] = { busy: true }; var slot = function () { document.querySelectorAll('[data-hubslot="' + rid + '"]').forEach(function (s) { s.innerHTML = playBtn(rid, s.querySelector('[data-hubplay]') ? s.querySelector('[data-hubplay]').style.background : '#14302A'); }); };
       slot();
-      api({ action: 'hubaudio', id: rid }).then(function (r) { if (!r || !r.url) { delete HUB.audio[rid]; slot(); toast('No recording is available for this call.'); return; } HUB.audio[rid] = { url: r.url, at: (HUB.pendingAt || {})[rid] || 0 }; if (HUB.pendingAt) delete HUB.pendingAt[rid]; slot(); })
+      api({ action: 'hubparts', id: rid }).catch(function () { return api({ action: 'hubaudio', id: rid }); }).then(function (r) { if (!r || !r.url) { delete HUB.audio[rid]; slot(); toast('No recording is available for this call.'); return; } HUB.audio[rid] = { url: r.url, parts: r.parts || [], pi: 0, at: (HUB.pendingAt || {})[rid] || 0 }; if (HUB.pendingAt) delete HUB.pendingAt[rid]; slot(); })
         .catch(function (e2) { delete HUB.audio[rid]; slot(); toast((e2 && e2.message) || 'Couldn’t load the recording.'); }); return;
     }
     if ((x = t.closest('[data-hubswap]'))) { x.disabled = true; x.textContent = 'Swapping…'; api(Object.assign({ action: 'hubswap', pick: x.getAttribute('data-hubswap') }, hubBody())).then(function () { toast('Swapped in another call'); render(); }).catch(function (e3) { x.disabled = false; x.textContent = 'Swap'; toast(e3.message || 'Couldn’t swap that call.'); }); return; }
@@ -6393,7 +6401,7 @@ export function mountOpsisQA(ROOT, cfg) {
   readHash(true); if (COACHMODE && !/(^|&)v=/.test(location.hash.replace(/^#/, ''))) S.view = 'coach'; render();
   if (DEEP_CALL && !CFG.csrSelf) { S.callId = DEEP_CALL; callDrawer(); }
   return function destroy() {
-    LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];
+    LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2], l[3]); }); LISTENERS = [];
     try { AU.pause(); AU.removeAttribute('src'); AU.load(); } catch (x) {}
     if (EXT) { try { EXT(); } catch (x) {} EXT = null; }
   };

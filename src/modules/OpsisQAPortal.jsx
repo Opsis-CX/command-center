@@ -52,7 +52,7 @@ const PORTAL_THEME = {
 
 async function invoke(body) {
   // Reporting (call export + scorecard reports) is served by its own read-only function.
-  const fn = (body?.action === 'pwfm' || body?.action === 'ps2l') ? 'opsis-portal-ops' : body?.action === 'qaextras' ? 'opsis-qa-insights' : String(body?.action || '').startsWith('calib') ? 'opsis-qa-calibration' : String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
+  const fn = (body?.action === 'pwfm' || body?.action === 'ps2l') ? 'opsis-portal-ops' : body?.action === 'qaextras' ? 'opsis-qa-insights' : String(body?.action || '').startsWith('calib') ? 'opsis-qa-calibration' : body?.action === 'hubparts' ? 'hub-call-parts' : String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
   const { data, error } = await supabase.functions.invoke(fn, { body })
   if (error) {
     let msg = 'Something went wrong loading that.'
