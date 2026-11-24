@@ -2408,7 +2408,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var w = $('prwrap'); if (!w || !PR.d) return; var d = PR.d;
     if (PR.live) { w.innerHTML = prLiveHtml(); return; }
     if (PR.result) { w.innerHTML = prResultHtml(PR.result); return; }
-    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">Practice calls</h2><p class="sub" style="line-height:1.55;margin:0">Take a 1–3 minute call from an AI customer, then get an instant debrief on the 5-step call flow. Use your computer’s mic and speakers (a headset works best). Practice calls are saved here so you can see progress over time; they never count toward real QA scores. <b>Pilot</b> — only a few people can see this tab.</p>' +
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">Practice calls</h2><p class="sub" style="line-height:1.55;margin:0">Take a 1–3 minute call from an AI customer, then get an instant debrief on the 5-step call flow. A live checklist sits beside every call and nudges you if a step gets missed. Use your computer’s mic and speakers (a headset works best). Practice calls are saved here so you can see progress over time; they never count toward real QA scores. <b>Pilot</b> — only a few people can see this tab.</p>' +
       (!d.ready ? '<div class="banner" style="margin-top:10px"><b>Not set up yet.</b> ' + (CFG.staff ? 'Add the ElevenLabs key, then <button class="lnk" data-act="prsetup">set up the practice caller</button>.' : 'Opsis is finishing setup.') + '</div>' : '') +
       (LOCK ? '' : '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px;margin-top:12px" class="mut">Practice as<select id="prbrand" class="oq-field" style="min-width:230px">' + PR_BRANDS.map(function (b) { return '<option' + (PR.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>') +
       (PR.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(PR.err) + '</div>' : '') + '</div>';
@@ -2430,8 +2430,8 @@ export function mountOpsisQA(ROOT, cfg) {
     var hist = (d.sessions || []).filter(function (x) { return (x.status === 'scored' || x.status === 'failed') && (LOCK || !x.brand || x.brand === prBrandNow()); });
     var names = {}; (d.scenarios || []).forEach(function (s) { names[s.id] = s.title; });
     var showWho = hist.some(function (x) { return x.user_id !== d.me; });
-    var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + esc(d.teamLabel || (showWho ? 'Everyone in the pilot' : 'Your practice calls')) + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
-      hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
+    var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + esc(d.teamLabel || (showWho ? 'Everyone in the pilot' : 'Your practice calls')) + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right" title="How many checklist steps the live assist had to nudge during the call">Nudges</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
+      hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td class="num" style="text-align:right">' + (x.assist_nudges == null ? '<span class="mut">—</span>' : x.assist_nudges) + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
     w.innerHTML = intro + cards + htbl;
     var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; drawPractice(); });
   }
@@ -2440,11 +2440,47 @@ export function mountOpsisQA(ROOT, cfg) {
     var lines = L.lines.slice(-14).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#E6F0EA;color:#14302A' : 'background:#F3F1EC;color:#1C2421') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You' : 'Customer') + '</b>' + esc(m.text) + '</span></div>'; }).join('');
     if (L.state === 'ringing') return '<div class="oq-card" style="text-align:center;padding:40px 20px"><div class="mut" style="font-size:12px">Incoming call · ' + esc(short(L.brand)) + ' line</div><div style="font-size:42px;margin:14px 0;display:inline-block;animation:prring 1s ease-in-out infinite">☎</div><h2 class="ttl" style="margin:0">' + esc(sc.title) + '</h2><p class="mut" style="margin:8px 0 18px">Answer like a live call — greet the caller first.</p><div style="display:flex;gap:10px;justify-content:center"><button class="sel" data-act="pranswer" style="background:#2F7D5B;border-color:#2F7D5B;color:#fff;padding:10px 26px;font-size:15px"' + (L.ready ? '' : ' disabled') + '>' + (L.ready ? 'Answer' : 'Getting ready…') + '</button><button class="sel" data-act="prcancel">Cancel</button></div><style>@keyframes prring{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}75%{transform:rotate(14deg)}}</style></div>';
     var st = L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Scoring your call…' : (L.mode === 'speaking' ? 'Customer is talking…' : 'Listening — go ahead');
-    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Practice call · ' + esc(short(L.brand)) + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(sc.title) + '</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="prclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' +
+    return '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1 1 440px;min-width:0">' + '<div class="oq-card" style="margin:0"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Practice call · ' + esc(short(L.brand)) + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(sc.title) + '</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="prclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' +
       (L.state === 'ending' ? '' : '<button class="sel" data-act="prend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">End call</button>') + '</div></div>' +
       '<div style="margin-top:12px;display:flex;align-items:center;gap:10px"><span style="width:12px;height:12px;border-radius:999px;background:' + (L.mode === 'speaking' ? '#E0662A' : '#2F7D5B') + ';box-shadow:0 0 0 6px ' + (L.mode === 'speaking' ? '#FCEBDD' : '#E6F0EA') + '"></span><b>' + st + '</b></div>' +
       '<div class="banner" style="margin-top:12px;background:#FAF8F4;border-color:#E8E4DC;color:#3B4541;font-size:12.5px"><b>Your goal:</b> ' + esc(sc.goal) + '</div>' +
-      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + (lines || '<div class="mut">You\u2019re connected \u2014 greet the caller.</div>') + '</div></div>';
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + (lines || '<div class="mut">You\u2019re connected \u2014 greet the caller.</div>') + '</div></div></div>' + prAssistHtml(L) + '</div>';
+  }
+  // ---------- Live agent assist on practice calls (Becky 11/24) ----------
+  // Always on. After each line of the call, practice-audio (op assist) checks what the CSR has covered so far;
+  // items the call has reached but the CSR hasn't covered turn amber with a "say it like this" line.
+  // Scored the same as any practice call; what it nudged is saved on the session (op assist_save).
+  var PR_ASSIST = [['greet', 'Greeting: thank them, brand, your name'], ['name', 'Caller’s name'], ['address', 'Service address + zip'], ['phone', 'Best phone number'], ['email', 'Email address'], ['home', 'Home or business'], ['approver', 'Who approves the work'], ['expert', 'Technician is the expert'], ['offer', 'Offer a specific time'], ['ask', 'Ask to book'], ['card', 'Card to hold the appointment'], ['recap', 'Recap + thank them']];
+  var PR_ASSIST_LBL = {}; PR_ASSIST.forEach(function (x) { PR_ASSIST_LBL[x[0]] = x[1]; });
+  function prAssistKick(L) { if (!L || !L.sid || L.state !== 'live') return; clearTimeout(L.aT); L.aT = setTimeout(function () { prAssistRun(L); }, 900); }
+  function prAssistRun(L) {
+    var A = L.assist; if (!A || PR.live !== L || L.state !== 'live') return;
+    if (A.busy) { A.again = true; return; }
+    A.busy = true;
+    var lines = L.lines.map(function (m) { return { role: m.me ? 'CSR' : 'Customer', text: m.text }; });
+    prTeam({ op: 'assist', session_id: L.sid, lines: lines }).then(function (j) {
+      if (!j || !j.items) return; A.items = j.items; A.checks++;
+      Object.keys(j.items).forEach(function (k) { if (j.items[k].due && !(k in A.nudged)) A.nudged[k] = L.secs || 0; });
+      if (PR.live === L && L.state === 'live') drawPractice();
+    }).catch(function () { }).then(function () { A.busy = false; if (A.again && PR.live === L && L.state === 'live') { A.again = false; prAssistRun(L); } });
+  }
+  function prAssistSave(L) {
+    var A = L && L.assist; if (!A || !L.sid || !A.checks) return;
+    var fin = {}; if (A.items) Object.keys(A.items).forEach(function (k) { fin[k] = A.items[k].s; });
+    prTeam({ op: 'assist_save', session_id: L.sid, assist: { checks: A.checks, nudged: A.nudged, final: fin } }).catch(function () { });
+  }
+  function prAssistHtml(L) {
+    var A = L.assist || {}, it = A.items;
+    var rows = PR_ASSIST.map(function (x) {
+      var k = x[0], v = it && it[k]; if (v && v.s === 'na') return '';
+      var done = v && v.s === 'done', due = v && v.due;
+      var ic = done ? '<span style="color:#2F7D5B;font-weight:700">✓</span>' : due ? '<span style="color:#C2410C;font-weight:700">!</span>' : '<span style="color:#B8B2A7">○</span>';
+      return '<div style="padding:6px 8px;border-radius:8px;margin:2px 0;' + (due ? 'background:#FFF4E5;border:1px solid #F5C98B' : '') + '"><div style="display:flex;gap:8px;align-items:baseline;font-size:13px;' + (done ? 'color:#56605B' : due ? 'color:#8A3B0E;font-weight:600' : '') + '"><span style="width:14px;text-align:center;flex-shrink:0">' + ic + '</span><span>' + esc(x[1]) + '</span></div>' +
+        (due && v.say ? '<div style="margin:4px 0 0 22px;font-size:12.5px;line-height:1.4;color:#2B3A67;background:#EEF2FB;border-radius:6px;padding:5px 8px">“' + esc(v.say) + '”</div>' : '') + '</div>';
+    }).join('');
+    var left = it ? PR_ASSIST.filter(function (x) { var v = it[x[0]]; return v && v.s === 'todo'; }).length : null;
+    return '<div class="oq-card" style="margin:0;flex:0 1 310px;min-width:260px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 class="ttl" style="margin:0;font-size:15px">Call checklist</h2><span class="mut" style="font-size:11.5px">' + (A.busy ? 'Listening…' : it ? (left ? left + ' to go' : 'All covered') : 'Live assist') + '</span></div>' +
+      '<p class="mut" style="font-size:11.5px;margin:2px 0 8px;line-height:1.4">Ticks off as you cover each step. Amber means the call is past where it should have happened.</p>' + rows + '</div>';
   }
   function prResultHtml(r) {
     if (r.status === 'failed') return '<div class="oq-card"><h2 class="ttl">Practice call</h2><p>' + esc(r.error || 'That call couldn’t be scored.') + '</p><div style="display:flex;gap:8px;margin-top:10px"><button class="sel btnd" data-act="prback">Back to practice</button></div></div>';
@@ -2457,6 +2493,7 @@ export function mountOpsisQA(ROOT, cfg) {
     return '<div class="oq-card"><div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + (sc == null ? '—' : Math.round(sc)) + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="mut" style="font-size:12px">' + esc(r.title || 'Practice call') + ' · ' + esc(short(r.brand || '')) + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + ' · ' + (r.booked ? 'Booked' : 'Not booked') + '</div><div style="font-size:16px;font-weight:600;margin-top:4px;line-height:1.4">' + esc(D.headline || '') + '</div></div></div>' +
       '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">What went well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.went_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">Try this next time</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.try_next) + '</ul></div></div>' +
+      (function () { var n = r.assist && r.assist.nudged ? Object.keys(r.assist.nudged) : []; return n.length ? '<div class="banner" style="margin-top:14px;background:#FFF4E5;border-color:#F5C98B;color:#8A3B0E"><b>Live checklist nudged you on:</b> ' + n.map(function (k) { return esc(PR_ASSIST_LBL[k] || k); }).join(' · ') + '</div>' : (r.assist && r.assist.checks ? '<div class="banner" style="margin-top:14px"><b>Live checklist:</b> no nudges needed on this call.</div>' : ''); })() +
       (r.checking ? '<div class="banner" style="margin-top:14px"><b>Double-checking what you said…</b> We’re listening to the recording again so names and the brand are heard right. Your score may update in a few seconds.</div>' : '') +
       (D.say_this ? '<div class="banner" style="margin-top:14px;background:#EEF2FB;border-color:#D5DDF3;color:#2B3A67"><b>Say it like this:</b> “' + esc(D.say_this) + '”</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (r.scenario_id ? '<button class="sel btnd" data-act="prstart" data-id="' + esc(r.scenario_id) + '">↻ Try it again</button>' : '') + '<button class="sel" data-act="prback">Pick another scenario</button></div></div>' +
@@ -2515,7 +2552,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var sc = ((PR.d && PR.d.scenarios) || []).filter(function (s) { return s.id === id; })[0]; if (!sc || PR.busy) return;
     PR.busy = true; PR.err = null; PR.result = null;
     var brand = LOCK || PR.brand || 'Quality Overhead Door';
-    var L = PR.live = { sc: sc, brand: brand, lines: [], state: 'ringing', mode: 'listening', secs: 0, conv: null, sid: null, ready: false };
+    var L = PR.live = { sc: sc, brand: brand, lines: [], state: 'ringing', mode: 'listening', secs: 0, conv: null, sid: null, ready: false, assist: { items: null, checks: 0, nudged: {}, busy: false, again: false } };
     drawPractice(); prRing(true);
     L.prep = Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can\u2019t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
       .then(function (rr) { L.st = rr[0]; L.SDK = rr[1]; L.sid = rr[0].session_id; L.ready = true; if (PR.live === L && L.state === 'ringing') drawPractice(); })
@@ -2529,7 +2566,7 @@ export function mountOpsisQA(ROOT, cfg) {
     prRing(false); clearTimeout(L.giveUp); L.state = 'connecting'; drawPractice();
     L.SDK.Conversation.startSession({ signedUrl: L.st.signed_url, connectionType: 'websocket', dynamicVariables: L.st.dynamic_variables,
       onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('prclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 300) prEnd(); }, 1000); drawPractice(); },
-      onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (PR.live === L) drawPractice(); },
+      onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (PR.live === L) { drawPractice(); prAssistKick(L); } },
       onModeChange: function (m) { L.mode = (m && m.mode) || m; if (PR.live === L) drawPractice(); },
       onError: function (e) { console.warn('practice', e); },
       onDisconnect: function () { if (PR.live === L) prFinish(); }
@@ -2537,13 +2574,14 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function prEnd() { var L = PR.live; if (!L || L.state === 'ending') return; if (L.conv && L.conv.endSession) { L.conv.endSession(); } else prFinish(); }
   function prFinish() {
-    var L = PR.live; if (!L || L.state === 'ending') return; L.state = 'ending'; if (L.timer) clearInterval(L.timer); drawPractice();
+    var L = PR.live; if (!L || L.state === 'ending') return; L.state = 'ending'; if (L.timer) clearInterval(L.timer); clearTimeout(L.aT); drawPractice();
+    prAssistSave(L);
     var cid = null; try { cid = L.conv && L.conv.getId ? L.conv.getId() : null; } catch (e) { }
     if (!L.sid || !cid) { PR.live = null; PR.busy = false; PR.err = 'The call ended before it connected. Check your mic and try again.'; drawPractice(); return; }
     var tries = 0, go = function (op) {
       api(op === 'finish' ? { action: 'practice', op: 'finish', session_id: L.sid, conversation_id: cid } : { action: 'practice', op: 'session', session_id: L.sid }).then(function (r) {
         if (r.status === 'processing' && tries++ < 12) { setTimeout(function () { go('finish'); }, 4000); return; }
-        r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; drawPractice(); // keep the old list (Back is instant); refresh it below (Becky 11/18)
+        r.title = L.sc.title; r.scenario_id = L.sc.id; r.assist = { nudged: (L.assist && L.assist.nudged) || {} }; PR.live = null; PR.busy = false; PR.result = r; drawPractice(); // keep the old list (Back is instant); refresh it below (Becky 11/18)
         if (r.status === 'scored') { r.checking = true; prRecheck(r.session_id, 0); }
         prList().then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
       }).catch(function (e) { PR.live = null; PR.busy = false; PR.err = e.message; drawPractice(); });
