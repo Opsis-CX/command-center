@@ -2589,6 +2589,31 @@ export function mountOpsisQA(ROOT, cfg) {
     return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-redo', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach Redo.'); return j; }); });
   }
+  // Redo status by real call (11/25): { review_id: { id, orig, best, tries } } for the Coaching Hub and the call review.
+  var RMAP = null, RMAP_AT = 0;
+  function redoMapLoad() {
+    if (RMAP && Date.now() - RMAP_AT < 60000) return Promise.resolve(RMAP);
+    return Promise.all([redoApi({ op: 'list' }), prTeam({ op: 'list' }).catch(function () { return null; })]).then(function (rr) {
+      var m = {}, ss = (rr[1] && rr[1].sessions) || [];
+      ((rr[0] && rr[0].redos) || []).forEach(function (r) {
+        var mine = ss.filter(function (x) { return x.scenario_id === r.id && x.status === 'scored' && x.score_pct != null; });
+        var own = r.for_user_id ? mine.filter(function (x) { return x.user_id === r.for_user_id; }) : [];
+        var use = own.length ? own : mine;
+        m[r.source_review_id] = { id: r.id, orig: r.original_score, tries: use.length, best: use.reduce(function (b, x) { return b == null || x.score_pct > b ? x.score_pct : b; }, null), csrTried: own.length > 0 };
+      });
+      RMAP = m; RMAP_AT = Date.now(); return m;
+    }).catch(function () { RMAP = RMAP || {}; RMAP_AT = Date.now(); return RMAP; });
+  }
+  function redoCell(c) {
+    var r = RMAP && RMAP[c.id];
+    if (r) {
+      if (r.best == null) return '<button class="pill" data-act="hubredo" style="border:none;cursor:pointer;background:#EEF2FB;color:#2B3A67;white-space:nowrap" title="A practice redo of this call is ready but hasn’t been taken yet">↻ Redo ready</button>';
+      var dd = r.orig != null ? Math.round(r.best - r.orig) : null;
+      return '<button class="pill" data-act="hubredo" style="border:none;cursor:pointer;white-space:nowrap;' + (dd == null || dd >= 0 ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FFF4E5;color:#8A3B0E') + '" title="Best score when this call was redone in Practice (' + r.tries + ' tr' + (r.tries === 1 ? 'y' : 'ies') + (r.csrTried ? '' : ', not by the CSR yet') + ')">↻ Redo ' + Math.round(r.best) + '%' + (dd == null ? '' : ' ' + (dd >= 0 ? '▲' : '▼') + Math.abs(dd)) + '</button>';
+    }
+    if (PR.allowed && CAN_EDIT && !CFG.csrSelf && c.score != null) return '<button class="sel" data-act="redocall" data-id="' + esc(c.id) + '" style="padding:3px 10px;font-size:12px;min-height:0;white-space:nowrap" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo</button>';
+    return '';
+  }
   // Scenarios come from the portal function; history comes from practice-audio so RMs see their brand, GMs their location, admins everyone.
   // Second listen (Becky 11/18): re-transcribe the recording with a more accurate model primed with brand and
   // people names, then re-score. The live transcript often mishears names ("Quality Open Door").
@@ -4682,6 +4707,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function paintHome(d) {
     var el = $('hubh'); if (!el) return;
+    if (!SELF && (d.calls || []).length && (!RMAP || Date.now() - RMAP_AT > 60000)) { HUB.lastD = d; redoMapLoad().then(function () { if (HUB.lastD === d && $('hubh')) paintHome(d); }); }
     var f = d.focus, sc = d.score, mg = d.can_manage && !SELF, first = d.csr.first;
     var h = hubHeader(d.csr.name, d.week_label + (SELF ? '' : ' · ' + d.csr.brand_short));
     if (d.past) h += '<div class="banner" style="background:#EEF2FB;color:#2B3A67">Looking back at the week of ' + esc(d.week_label.replace(/^Week of /, '')) + '. Focus, picks and kudos can only be changed for this week. <button class="lnk" data-hubweekreset="1">Back to this week</button></div>';
@@ -4744,7 +4770,7 @@ export function mountOpsisQA(ROOT, cfg) {
         : '<p class="mut" style="font-size:13px;margin:0">' + (SELF ? 'When your manager spots a great call, their kudos show up here.' : 'No kudos yet. ') + '</p>' + (mg ? '<button class="sel" data-hubact="kudos" style="align-self:flex-start">♥ Send ' + esc(first) + ' kudos</button>' : '')) + '</section></div>';
     if (mg && (d.questions || []).length) h += '<section class="oq-card" aria-label="Questions" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2 class="ttl" style="font-size:16px">What ' + esc(first) + ' asked the coach</h2><button class="more" data-hubqcsr="' + d.csr.id + '">See all →</button></div>' +
       d.questions.map(function (q) { return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line2)"><span class="pill" style="background:' + (q.mode === 'brand' ? '#EEF2FB;color:#2B3A67' : '#F3F1EC;color:#3B4541') + ';flex-shrink:0">' + esc(q.topic && q.topic !== 'Other' ? q.topic : 'How-to & process') + '</span><span style="flex:1;font-size:13.5px;line-height:1.45">' + esc(q.question) + (q.by_manager ? ' <span class="mut" style="font-size:12px">(asked by a manager)</span>' : '') + '</span><span class="mut" style="font-size:12px;white-space:nowrap">' + fwhen(q.at) + '</span></div>'; }).join('') + '</section>';
-    if (!SELF && (d.calls || []).length) h += '<section class="oq-card" aria-label="Calls this week"><h2 class="ttl" style="font-size:16px">' + (d.past ? 'Calls that week' : 'Calls this week') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + d.calls.length + ' scored</span></h2>' + d.calls.slice(0, 25).map(function (c) { return '<button class="click" data-call="' + esc(c.id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:13px"><span class="mut num" style="width:58px">' + fdate(c.d) + '</span><span class="num" style="width:40px;font-weight:600">' + (c.score == null ? '—' : c.score + '%') + '</span><span style="flex:1">' + esc(c.outcome || '') + '</span>' + (c.opp ? '<span class="pill" style="' + (c.ab ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FCEBDD;color:#A8441A') + '">' + (c.ab ? 'Asked to book' : 'Didn’t ask') + '</span>' : '') + '</button>'; }).join('') + (d.calls.length > 25 ? '<p class="mut" style="font-size:12px;margin-top:8px">Showing the latest 25 of ' + d.calls.length + '.</p>' : '') + '</section>';
+    if (!SELF && (d.calls || []).length) h += '<section class="oq-card" aria-label="Calls this week"><h2 class="ttl" style="font-size:16px">' + (d.past ? 'Calls that week' : 'Calls this week') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + d.calls.length + ' scored</span></h2>' + d.calls.slice(0, 25).map(function (c) { return '<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line2)"><button class="click" data-call="' + esc(c.id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;flex:1;min-width:0;display:flex;gap:12px;align-items:center;padding:8px 0;font-size:13px"><span class="mut num" style="width:58px">' + fdate(c.d) + '</span><span class="num" style="width:40px;font-weight:600">' + (c.score == null ? '—' : c.score + '%') + '</span><span style="flex:1">' + esc(c.outcome || '') + '</span>' + (c.opp ? '<span class="pill" style="' + (c.ab ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FCEBDD;color:#A8441A') + '">' + (c.ab ? 'Asked to book' : 'Didn’t ask') + '</span>' : '') + '</button><span style="flex-shrink:0;min-width:' + (PR.allowed || RMAP ? 108 : 0) + 'px;text-align:right">' + redoCell(c) + '</span></div>'; }).join('') + (d.calls.length > 25 ? '<p class="mut" style="font-size:12px;margin-top:8px">Showing the latest 25 of ' + d.calls.length + '.</p>' : '') + '</section>';
     el.innerHTML = h;
   }
   function improvedCard(list, brand) {
@@ -5501,7 +5527,7 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     h += (noq ? '</details>' : '</div>') + trCard(c) + '<div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
-      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + (PR.allowed && CAN_EDIT && !CFG.csrSelf && c.agent && c.score != null ? '<button class="sel" data-act="redocall" data-id="' + c.id + '" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo this call</button>' : '') + '</div>';
+      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + ((RMAP && RMAP[c.id]) ? redoCell(c) : PR.allowed && CAN_EDIT && !CFG.csrSelf && c.agent && c.score != null ? '<button class="sel" data-act="redocall" data-id="' + c.id + '" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo this call</button>' : '') + '</div>';
     var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
     $('cd').innerHTML = h; bindTr();
     if (keep && $('cnbody')) $('cnbody').value = keep;
@@ -6623,8 +6649,11 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'prcancel') { prCancel(); }
       else if (a === 'prback') { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); }
       else if (a === 'prview') { prView(d.id); }
+      else if (a === 'hubredo') { closeLayer(); PR.result = null; go('practice'); }
       else if (a === 'redocall') { el.disabled = true; el.textContent = 'Building the redo…';
-        redoApi({ op: 'create', review_id: d.id }).then(function (r) { toast(r.existing ? 'This call already has a redo. Opening Practice.' : 'Redo ready in Practice: ' + (r.title || '')); PR.result = null; PR.d = null; closeLayer(); go('practice'); })
+        redoApi({ op: 'create', review_id: d.id }).then(function (r) { RMAP = null; PR.d = null;
+          if (S.view === 'hub' && !S.callId) { toast('Redo ready in Practice: ' + (r.title || '')); render(); return; }
+          toast(r.existing ? 'This call already has a redo. Opening Practice.' : 'Redo ready in Practice: ' + (r.title || '')); PR.result = null; closeLayer(); go('practice'); })
           .catch(function (e2) { el.disabled = false; el.textContent = '↻ Redo this call'; toast(e2.message || 'Couldn’t build the redo.'); }); }
       else if (a === 'vxprev') {
         var vs = el.parentNode && el.parentNode.querySelector('select'), vid = vs && (VX_DEF[vs.value] || vs.value), vv = (VX.list || []).filter(function (x) { return x.id === vid; })[0];
