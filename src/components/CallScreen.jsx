@@ -97,7 +97,8 @@ export default function CallScreen({
 
   const zips = useMemo(() => new Set((sc.zips || []).map(z => String(z).trim()).filter(Boolean)), [sc.zips])
   const dispo = dispositions.find(d => d.code === code)
-  const missingRequired = (sc.fields || []).filter(f => f.required && !String(fields[f.key] || '').trim())
+  // 11/25 (Becky): no customer-info fields on the call screen — the team books and enters customers in Acumatica
+  const missingRequired = []
   const cb = sc.callback_number || ctx.callback_number
 
   async function save() {
@@ -190,32 +191,8 @@ export default function CallScreen({
           )}
 
           {/* rules that aren't tied to a step, the booking link, and details to fill in */}
-          {(stepAlerts.some(x => x.at < 0) || sc.booking_url || sc.booking_label || (sc.fields || []).length > 0) && <div style={S.card}>
+          {stepAlerts.some(x => x.at < 0) && <div style={S.card}>
             {stepAlerts.filter(x => x.at < 0).map((x, i) => <Rule key={i} a={x.a} />)}
-            {(sc.booking_url || sc.booking_label) && (
-              <div style={{ marginTop: 10 }}>
-                {sc.booking_url
-                  ? <a href={mergeText(sc.booking_url, mctx)} target="_blank" rel="noreferrer" style={S.bookBtn}>{sc.booking_label || 'Open booking form'} ↗</a>
-                  : <span style={{ ...S.bookBtn, opacity: 0.55, cursor: 'default' }} title="Add the booking link on the Scripts page">{sc.booking_label || 'Open booking form'} (no link yet)</span>}
-              </div>
-            )}
-            {(sc.fields || []).length > 0 && (
-              <>
-                <div style={{ ...S.cardTitle, marginTop: 10 }}>Details <span style={S.cardHint}>saved with the disposition</span></div>
-                <div style={S.fieldGrid}>
-                  {sc.fields.map(f => (
-                    <label key={f.key} style={S.fieldLbl}>
-                      {f.label}{f.required && <span style={{ color: 'light-dark(#dc2626, #e76c6c)' }}> *</span>}
-                      {f.type === 'select'
-                        ? <select value={fields[f.key] || ''} onChange={e => setFields(x => ({ ...x, [f.key]: e.target.value }))} style={S.input}>
-                            <option value="">—</option>{(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        : <input value={fields[f.key] || ''} onChange={e => setFields(x => ({ ...x, [f.key]: e.target.value }))} style={S.input} />}
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
           </div>}
 
           {/* the whole script: the step you're on is open and large, the rest are one quiet line (11/25 cleanup) */}
@@ -320,19 +297,6 @@ export default function CallScreen({
 
         {/* ================= right column ================= */}
         <div className="cs-side" style={{ display: 'grid', gap: 12, alignContent: 'start', minWidth: 0 }}>
-
-          {/* contact */}
-          <div style={S.card}>
-            <div style={S.cardTitle}>Copy to other systems</div>
-            {[['Phone', contact?.phone ? prettyPhone(contact.phone) : ''], ['Email', contact?.email || ''], ['Address', contact?.address || '']].map(([l, v]) => (
-              <div key={l} style={S.copyRow}>
-                <span style={S.ctxLabel}>{l}</span>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13.5 }}>{v || (contact ? '—' : '')}</span>
-                {v && <button onClick={() => copy(v)} style={S.copyBtn}>Copy</button>}
-              </div>
-            ))}
-            {!contact && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>{contactNote}</div>}
-          </div>
 
           {/* zip lookup */}
           {false && zips.size > 0 && (
