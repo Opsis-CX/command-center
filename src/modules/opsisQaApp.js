@@ -145,6 +145,8 @@ export function mountOpsisQA(ROOT, cfg) {
   function loadFocus(brand, agent) { return api({ action: 'focus', start: S.start, end: S.end, brand: brand || null, agent: agent || null }); }
 
   var KNOWN = { brands: [], agents: [] };
+  // brands shown as checked in the picker: [] while the user has cleared everything (picker open), else the filter (empty filter = every brand)
+  function brandSel() { if (S.brandsNone && S.pop === 'brands' && !S.brands.length) return []; if (S.brands.length) return S.brands.slice(); if (S.view === 'brand' && S.brand) return [S.brand]; return KNOWN.brands.slice(); }
 
   // ---------------- tiny helpers ----------------
   function toast(m) { var t = $('toast'); if (!t) return; t.textContent = m; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { t.style.display = 'none'; }, 2600); }
@@ -301,8 +303,11 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.pop === 'brands') {
       var list = KNOWN.brands.length ? KNOWN.brands : [];
       return '<div class="pop" style="right:150px;top:52px"><div class="cap" style="margin-bottom:8px">Brands</div>' +
-        '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px;font-weight:600"><input type="checkbox" data-allbrands ' + (S.brands.length || (S.view === 'brand' && S.brand) ? '' : 'checked') + '> All brands</label>' +
-        list.map(function (b) { return '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px"><input type="checkbox" data-brandcb="' + esc(b) + '" ' + (S.brands.indexOf(b) >= 0 || (S.view === 'brand' && !S.brands.length && b === S.brand) ? 'checked' : '') + '> ' + esc(b) + '</label>'; }).join('') +
+        // Excel-style picker (Rob 11/25): "All brands" checks every brand; uncheck one to drop it, or uncheck All to clear and pick
+        (function () { var sel = brandSel(), allOn = list.length && sel.length === list.length;
+          return '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px;font-weight:600"><input type="checkbox" data-allbrands ' + (allOn ? 'checked' : '') + '> All brands</label>' +
+            list.map(function (b) { return '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px"><input type="checkbox" data-brandcb="' + esc(b) + '" ' + (sel.indexOf(b) >= 0 ? 'checked' : '') + '> ' + esc(b) + '</label>'; }).join('') +
+            (list.length && !sel.length ? '<div class="mut" style="font-size:12px;padding:4px">Pick at least one brand. Showing all brands until you do.</div>' : ''); })() +
         (list.length ? '' : '<div class="mut">Loading…</div>') + '<button class="sel btnd" data-act="closepop" style="margin-top:8px;width:100%;justify-content:center">Done</button></div>';
     }
     return '';
@@ -6421,10 +6426,13 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!el) return;
     var d = el.dataset;
     if (d.brandcb !== undefined || d.allbrands !== undefined) {
-      if (d.allbrands !== undefined) S.brands = [];
-      else { var i = S.brands.indexOf(d.brandcb); if (i >= 0) S.brands.splice(i, 1); else S.brands.push(d.brandcb); }
-      // on a brand's page the picker moves you: one brand = that brand's page, anything else = the Brands table (2026-10-26)
-      if (S.view === 'brand') { if (S.brands.length === 1) S.brand = S.brands[0]; else { S.pop = null; go('brands'); return; } }
+      // Excel-style (Rob 11/25): All on → every brand checked; uncheck one = all but that one; uncheck All = clear, then pick
+      var bsel = brandSel(), ball = KNOWN.brands.length;
+      if (d.allbrands !== undefined) { if (d.allbrands !== '1' && ball && bsel.length === ball) bsel = []; else bsel = KNOWN.brands.slice(); if (d.allbrands === '1') S.pop = null; }
+      else { var i = bsel.indexOf(d.brandcb); if (i >= 0) bsel.splice(i, 1); else bsel.push(d.brandcb); }
+      S.brandsNone = !bsel.length; S.brands = (!bsel.length || (ball && bsel.length >= ball)) ? [] : bsel;
+      // on a brand's page the picker moves you: one brand = that brand's page, none = wait for a pick, anything else = the Brands table (2026-10-26)
+      if (S.view === 'brand') { if (S.brands.length === 1) S.brand = S.brands[0]; else if (!S.brandsNone) { S.pop = null; go('brands'); return; } }
       render(); return;
     }
     if (d.close && t !== el && !t.closest('button[data-close]') && t.closest('.drawer')) { return; /* inside drawer: let forms, inputs and links behave normally */ }
@@ -6449,7 +6457,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (d.callsfor) { if (d.callsfor === 'csr') openCalls({}, S.agent); else { S.brands = [S.brand]; openCalls({}); } }
     else if (d.ask) { ask(d.ask); }
     else if (d.q !== undefined || d.outcome) { openCalls({ q: d.q || '', outcome: d.outcome || null }); }
-    else if (d.pop) { S.pop = S.pop === d.pop ? null : d.pop; render(); if (S.pop === 'brands') ensureBrands(); }
+    else if (d.pop) { S.pop = S.pop === d.pop ? null : d.pop; S.brandsNone = false; render(); if (S.pop === 'brands') ensureBrands(); }
     else if (d.range) { S.range = d.range; S.pop = null; cache = {}; applyRange(); render(); }
     else if (d.bsort) { S.brandDir = S.brandSort === d.bsort ? -(S.brandDir || 1) : 1; S.brandSort = d.bsort; render(); }
     else if (d.csort) { S.csrDir = S.csrSort === d.csort ? -(S.csrDir || 1) : 1; S.csrSort = d.csort; render(); }
