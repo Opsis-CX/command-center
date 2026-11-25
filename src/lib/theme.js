@@ -12,8 +12,15 @@ export function getTheme() {
   try { return localStorage.getItem(KEY) || 'system' } catch { return 'system' }
 }
 
+// 11/25: the GarageCo site (garageco.opsiscx.com) is light-only, including /dialer and the phone.
+// CSRs on dark-mode computers got a dark page with no way to switch it.
+function lightOnlyHost() {
+  try { return window.location.hostname.toLowerCase().startsWith('garageco.') } catch { return false }
+}
+
 export function applyTheme(theme) {
   const root = document.documentElement
+  if (lightOnlyHost()) theme = 'light'
   if (theme === 'light' || theme === 'dark') {
     root.setAttribute('data-theme', theme)
   } else {
