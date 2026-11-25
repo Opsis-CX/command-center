@@ -75,6 +75,7 @@ import AppHeader from './components/AppHeader'
 import { RefreshProvider, RefreshBoundary } from './lib/refresh'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import Seasonal from './components/Seasonal'
+import PortalThanksgiving from './components/PortalThanksgiving'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
@@ -232,7 +233,8 @@ export default function App() {
 const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing', 'support'].includes(String(appRole || '').toLowerCase())
   if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
     // ?client=<id> picks the portal (Portals ▾ menu); no param = GarageCo, as before.
-    return <StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={OPSIS_CX_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} />
+    // the Thanksgiving banner shows here too, so staff can see exactly what the client portal shows
+    return <><StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={OPSIS_CX_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} /><PortalThanksgiving /></>
   }
   // External client-portal login: a branded, single-purpose shell that shows ONLY
   // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
@@ -360,8 +362,8 @@ function ClientPortal({ session, clientId }) {
 
   const newView = myV2 ?? !!brand.portal_v2
   if (newView && !classic) {
-    return <OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
-      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} />
+    return <><OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
+      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} /><PortalThanksgiving /></>
   }
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || brand.name || 'Call QA'
@@ -370,6 +372,7 @@ function ClientPortal({ session, clientId }) {
   )
   return (
     <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
+      <PortalThanksgiving />
       <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {brand.portal_logo_url
