@@ -18,6 +18,9 @@ const mmss = s => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(
 const ago = t => { const s = Math.round((Date.now() - new Date(t).getTime()) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(t).toLocaleDateString() }
 const INTENT = { new_service: 'New door / install', repair: 'Repair', existing_customer: 'Existing customer', price_shopping: 'Price shopping', not_a_customer: 'Not a customer', other: 'Other' }
 
+// My phone page (AgentPhone, 11/25) shows the same live call full-page, so this floating panel hides while it's open.
+export const PHONE_PAGE = { on: false }
+
 export default function CxCallPanel() {
   const voice = useVoice()
   const [mine, setMine] = useState(null)           // csr_cx_my_call
@@ -84,7 +87,7 @@ export default function CxCallPanel() {
   const wrap = useMemo(() => [...(live?.assist || [])].reverse().find(a => a.kind === 'wrap')?.payload || i?.ai_wrap || null, [live, i])
   const liveNow = i && ['connected', 'held'].includes(i.status)
 
-  if (!voice || !iid || !i) return null
+  if (!voice || !iid || !i || PHONE_PAGE.on) return null
   if (!liveNow && !ended) return null
 
   async function act(action, extra = {}, label = action) {
@@ -276,7 +279,7 @@ export default function CxCallPanel() {
   )
 }
 
-function TransferBox({ iid, onDone, onErr, inbound }) {
+export function TransferBox({ iid, onDone, onErr, inbound }) {
   const [dir, setDir] = useState(null)
   const [type, setType] = useState('warm')
   const [num, setNum] = useState('')

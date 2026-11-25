@@ -164,8 +164,10 @@ const NAV_ONE = [
   { group: '', items: [
     { type: 'link', to: '/overview', label: 'Overview', ic: '📊', perm: 'dashboard', tag: 'n' },
     { type: 'link', to: '/dashboard', label: 'Staffing dashboard', ic: '📋', perm: 'dashboard', tag: 'cc' },
+    { type: 'link', to: '/my-phone', label: 'My phone', ic: '🎧', perm: '__phone', tag: 'b' },
     { type: 'link', to: '/profile', label: 'My Profile', ic: '👤', perm: null, tag: 'cc' },
     { type: 'link', to: '/w/insights', label: 'Insights', ic: '💡', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/overview', label: 'Client dashboard', ic: '🏠', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/reviews', label: 'Business reviews', ic: '🗓️', perm: '__portal', tag: 'b' },
   ] },
   { group: 'Performance', items: [
@@ -173,6 +175,14 @@ const NAV_ONE = [
     { type: 'link', to: '/w/phone', label: 'Phone stats', ic: '☎️', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/csrs', label: 'Agents', ic: '🧑‍💼', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/calls', label: 'Call reviews', ic: '🎧', perm: '__portal', tag: 'p' },
+    { type: 'section', key: 'client-perf', label: 'More client numbers', ic: '📊', tag: 'p', children: [
+      { to: '/w/brands', label: 'Brands', perm: '__portal' },
+      { to: '/w/callbacks', label: 'Callbacks', perm: '__portal' },
+      { to: '/w/cardcap', label: 'Card capture', perm: '__portal' },
+      { to: '/w/pricetalk', label: 'Price talk', perm: '__portal' },
+      { to: '/w/money', label: 'Revenue', perm: '__portal' },
+      { to: '/w/leadtime', label: 'Booking lead time', perm: '__portal' },
+    ] },
     { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard', tag: 'cc' },
     { type: 'link', to: '/my-call-reviews', label: 'My call reviews', ic: '🎧', perm: 'call_reviews.mine', tag: 'cc' },
   ] },
@@ -180,6 +190,7 @@ const NAV_ONE = [
     { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews', tag: 'b' },
     { type: 'link', to: '/w/calib', label: 'Calibration', ic: '⚖️', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/hub', label: 'Coaching Hub', ic: '🏅', perm: '__portal', tag: 'b' },
+    { type: 'link', to: '/w/coach', label: 'Coach view', ic: '🧭', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching', tag: 'cc' },
     { type: 'link', to: '/w/practice', label: 'Practice calls', ic: '🎙️', perm: '__portal', tag: 'b' },
     { type: 'link', to: '/quality', label: 'Quality audits', ic: '✅', perm: 'quality_audit.call_reviews', tag: 'cc' },
@@ -191,7 +202,7 @@ const NAV_ONE = [
     ] },
   ] },
   { group: 'Phone & AI', items: [
-    { type: 'link', to: '/phone', label: 'Phone', ic: '📞', perm: '__caller', tag: 'b' },
+    { type: 'link', to: '/phone', label: 'Team directory', ic: '📞', perm: '__caller', tag: 'cc' },
     { type: 'link', to: '/dialer', label: 'Dialer', ic: '☎️', perm: '__dialer', tag: 'cc' },
     { type: 'link', to: '/campaigns', label: 'Campaigns', ic: '📣', perm: '__caller', tag: 'cc' },
     { type: 'link', to: '/inbound', label: 'Inbound', ic: '📥', perm: '__caller', tag: 'cc' },
@@ -206,6 +217,7 @@ const NAV_ONE = [
     { type: 'link', to: '/workforce', label: 'Workforce (WFM)', ic: '📐', perm: '__caller', tag: 'b' },
     { type: 'link', to: '/w/intraday', label: 'Intraday', ic: '⏱️', perm: '__portal', tag: 'b' },
     { type: 'link', to: '/w/wallboard', label: 'Wallboard', ic: '🖥️', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/supervisor', label: 'Supervisor', ic: '👀', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/live', label: "Who's On", ic: '🟢', perm: 'live_status', tag: 'cc' },
     { type: 'link', to: '/time', label: 'Time', ic: '⏲️', perm: '__admin', tag: 'cc' },
   ] },
@@ -213,6 +225,7 @@ const NAV_ONE = [
     { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat', tag: 'cc' },
     { type: 'link', to: '/knowledge', label: 'Knowledge base', ic: '📚', perm: null, tag: 'b' },
     { type: 'link', to: '/projects', label: 'Projects', ic: '🗂️', perm: 'project_management', tag: 'cc' },
+    { type: 'link', to: '/w/tasks', label: 'Client follow-up tasks', ic: '✅', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring', tag: 'cc' },
     { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings', tag: 'cc' },
     { type: 'section', key: 'my-tools', label: 'My tools', ic: '🧰', tag: 'cc', children: [
@@ -241,6 +254,8 @@ const NAV_ONE = [
   { group: 'Setup', items: [
     { type: 'link', to: '/w/connect', label: 'Connect your calls', ic: '🔌', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/callflow', label: 'Call flow', ic: '🔀', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/phonesetup', label: 'Phone setup', ic: '☎️', perm: '__portal', tag: 'p' },
+    { type: 'link', to: '/w/kb', label: 'Client knowledge base', ic: '📚', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/qasettings', label: 'QA settings', ic: '🧾', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/team', label: 'Client team & access', ic: '👥', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/integrations', label: 'Integrations', ic: '🧩', perm: '__admin', tag: 'cc' },
@@ -322,11 +337,14 @@ export default function Sidebar({ open, onNavigate }) {
   //   '__dialer' → callers, plus agents assigned to at least one dialer campaign
   // Agents see the Dialer only once a manager puts them on a campaign.
   const [onCampaign, setOnCampaign] = useState(false)
+  const [inQueue, setInQueue] = useState(false)   // takes calls on an inbound line → My phone
   useEffect(() => {
     if (!user?.id) return
     let active = true
     supabase.from('dial_campaign_agents').select('campaign_id').eq('profile_id', user.id).limit(1)
       .then(({ data }) => { if (active) setOnCampaign(!!(data && data.length)) })
+    supabase.from('inbound_queue_members').select('line_id').eq('profile_id', user.id).limit(1)
+      .then(({ data }) => { if (active) setInQueue(!!(data && data.length)) }, () => {})
     return () => { active = false }
   }, [user?.id])
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
@@ -350,6 +368,7 @@ export default function Sidebar({ open, onNavigate }) {
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
     : p === '__portal' ? isPortalStaff(isAdmin, appRole)
+    : p === '__phone' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign || inQueue)
     : (!p || canAny(appRole, p))
   // One shared ordering now; both names resolve to the same array.
   const [oneMenu, setOneMenu] = useOneMenu()

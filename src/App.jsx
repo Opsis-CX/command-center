@@ -56,6 +56,7 @@ import OpsisQAPortal from './modules/OpsisQAPortal'
 // One-platform shell (Becky's merged mockup, 11/24): new Overview + client portal pages inside Command Center at /w/<page>
 import Overview from './modules/Overview'
 import WorkspacePage from './modules/WorkspacePage'
+import AgentPhone from './modules/AgentPhone'
 import { isPortalStaff } from './components/PortalMenu'
 import { useOneMenu } from './components/Sidebar'
 import HelpCenter from './modules/HelpCenter'
@@ -549,6 +550,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <Routes>
               <Route path="/" element={canSeeDashboard ? (oneMenu ? <Overview /> : <Dashboard />) : <Profile />} />
               <Route path="/dashboard" element={canSeeDashboard ? <Dashboard /> : <NoAccess />} />
+              <Route path="/my-phone" element={<AgentPhone />} />
               <Route path="/overview" element={canSeeDashboard ? <Overview /> : <NoAccess />} />
               <Route path="/w/:view" element={isPortalStaff(isAdmin, appRole) ? <WorkspacePage /> : <NoAccess />} />
               <Route path="/calendar" element={<Calendar />} />
@@ -667,7 +669,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
 }
 function titleFor(path) {
   const map = {
-    '/': 'Overview', '/dashboard': 'Dashboard', '/overview': 'Overview', '/certifications': 'Certifications',
+    '/': 'Overview', '/dashboard': 'Dashboard', '/my-phone': 'My phone', '/overview': 'Overview', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync', '/business-reviews': 'Business reviews',
