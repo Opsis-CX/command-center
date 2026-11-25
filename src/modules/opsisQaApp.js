@@ -782,17 +782,41 @@ export function mountOpsisQA(ROOT, cfg) {
   // Same playbook as the credit-card push: low QA and/or low booking rate = a 15–20 minute coaching session, plus a few
   // specific kudos. Thresholds are placeholders until Becky and Rob set the targets (COACH_T).
   var COACH_T = { qa: 80, book: 60, minOpps: 5 };
-  // Coaching session (Becky 11/24): "Build the session" always starts a fresh Ask AI chat, and "Export session" on the card
-  // exports the newest plan built for this CSR and date range (with the "Why … is trending" summary).
+  // Coaching session (Becky 11/25): one plan per CSR per week, shared by everyone. The first "Build the session" saves it
+  // (opsis-coaching-plan, table qa_coaching_plans); every later click, by anyone, reopens that same plan until next Monday.
+  // The plan coaches exactly the 2 "Work on" steps and 2 kudos shown on this card (same rule on the server: steps that
+  // applied to 5+ calls; work on = under 70%, most misses first; kudos = 70%+, highest rate first).
   function sessQ(agent) { return 'Give me a 15–20 minute coaching plan for ' + agent + ': the 2 things to work on with call examples, and 2 specific kudos.'; }
-  var SESS = {};
+  var SESS = {}, SESS_MIN = 5;
+  function sessMsg(pl) {
+    var made = pl.created_at ? new Date(pl.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    return { role: 'assistant', content: pl.answer, downloads: [],
+      note: 'This week’s coaching plan (' + fdate(pl.range_start) + ' – ' + fdate(pl.range_end) + ')' + (pl.created_by_name ? ', built by ' + pl.created_by_name : '') + (made ? ' on ' + made : '') + '. Everyone who opens it sees this same plan until Monday.',
+      ctx: { q: sessQ(pl.agent), start: pl.range_start, end: pl.range_end, brands: [], kind: 'csr', name: pl.agent, title: pl.agent, whyKey: 'why7|csr|' + pl.agent + '|' + pl.range_start + '|' + pl.range_end } };
+  }
+  function sessLabel(agent) {
+    var b = document.querySelector('[data-act="sessbuild"]'); if (!b || b.getAttribute('data-sa') !== agent) return;
+    var m = SESS[agent]; b.textContent = m ? 'Open this week’s session' : 'Build the session';
+    var n = $('sessnote'); if (n) n.textContent = m ? m.note : '';
+  }
+  function sessCheck(agent) {
+    api({ action: 'coachplan', op: 'get', agent: agent }).then(function (r) { if (r && r.plan) SESS[agent] = sessMsg(r.plan); else delete SESS[agent]; sessLabel(agent); }).catch(function () { /* the button still works */ });
+  }
+  function sessOpen(agent) {
+    var A = S.ask; A.open = true; S.callId = null;
+    A.msgs = [{ role: 'user', content: sessQ(agent) }]; A.busy = true; askPanel();
+    api({ action: 'coachplan', op: 'build', agent: agent, start: S.start, end: S.end, brand: S.view === 'csr' ? (S.brand || null) : null }).then(function (r) {
+      var pl = r && r.plan; if (!pl || !pl.answer) throw new Error('Couldn’t build the session. Try again.');
+      var am = sessMsg(pl); SESS[agent] = am; A.msgs.push(am); A.busy = false; if (A.open) askPanel(); sessLabel(agent);
+    }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message || 'Couldn’t build the session. Try again.', error: true }); A.busy = false; if (A.open) askPanel(); });
+  }
   function coachFlag(f, agent) {
     var el = $('fcoach'); if (!el) return;
     var c = (f.kpis || {}).cur || {}, qa = c.avg != null ? Number(c.avg) : null, br = pct(c.booked, c.decided);
     var lowQa = qa != null && qa < COACH_T.qa, lowBk = br != null && (c.decided || 0) >= COACH_T.minOpps && br < COACH_T.book;
-    var steps = (f.steps || []).filter(function (s) { return s.applies >= 3; });
-    var best = steps.slice().sort(function (a, b) { return b.rate - a.rate; }).filter(function (s) { return s.rate >= 70; }).slice(0, 2);
-    var worst = steps.slice().sort(function (a, b) { return a.rate - b.rate; }).filter(function (s) { return s.rate < 70; }).slice(0, 2);
+    var steps = (f.steps || []).filter(function (s) { return s.applies >= SESS_MIN && s.rate != null; });
+    var best = steps.filter(function (s) { return s.rate >= 70; }).sort(function (a, b) { return (b.rate - a.rate) || (b.applies - a.applies); }).slice(0, 2);
+    var worst = steps.filter(function (s) { return s.rate < 70; }).sort(function (a, b) { return (b.missed - a.missed) || ((b.points || 0) - (a.points || 0)) || (a.rate - b.rate); }).slice(0, 2);
     var nm = function (s) { return STEPNAMES[s.key] || s.label || s.key; };
     var kudos = best.map(function (s) { return '<li><b>' + esc(nm(s)) + '</b> on ' + Math.round(s.rate) + '% of calls</li>'; }).join('');
     if (!lowQa && !lowBk) {
@@ -801,10 +825,12 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var why = [lowQa ? 'QA ' + Math.round(qa) + ' (target ' + COACH_T.qa + ')' : null, lowBk ? 'booking ' + Math.round(br) + '% (target ' + COACH_T.book + '%)' : null].filter(Boolean).join(' · ');
     el.innerHTML = '<div class="oq-card" style="border-color:#F1C9A8;background:#FFF7EF"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl" style="margin:0">Coaching session: 15–20 minutes</h2><p class="sub">' + esc(agent) + ' · ' + esc(why) + ' · ' + esc(rangeLabel()) + '</p></div>' +
-      '<div class="row" style="gap:8px"><button class="sel" data-act="sessexp" data-sa="' + esc(agent) + '" title="The “Why … is trending” summary and the coaching plan, as a PDF to share">Export session</button><button class="sel btnd" data-ask="' + esc(sessQ(agent)) + '">Build the session</button></div></div>' +
+      '<div class="row" style="gap:8px"><button class="sel" data-act="sessexp" data-sa="' + esc(agent) + '" title="The “Why … is trending” summary and the coaching plan, as a PDF to share">Export session</button><button class="sel btnd" data-act="sessbuild" data-sa="' + esc(agent) + '" title="One plan per CSR per week: the first build is kept and everyone reopens the same plan">' + (SESS[agent] ? 'Open this week’s session' : 'Build the session') + '</button></div></div>' +
+      '<p class="mut" id="sessnote" style="font-size:12px;margin:6px 0 0">' + (SESS[agent] ? esc(SESS[agent].note) : '') + '</p>' +
       '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:10px">' +
       '<div><div class="cap">Work on</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (worst.length ? worst.map(function (s) { return '<li><button class="lnk" data-step="' + s.key + '" data-sagent="' + esc(agent) + '">' + esc(nm(s)) + '</button>: done on ' + Math.round(s.rate) + '% of calls · ' + fmt(s.missed) + ' missed</li>'; }).join('') : '<li>Review the low-scoring calls below</li>') + '</ul></div>' +
       '<div><div class="cap">Kudos to give</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (kudos || '<li>Find one recent call they handled well</li>') + '</ul></div></div></div>';
+    sessCheck(agent);
   }
   function stepCard(f, el, brand, agent) {
     var steps = (f.steps || []).filter(function (s) { return s.applies > 0; });
@@ -3902,7 +3928,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var base = location.origin + location.pathname + location.search + '#v=calls&call=';
     var whyP = cx.whyKey && whyCache[cx.whyKey] ? whyCache[cx.whyKey].then(function (r) { return whyTidy(r.answer); }).catch(function () { return null; }) : Promise.resolve(null);
     var linkify = function (h) { return h.replace(/<span class="lnk" data-call="([0-9a-f-]{36})"[^>]*>open call ↗<\/span>/gi, function (x, id) { return '<a href="' + esc(base + id) + '" style="color:#2F7D5B;font-weight:600">open call ↗</a>'; }); };
-    var plain = function (t) { return String(t || '').split('\n').map(function (l) { return l.replace(/\[call:([0-9a-f-]{36})\]/gi, function (x, id) { return base + id; }).replace(/\*\*/g, '').replace(/^\s*#{1,4}\s+/, '').replace(/^(\s*)[-*]\s+/, '$1• ').replace(/\s+$/, ''); }).filter(function (l) { return l.trim() && !/^(-{3,}|\*{3,})$/.test(l.trim()); }).map(function (l) { return [l]; }); };
+    var plain = function (t) { return mdRules(t).split('\n').map(function (l) { return l.replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2').replace(/\[call:([0-9a-f-]{36})\]/gi, function (x, id) { return base + id; }).replace(/\*\*/g, '').replace(/^\s*#{1,4}\s+/, '').replace(/^(\s*)[-*]\s+/, '$1• ').replace(/\s+$/, ''); }).filter(function (l) { return l.trim() && !/^(-{3,}|\*{3,})$/.test(l.trim()); }).map(function (l) { return [l]; }); };
     // Call IDs the AI copied wrong are looked up by their start so every "open call" link in the export works.
     var fixIds = function (t) {
       t = String(t || ''); var bad = [], re = /\[call:\s*([0-9a-f]{8}-[0-9a-f]{4})[0-9a-f-]*\]/gi, mm;
@@ -5679,10 +5705,13 @@ export function mountOpsisQA(ROOT, cfg) {
       .replace(/\bweakest\b/gi, 'lowest-scoring').replace(/\bworst\b/gi, 'lowest')
       .replace(/\bstruggling\b/gi, 'working to improve').replace(/\bstruggles\b/gi, 'has room to grow');
   }
+  // Rob 11/25: an AI "---" (on its own line or mid-line) is a break, never shown; *single stars* are italics, never shown.
+  function mdRules(t) { return String(t || '').replace(/(^|[ \t])(?:-{3,}|\*{3,}|_{3,})(?=[ \t]|$)/gm, '\n'); }
   function md(t) {
-    var s = esc(soften(t));
+    var s = esc(soften(mdRules(t)));
     // Bold that runs onto the next line is still bold (Rob 11/24), and no stray ** is ever shown.
     s = s.replace(/\*\*([^*]+?)\*\*/g, function (x, b) { return '<b>' + b.replace(/\s*\n\s*/g, ' ') + '</b>'; }).replace(/\*\*/g, '');
+    s = s.replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1<i>$2</i>');
     s = s.replace(/\[call:([0-9a-f-]{36})\]/gi, '<span class="lnk" data-call="$1" role="button" tabindex="0">open call ↗</span>');
     // A call ID the AI copied wrong (Rob 11/24): still an "open call" link; it's found by the start of the ID when clicked.
     s = s.replace(/\[call:\s*([0-9a-f]{8}-[0-9a-f]{4})[0-9a-f-]*\]/gi, '<span class="lnk" data-call="pre:$1" role="button" tabindex="0">open call ↗</span>').replace(/\[call:[^\]]{0,60}\]/gi, '');
@@ -5718,6 +5747,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else h += '<div class="ai" style="max-width:100%">' +
         // Rob 11/24: every answer can be exported (with the "Why … is trending this way" summary when asked from a CSR or brand page). Becky 11/24: at the top.
         (m.error ? '' : '<div class="row" style="gap:6px;margin-bottom:10px;align-items:center"><span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="askexp" data-mi="' + mi + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join('') + '</div>') +
+        (m.note ? '<p class="mut" style="font-size:12px;margin:0 0 8px">' + esc(m.note) + '</p>' : '') +
         '<div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div>' +
         ((m.downloads || []).length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">' + m.downloads.map(function (d, di) { return '<button class="sel btnd" data-act="askdl" data-mi="' + mi + '" data-di="' + di + '" style="justify-content:flex-start;gap:8px;text-align:left"' + (RP.busy ? ' disabled' : '') + '><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Download ' + esc(d.label) + ' (' + (d.format === 'xlsx' ? 'Excel' : String(d.format || 'pdf').toUpperCase()) + ')</button>'; }).join('') + '<span class="mut" style="font-size:12px">' + fdate(m.downloads[0].start) + ' – ' + fdate(m.downloads[0].end) + '</span></div>' : '') + '</div>';
     });
@@ -5732,7 +5762,9 @@ export function mountOpsisQA(ROOT, cfg) {
     q = (q || '').trim(); if (!q) return;
     if (phoneQ(q)) { openCalls({ q: q }); return; }
     var A = S.ask; A.open = true; S.callId = null;
-    var isSess = /^Give me a 15–20 minute coaching plan for /.test(q); if (isSess) A.msgs = [];
+    var sm = q.match(/coaching (?:plan|session) for ([^:.,?!\n]+)/i), sname = sm ? sm[1].trim().toLowerCase() : null;
+    var sagent = sname ? (KNOWN.agents || []).filter(function (x) { return String(x).toLowerCase() === sname; })[0] : null;
+    if (sagent) { sessOpen(sagent); return; }
     var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6).map(function (m) { return { role: m.role, content: m.content }; });
     A.msgs.push({ role: 'user', content: q }); A.busy = true; askPanel();
     var pg = S.view === 'brand' || S.view === 'csr' ? { view: S.view, brand: S.brand || null, agent: S.view === 'csr' ? (S.agent || null) : null } : null;
@@ -5741,7 +5773,6 @@ export function mountOpsisQA(ROOT, cfg) {
       whyKey: anm ? 'why7|' + S.view + '|' + anm + '|' + S.start + '|' + S.end : null };
     api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null, page: pg, dl: 1 }).then(function (r) {
       var am = { role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [], ctx: actx }; A.msgs.push(am);
-      if (isSess && r.answer) SESS[q + '|' + actx.start + '|' + actx.end] = am;
       A.busy = false; if (A.open) askPanel();
     }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message, error: true }); A.busy = false; if (A.open) askPanel(); });
   }
@@ -6472,7 +6503,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'askexp') { askExport(+d.mi, d.fmt); }
-      else if (a === 'sessexp') { var sm = SESS[sessQ(d.sa) + '|' + S.start + '|' + S.end]; if (!sm) toast('Build the session first, then export it here.'); else askExport(null, 'pdf', sm); }
+      else if (a === 'sessbuild') { sessOpen(d.sa); }
+      else if (a === 'sessexp') { var sa = d.sa; if (SESS[sa]) askExport(null, 'pdf', SESS[sa]); else api({ action: 'coachplan', op: 'get', agent: sa }).then(function (r) { if (r && r.plan) { SESS[sa] = sessMsg(r.plan); sessLabel(sa); askExport(null, 'pdf', SESS[sa]); } else toast('Build the session first, then export it here.'); }).catch(function () { toast('Couldn’t load the session. Try again.'); }); }
       else if (a === 'askdl') { var am = S.ask.msgs[+d.mi]; if (am && am.downloads) askDownload(am.downloads[+d.di]); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
