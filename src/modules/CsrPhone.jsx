@@ -272,6 +272,8 @@ function MyTasks({ onCall }) {
   const [out, setOut] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [hist, setHist] = useState({}) // Speed to Lead tasks: task id → the AI's calls on that lead (or 'loading')
+  const [ai, setAi] = useState(null)   // task id with the "Send back to the AI" choices open
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('csr_tasks_mine')
     if (error) { setErr(error.message); return }
@@ -284,6 +286,19 @@ function MyTasks({ onCall }) {
     setBusy(false)
     if (error) { setErr(error.message); return }
     setClose(null); setOut(''); load()
+  }
+  const toggleHist = async (id) => {
+    if (hist[id] && hist[id] !== 'loading') { setHist(h => { const n = { ...h }; delete n[id]; return n }); return }
+    setHist(h => ({ ...h, [id]: 'loading' }))
+    const { data, error } = await supabase.rpc('csr_s2l_task_timeline', { p_task: id })
+    setHist(h => ({ ...h, [id]: error ? { error: error.message } : (data || { error: 'No AI history for this task.' }) }))
+  }
+  const toAi = async (id, when) => {
+    setBusy(true)
+    const { error } = await supabase.rpc('csr_s2l_task_send_to_ai', { p_task: id, p_when: when })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setAi(null); load()
   }
   const tasks = d?.tasks || []
   if (!d || (!tasks.length && !err)) return null
@@ -313,6 +328,17 @@ function MyTasks({ onCall }) {
               </div>
               {t.reason && <div style={{ marginTop: 6, fontWeight: 600, fontSize: 13.5 }}>{t.reason}</div>}
               {t.summary && <div style={{ ...S.mut, marginTop: 2 }}>{t.summary}</div>}
+              {t.kind === 's2l' && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => toggleHist(t.id)}>{hist[t.id] ? 'Hide AI calls' : 'AI calls so far'}</button>
+                  {ai === t.id ? (<>
+                    <span style={S.mut}>AI calls:</span>
+                    {[['now', 'Now'], ['1h', 'In 1 hour'], ['tomorrow', 'Tomorrow morning']].map(([k, l]) => <button key={k} disabled={busy} style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => toAi(t.id, k)}>{l}</button>)}
+                    <button style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => setAi(null)}>Cancel</button>
+                  </>) : <button style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => setAi(t.id)}>Send back to the AI</button>}
+                </div>
+              )}
+              {t.kind === 's2l' && hist[t.id] && <AiHistory h={hist[t.id]} />}
               {close?.id === t.id && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <label style={{ flex: '1 1 220px' }}><span style={{ position: 'absolute', left: -9999 }}>Outcome</span>
@@ -326,6 +352,32 @@ function MyTasks({ onCall }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// Speed to Lead task (Becky 11/25): what the AI already did, so the CSR never starts cold.
+const AI_OUT = { booked: 'Booked', transferred: 'Live transfer', callback: 'Asked for a callback', question_answered: 'Question answered', voicemail: 'Voicemail left', no_answer: 'No answer', busy: 'Busy', not_interested: 'Not interested', wrong_number: 'Wrong number', do_not_call: 'Opted out', already_handled: 'Already handled', failed: 'Call didn’t go through', callback_to_csr: 'Callback handed to a CSR' }
+const AI_KIND = { first: 'First AI call', retry: 'AI re-dial', callback: 'AI callback they asked for' }
+const aiWhen = x => (x ? new Date(x).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '')
+function AiHistory({ h }) {
+  if (h === 'loading') return <div style={{ ...S.mut, marginTop: 6 }}>Loading the AI’s calls…</div>
+  if (!h || h.error) return <div style={{ ...S.mut, marginTop: 6 }}>{(h && h.error) || 'No AI history for this task.'}</div>
+  return (
+    <div style={{ marginTop: 8, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={S.mut}>Request: {h.service}{h.message ? ` — ${h.message}` : ''}</div>
+      {(h.calls || []).map(c => {
+        const x = c.data || {}
+        const extra = [x.callback_time && `wants a call ${x.callback_time}`, x.urgency && x.urgency !== 'unknown' && x.urgency, x.property_type && x.property_type !== 'unknown' && x.property_type].filter(Boolean).join(' · ')
+        return (
+          <div key={c.id} style={{ borderTop: '1px solid light-dark(#e2e8f0, #2a3439)', paddingTop: 6 }}>
+            <b>{AI_KIND[c.kind] || `AI call ${c.attempt}`}</b> · {aiWhen(c.placed_at || c.scheduled_at)} · {c.status === 'scheduled' ? 'scheduled' : (AI_OUT[c.outcome] || c.outcome || c.status)}
+            {extra && <div style={S.mut}>{extra}</div>}
+            {c.summary && <div style={{ marginTop: 2 }}>{c.summary}</div>}
+          </div>
+        )
+      })}
+      {(h.dials || []).map((a, i) => <div key={i} style={{ borderTop: '1px solid light-dark(#e2e8f0, #2a3439)', paddingTop: 6 }}><b>{a.by || 'CSR'}</b> called · {aiWhen(a.at)} · {a.result}{a.notes ? <div style={S.mut}>{a.notes}</div> : null}</div>)}
     </div>
   )
 }
