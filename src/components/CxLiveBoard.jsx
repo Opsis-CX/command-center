@@ -42,6 +42,7 @@ export default function CxLiveBoard({ clientId = null, controls = true }) {
   const [mon, setMon] = useState(null)      // { id, mode, call }
   const [err, setErr] = useState('')
   const [showLinks, setShowLinks] = useState(false)
+  const [impact, setImpact] = useState(null)   // 11/25 live assist proof: followed vs not
   const [sound, setSound] = useState(soundPref)
   const seen = useRef(null)
   const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
@@ -61,6 +62,7 @@ export default function CxLiveBoard({ clientId = null, controls = true }) {
     setMon(cur => (cur && !(b.data || []).some(x => x.id === cur.id) ? null : cur))
   }, [args])
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t) }, [load])
+  useEffect(() => { supabase.rpc('cx_assist_impact', args({ p_days: 30 })).then(({ data }) => setImpact(data || null)) }, [args])
 
   async function join(id, mode, label) {
     setErr('')
@@ -154,6 +156,23 @@ export default function CxLiveBoard({ clientId = null, controls = true }) {
         </div>
       )}
 
+      {impact?.groups?.length > 0 && (() => {
+        const g = Object.fromEntries(impact.groups.map(x => [x.group, x]))
+        const f = g.followed, n = g.not_followed
+        return (
+          <div style={S.card}>
+            <div style={{ fontWeight: 800, color: GT, marginBottom: 6 }}>Live assist impact · last {impact.days} days</div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13.5 }}>
+              {[['CSR followed the suggestions', f], ['CSR mostly didn’t', n]].map(([l, x]) => (
+                <div key={l}><div style={S.mut}>{l}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>{x?.booking_rate != null ? `${x.booking_rate}%` : '—'}</div>
+                  <div style={S.mut}>booking rate · {x?.opportunities || 0} opportunities · avg QA {x?.avg_score ?? '—'}</div></div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {calls.length > 0 && (
         <div style={S.card}>
           <div style={{ overflowX: 'auto' }}>
@@ -163,9 +182,10 @@ export default function CxLiveBoard({ clientId = null, controls = true }) {
                 {calls.map(c => {
                   const on = mon?.id === c.id
                   return (
-                    <tr key={c.id} style={{ background: c.needs_help ? 'light-dark(#fff7ed, #392813)' : on ? 'light-dark(#f0fdf4, #13391f)' : 'transparent' }}>
+                    <tr key={c.id} style={{ background: c.needs_help ? 'light-dark(#fff7ed, #392813)' : c.at_risk ? 'light-dark(#fef2f2, #391313)' : on ? 'light-dark(#f0fdf4, #13391f)' : 'transparent' }}>
                       <td style={S.td}><b>{c.customer}</b><div style={S.mut}>{[c.direction === 'in' ? 'Inbound' : 'Outbound', c.location, c.queue].filter(Boolean).join(' · ')}</div></td>
-                      <td style={S.td}>{c.agent || '—'}{c.needs_help && <div style={{ color: 'light-dark(#b45309, #e07524)', fontWeight: 700, fontSize: 12 }}>✋ asked for help</div>}</td>
+                      <td style={S.td}>{c.agent || '—'}{c.needs_help && <div style={{ color: 'light-dark(#b45309, #e07524)', fontWeight: 700, fontSize: 12 }}>✋ asked for help</div>}
+                        {c.at_risk && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontWeight: 700, fontSize: 12 }} title={c.at_risk.reason || ''}>⚠ {c.at_risk.label || 'At risk'}</div>}</td>
                       <td style={S.td}>{c.status === 'queued' ? 'Waiting' : c.on_hold ? 'On hold' : c.status === 'connected' ? 'Talking' : c.status}{c.recording_paused ? ' · ⏸ rec' : ''}</td>
                       <td style={S.td}>{mmss(c.wait_secs)}</td>
                       <td style={S.td}>{c.sentiment == null ? '—' : c.sentiment >= 0.3 ? '🙂' : c.sentiment <= -0.3 ? '🙁' : '😐'}</td>

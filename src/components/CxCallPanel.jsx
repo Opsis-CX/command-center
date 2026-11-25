@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useVoice } from '../lib/voice'
-import { cxControl, cxAssistNow, cxWrapNow } from '../lib/cx'
+import { cxControl, cxAssistNow, cxWrapNow, cxAsk } from '../lib/cx'
 
 const G = '#14302A'
 const GT = 'light-dark(#14302A, #9fd6bd)'  // brand green for text/lines: lighter in dark mode
@@ -33,6 +33,14 @@ export default function CxCallPanel() {
   const [, tick] = useState(0)
   const lastId = useRef(0)
   const trBox = useRef(null)
+  // 11/25 live push (private Realtime channel cx:<call>): word-by-word transcript and streaming suggestions
+  const [pushed, setPushed] = useState(null)        // latest full suggestion pushed by the server { id, payload }
+  const [streaming, setStreaming] = useState(null)  // { next, say } while the suggestion is still being written
+  const [partial, setPartial] = useState(null)      // { speaker, text } the sentence being spoken right now
+  const [risk, setRisk] = useState(null)            // { kind, label, reason }
+  const [askQ, setAskQ] = useState('')
+  const [askA, setAskA] = useState(null)
+  const [asking, setAsking] = useState(false)
 
   // 1) find my active CX call
   const active = !!(voice && (voice.busy || voice.inboundCall || voice.incoming))
@@ -44,7 +52,7 @@ export default function CxCallPanel() {
       if (!alive) return
       setMine(data || null)
       if (data?.interaction_id && data.status === 'connected') {
-        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('check') }
+        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('check'); setPushed(null); setStreaming(null); setPartial(null); setRisk(null); setAskA(null); setAskQ('') }
       }
     }
     run()
@@ -60,16 +68,39 @@ export default function CxCallPanel() {
     setErr('')
     setLive(data)
     const add = data?.transcript || []
-    if (add.length) { lastId.current = add[add.length - 1].id; setLines(l => [...l, ...add].slice(-400)) }
+    if (add.length) { lastId.current = Math.max(lastId.current, add[add.length - 1].id); setLines(l => { const have = new Set(l.map(x => x.id)); return [...l, ...add.filter(x => !have.has(x.id))].slice(-400) }) }
+    if (data?.interaction?.pending?.at_risk) setRisk(r => r || data.interaction.pending.at_risk)
     const st = data?.interaction?.status
     if (st && ['ended', 'survey', 'callback', 'abandoned'].includes(st)) setEnded(iid)
   }, [iid])
   useEffect(() => {
     if (!iid) return
     load()
-    const t = setInterval(load, ended ? 6000 : 1000)
+    const t = setInterval(load, ended ? 6000 : 2000)
     return () => clearInterval(t)
   }, [iid, load, ended])
+  // live push channel
+  useEffect(() => {
+    if (!iid) return
+    let ch = null, dead = false
+    ;(async () => {
+      try { const { data } = await supabase.auth.getSession(); if (data?.session?.access_token) await supabase.realtime.setAuth(data.session.access_token) } catch { /* older client: uses the session automatically */ }
+      if (dead) return
+      ch = supabase.channel(`cx:${iid}`, { config: { private: true } })
+        .on('broadcast', { event: 'partial' }, ({ payload }) => setPartial(payload))
+        .on('broadcast', { event: 'line' }, ({ payload }) => {
+          setPartial(p => (p && p.speaker === payload.speaker ? null : p))
+          if (payload?.id) { lastId.current = Math.max(lastId.current, payload.id); setLines(l => (l.some(x => x.id === payload.id) ? l : [...l, payload].slice(-400))) }
+        })
+        .on('broadcast', { event: 'assist_partial' }, ({ payload }) => setStreaming(payload))
+        .on('broadcast', { event: 'assist' }, ({ payload }) => { setPushed(payload); setStreaming(null) })
+        .on('broadcast', { event: 'at_risk' }, ({ payload }) => setRisk(payload))
+        .on('broadcast', { event: 'alert' }, () => load())
+        .on('broadcast', { event: 'wrap' }, () => load())
+        .subscribe()
+    })()
+    return () => { dead = true; if (ch) supabase.removeChannel(ch) }
+  }, [iid, load])
   useEffect(() => { if (!iid) return; supabase.rpc('csr_cx_customer', { p_interaction: iid }).then(({ data }) => setCust(data || null)) }, [iid])
   useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t) }, [])
   useEffect(() => { const b = trBox.current; if (b && tab === 'transcript') b.scrollTop = b.scrollHeight }, [lines, tab])
@@ -78,7 +109,19 @@ export default function CxCallPanel() {
   const parts = live?.participants || []
   const customer = parts.find(p => p.kind === 'customer' && !p.left_at)
   const pending = parts.filter(p => ['transfer', 'external'].includes(p.kind) && !p.left_at)
-  const assist = useMemo(() => [...(live?.assist || [])].reverse().find(a => a.kind === 'assist')?.payload || null, [live])
+  const assist = useMemo(() => {
+    const polled = [...(live?.assist || [])].reverse().find(a => a.kind === 'assist')
+    if (pushed && (!polled || pushed.id >= polled.id)) return pushed.payload
+    return polled?.payload || null
+  }, [live, pushed])
+  // 2: the script follows the call — tell the call screen which step we're on
+  useEffect(() => { if (assist?.step_no) window.dispatchEvent(new CustomEvent('cx-step', { detail: { step_no: assist.step_no } })) }, [assist?.step_no])
+  async function ask(e) {
+    e?.preventDefault?.()
+    const q = askQ.trim(); if (!q || asking) return
+    setAsking(true); setAskA({ q, answer: '…' })
+    try { const r = await cxAsk(iid, q); setAskA({ q, ...r }) } catch (er) { setAskA({ q, answer: er.message }) } finally { setAsking(false) }
+  }
   const alerts = useMemo(() => (live?.assist || []).filter(a => a.kind === 'alert').slice(-3).reverse(), [live])
   const wrap = useMemo(() => [...(live?.assist || [])].reverse().find(a => a.kind === 'wrap')?.payload || i?.ai_wrap || null, [live, i])
   const liveNow = i && ['connected', 'held'].includes(i.status)
@@ -152,6 +195,7 @@ export default function CxCallPanel() {
 
       {liveNow && (
         <div style={S.controls}>
+          <button onClick={() => voice.toggleMute()} style={{ ...S.ctl, ...(voice.muted ? { background: '#fef3c7', color: '#92400e', borderColor: '#f59e0b' } : {}) }}>{voice.muted ? '🔇 Unmute' : '🎙 Mute'}</button>
           <button disabled={!!busy || !customer} onClick={() => act(i.status === 'held' ? 'unhold' : 'hold', {}, 'hold')} style={S.ctl}>{i.status === 'held' ? '▶ Resume' : '⏸ Hold'}</button>
           <button disabled={!!busy} onClick={() => setXfer(x => !x)} style={S.ctl}>⇄ Transfer</button>
           <button disabled={!!busy || !i.recording_sid} onClick={() => act(i.recording_paused ? 'resume_recording' : 'pause_recording', {}, 'rec')} style={S.ctl} title="Pause while the customer reads card details">{i.recording_paused ? '● Resume rec' : '💳 Pause rec'}</button>
@@ -182,17 +226,40 @@ export default function CxCallPanel() {
         <div style={S.alert}>⚠ {alerts[0].payload?.text}</div>
       )}
 
+      {liveNow && risk && (
+        <div style={{ ...S.alert, background: 'light-dark(#fef2f2, #391313)', color: 'light-dark(#991b1b, #e46767)', borderColor: 'light-dark(#fecaca, #643030)' }}>
+          {risk.kind === 'no_booking_ask' ? '📅 Ask for the booking before they go' : '❤️ Caller is upset — slow down, acknowledge, then solve'}{risk.reason ? <div style={{ fontWeight: 500, fontSize: 12.5, marginTop: 2 }}>{risk.reason}</div> : null}
+        </div>
+      )}
+
       {liveNow && (
-        <div style={{ margin: '0 14px 10px' }}>
-          {assist ? (
+        <div style={{ margin: '0 14px 10px', display: 'grid', gap: 8 }}>
+          {(streaming?.next || assist) ? (
             <div style={S.next}>
-              <div style={S.cap}>Next</div>
-              <div>{assist.next}</div>
-              {assist.say && <div style={{ fontWeight: 500, fontSize: 13.5, marginTop: 6, color: 'light-dark(#0f172a, #e8eef0)' }}>“{assist.say}”</div>}
-              <button style={{ ...S.small, marginTop: 8, fontSize: 11.5, padding: '3px 8px' }} onClick={() => cxAssistNow(iid).then(load).catch(e => setErr(e.message))}>Refresh</button>
+              <div style={{ ...S.cap, display: 'flex', justifyContent: 'space-between' }}><span>Next</span>{streaming && <span style={{ textTransform: 'none', letterSpacing: 0 }}>● live</span>}</div>
+              <div>{streaming?.next || assist?.next}</div>
+              {(streaming?.say || assist?.say) && <div style={{ fontWeight: 500, fontSize: 13.5, marginTop: 6, color: 'light-dark(#0f172a, #e8eef0)' }}>“{streaming?.say || assist?.say}”</div>}
             </div>
           ) : (
-            <div style={S.empty}>{i.transcribing ? 'Suggestions appear a few seconds after the caller starts talking.' : 'Turn on live transcript to get suggestions while you talk.'}</div>
+            <div style={S.empty}>{i.transcribing ? 'Suggestions appear as soon as the caller starts talking.' : 'Turn on live transcript to get suggestions while you talk.'}</div>
+          )}
+          {assist?.play?.line && (
+            <div style={S.say}>
+              <div style={S.cap}>Top CSR line · {assist.play.situation}</div>
+              “{assist.play.line}”
+              {assist.play.why && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>{assist.play.why}</div>}
+            </div>
+          )}
+          <form onSubmit={ask} style={{ display: 'flex', gap: 6 }}>
+            <input value={askQ} onChange={e => setAskQ(e.target.value)} placeholder="Ask anything… (e.g. do we fix openers?)" style={{ ...S.input, flex: 1 }} />
+            <button type="submit" disabled={asking || !askQ.trim()} style={S.small}>{asking ? '…' : 'Ask'}</button>
+          </form>
+          {askA && (
+            <div style={S.say}>
+              <div style={{ ...S.cap, display: 'flex', justifyContent: 'space-between' }}><span>{askA.q}</span><button onClick={() => setAskA(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }} aria-label="Close">×</button></div>
+              {askA.answer}
+              {askA.say && <div style={{ marginTop: 4, fontWeight: 600 }}>“{askA.say}”</div>}
+            </div>
           )}
         </div>
       )}
@@ -226,8 +293,8 @@ export default function CxCallPanel() {
         {tab === 'transcript' && (
           <div ref={trBox} style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 6 }}>
             {lines.length === 0 && <div style={S.empty}>{i.transcribing ? 'Listening…' : 'No transcript for this call.'}</div>}
-            {lines.map(l => (
-              <div key={l.id} style={{ display: 'flex', justifyContent: l.speaker === 'customer' ? 'flex-start' : 'flex-end' }}>
+            {[...lines, ...(partial && liveNow ? [{ id: 'partial', speaker: partial.speaker, text: partial.text + ' …', live: true }] : [])].map(l => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: l.speaker === 'customer' ? 'flex-start' : 'flex-end', opacity: l.live ? 0.7 : 1 }}>
                 <div style={{ ...S.bubble, background: l.speaker === 'customer' ? 'light-dark(#f1f5f9, #222c31)' : 'light-dark(#E6F0EA, #1d3a2e)', color: 'light-dark(#0f172a, #e8eef0)' }}>
                   <div style={{ fontSize: 10.5, opacity: 0.6, marginBottom: 2 }}>{l.speaker === 'customer' ? 'Caller' : 'You'}</div>{l.text}
                 </div>
