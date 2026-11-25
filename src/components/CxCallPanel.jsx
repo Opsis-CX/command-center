@@ -145,6 +145,7 @@ export default function CxCallPanel() {
 
       {liveNow && (
         <div style={S.controls}>
+          <button onClick={() => voice.toggleMute()} style={{ ...S.ctl, ...(voice.muted ? { background: '#fef3c7', color: '#92400e', borderColor: '#f59e0b' } : {}) }}>{voice.muted ? '🔇 Unmute' : '🎙 Mute'}</button>
           <button disabled={!!busy || !customer} onClick={() => act(i.status === 'held' ? 'unhold' : 'hold', {}, 'hold')} style={S.ctl}>{i.status === 'held' ? '▶ Resume' : '⏸ Hold'}</button>
           <button disabled={!!busy} onClick={() => setXfer(x => !x)} style={S.ctl}>⇄ Transfer</button>
           <button disabled={!!busy || !i.recording_sid} onClick={() => act(i.recording_paused ? 'resume_recording' : 'pause_recording', {}, 'rec')} style={S.ctl} title="Pause while the customer reads card details">{i.recording_paused ? '● Resume rec' : '💳 Pause rec'}</button>
