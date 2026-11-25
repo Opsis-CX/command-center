@@ -48,6 +48,7 @@ const PORTAL_THEME = {
   '--line': '#E8E4DC', '--line-soft': '#F1EEE8', '--surface': '#FFFFFF', '--canvas': '#F5F3EE', '--bg-soft': '#F7F5F0',
   '--passed': '#2F7D5B', '--passed-bg': '#E6F0EA', '--failed': '#A8441A', '--failed-bg': '#FCEBDD',
   fontFamily: 'Montserrat, Arial, sans-serif', color: 'light-dark(#1C2421, #e8eef0)',
+  colorScheme: 'light', // 11/25: the portal is light-only; the phone/call panel live outside #oqa and were following the computer's dark mode
 }
 
 async function invoke(body) {
