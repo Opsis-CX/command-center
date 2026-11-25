@@ -2443,7 +2443,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function prCheckAccess() {
     if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
     api({ action: 'practice', op: 'access' }).then(function (r) {
-      if (!r || !r.allowed) return;
+      if (!r || !r.allowed) return; PR.allowed = true;
       var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var keys = function () { return sec.map(function (n) { return n[0]; }); }; var i = keys().indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); var j = keys().indexOf('reporting'); sec.splice(j >= 0 ? j + 1 : sec.length, 0, ['receptionist', 'AI CSR']); mgrNav(); }
       renderNav();
     }).catch(function () { });
@@ -2458,6 +2458,9 @@ export function mountOpsisQA(ROOT, cfg) {
   // go-live PRAC-06 (11/20): tries / best and the history follow the "Practice as" brand.
   function prBrandNow() { return LOCK || PR.brand || 'Quality Overhead Door'; }
   function prMine(sid) { var me = PR.d && PR.d.me, b = prBrandNow(); return ((PR.d && PR.d.sessions) || []).filter(function (s) { return s.scenario_id === sid && s.user_id === me && s.status === 'scored' && (!s.brand || s.brand === b); }); }
+  // Redo (11/25): scenarios built from one real call live in d.redos; look them up together with the library.
+  function prAllSc() { var d = PR.d || {}; return (d.scenarios || []).concat(d.redos || []); }
+  function prRedoOf(id) { return ((PR.d && PR.d.redos) || []).filter(function (x) { return x.id === id; })[0] || null; }
   function prScoreChip(v) { return v == null ? '<span class="mut">—</span>' : '<span class="pill num" style="' + chipScore(Math.round(v)) + '">' + Math.round(v) + '%' + '</span>'; }
   function drawPractice() {
     var w = $('prwrap'); if (!w || !PR.d) return; var d = PR.d;
@@ -2483,12 +2486,27 @@ export function mountOpsisQA(ROOT, cfg) {
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mut" style="font-size:12px">' + (mine.length ? mine.length + ' tr' + (mine.length === 1 ? 'y' : 'ies') + ' · best ' + Math.round(best || 0) : 'Not tried yet') + '</span><button class="sel btnd" data-act="prstart" data-id="' + esc(s.id) + '"' + (d.ready && !PR.busy ? '' : ' disabled') + '>☎ Start call</button></div></div>';
     }).join('') + '</div>';
     var hist = (d.sessions || []).filter(function (x) { return (x.status === 'scored' || x.status === 'failed') && (LOCK || !x.brand || x.brand === prBrandNow()); });
-    var names = {}; (d.scenarios || []).forEach(function (s) { names[s.id] = s.title; });
+    var names = {}; prAllSc().forEach(function (s) { names[s.id] = s.title; });
     var showWho = hist.some(function (x) { return x.user_id !== d.me; });
     var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + esc(d.teamLabel || (showWho ? 'Everyone in the pilot' : 'Your practice calls')) + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right" title="How many checklist steps the live assist had to nudge during the call">Nudges</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
       hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td class="num" style="text-align:right">' + (x.assist_nudges == null ? '<span class="mut">—</span>' : x.assist_nudges) + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
-    w.innerHTML = intro + cards + htbl;
+    w.innerHTML = intro + prRedoHtml(d) + (d.redos && d.redos.length ? '<h2 class="ttl" style="margin:18px 0 10px">Practice scenarios</h2>' : '') + cards + htbl;
     var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; drawPractice(); });
+  }
+  // Redo (OttoQA-style, 11/25): one real call rebuilt as an AI caller — same customer, same pushback, made-up contact details.
+  function prRedoHtml(d) {
+    var R = d.redos || []; if (!R.length) return '';
+    var me = d.me, mineFirst = R.slice().sort(function (a, b) { return (b.for_user_id === me) - (a.for_user_id === me); });
+    return '<div class="oq-card"><h2 class="ttl" style="margin:0">Redo calls</h2><p class="sub" style="margin:2px 0 10px">Real calls rebuilt as practice. The AI plays the same customer with the same questions and pushback, so you can take the call again and get the steps right. Made from a call with <b>↻ Redo this call</b>.</p>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">' + mineFirst.map(function (s) {
+        var mine = ((d.sessions || []).filter(function (x) { return x.scenario_id === s.id && x.status === 'scored'; })), best = mine.reduce(function (m, x) { return x.score_pct != null && (m == null || x.score_pct > m) ? x.score_pct : m; }, null);
+        var up = best != null && s.original_score != null ? Math.round(best - s.original_score) : null;
+        return '<div class="oq-card" style="display:flex;flex-direction:column;gap:8px;margin:0;border-color:#D5DDF3"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="font-weight:600;font-size:15px">' + esc(s.title) + '</div>' + prDots(s.difficulty) + '</div>' +
+          '<div class="mut" style="font-size:12px">' + esc(s.for_agent || 'CSR') + ' · ' + esc(short(s.source_brand || '')) + ' · made ' + fdate(String(s.created_at || '').slice(0, 10)) + (s.created_by_name ? ' by ' + esc(s.created_by_name) : '') + '</div>' +
+          '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;flex:1">' + esc(String(s.goal || '').length > 190 ? s.goal.slice(0, 187) + '…' : (s.goal || '')) + '</div>' +
+          '<div style="display:flex;gap:10px;align-items:center;font-size:12.5px;flex-wrap:wrap"><span title="QA score on the real call">Real call ' + prScoreChip(s.original_score) + '</span><span title="Best score on a redo of this call">Best redo ' + prScoreChip(best) + '</span>' + (up != null ? '<b style="color:' + (up >= 0 ? '#1F5A41' : '#A8441A') + '">' + (up >= 0 ? '▲' : '▼') + Math.abs(up) + ' pts</b>' : '') + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button class="lnk" data-call="' + esc(s.source_review_id) + '">Hear the real call</button><button class="sel btnd" data-act="prstart" data-id="' + esc(s.id) + '"' + (d.ready && !PR.busy ? '' : ' disabled') + '>☎ ' + (mine.length ? 'Redo again' : 'Start redo') + '</button></div></div>';
+      }).join('') + '</div></div>';
   }
   function prLiveHtml() {
     var L = PR.live, sc = L.sc;
@@ -2550,6 +2568,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">What went well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.went_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">Try this next time</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.try_next) + '</ul></div></div>' +
       (function () { var n = r.assist && r.assist.nudged ? Object.keys(r.assist.nudged) : []; return n.length ? '<div class="banner" style="margin-top:14px;background:#FFF4E5;border-color:#F5C98B;color:#8A3B0E"><b>Live checklist nudged you on:</b> ' + n.map(function (k) { return esc(PR_ASSIST_LBL[k] || k); }).join(' · ') + '</div>' : (r.assist && r.assist.checks ? '<div class="banner" style="margin-top:14px"><b>Live checklist:</b> no nudges needed on this call.</div>' : ''); })() +
       (r.checking ? '<div class="banner" style="margin-top:14px"><b>Double-checking what you said…</b> We’re listening to the recording again so names and the brand are heard right. Your score may update in a few seconds.</div>' : '') +
+      (function () { var rd = r.scenario_id && prRedoOf(r.scenario_id); if (!rd || rd.original_score == null || sc == null) return ''; var dd = Math.round(sc - rd.original_score);
+        return '<div class="banner" style="margin-top:14px;background:' + (dd >= 0 ? '#E6F0EA;border-color:#BFDCCB;color:#1F5A41' : '#FFF4E5;border-color:#F5C98B;color:#8A3B0E') + '"><b>Redo of a real call:</b> the real call scored ' + Math.round(rd.original_score) + '%, this redo scored ' + Math.round(sc) + '% (' + (dd >= 0 ? '▲' : '▼') + Math.abs(dd) + ' pts). <button class="lnk" data-call="' + esc(rd.source_review_id) + '">Hear the real call</button></div>'; })() +
       (D.say_this ? '<div class="banner" style="margin-top:14px;background:#EEF2FB;border-color:#D5DDF3;color:#2B3A67"><b>Say it like this:</b> “' + esc(D.say_this) + '”</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (r.scenario_id ? '<button class="sel btnd" data-act="prstart" data-id="' + esc(r.scenario_id) + '">↻ Try it again</button>' : '') + '<button class="sel" data-act="prback">Pick another scenario</button></div></div>' +
       (r.session_id ? '<div class="oq-card"><h2 class="ttl" style="margin:0 0 8px">Recording</h2>' + prAudioHtml(r.session_id) + '</div>' : '') +
@@ -2561,6 +2581,11 @@ export function mountOpsisQA(ROOT, cfg) {
   function prTeam(body) {
     return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach practice review.'); return j; }); });
+  }
+  // Redo (11/25): its own edge function (practice-redo) — list / create from a real call / start.
+  function redoApi(body) {
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-redo', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach Redo.'); return j; }); });
   }
   // Scenarios come from the portal function; history comes from practice-audio so RMs see their brand, GMs their location, admins everyone.
   // Second listen (Becky 11/18): re-transcribe the recording with a more accurate model primed with brand and
@@ -2575,8 +2600,8 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function () { var R = PR.result; if (R && R.session_id === sid) { R.checking = false; drawPractice(); } });
   }
   function prList() {
-    return Promise.all([api({ action: 'practice', op: 'list' }), prTeam({ op: 'list' }).catch(function () { return null; })]).then(function (rr) {
-      var d = rr[0], t = rr[1]; if (t && t.sessions) { d.sessions = t.sessions; d.teamLabel = t.scope === 'own' ? null : t.label; } return d;
+    return Promise.all([api({ action: 'practice', op: 'list' }), prTeam({ op: 'list' }).catch(function () { return null; }), redoApi({ op: 'list' }).catch(function () { return null; })]).then(function (rr) {
+      var d = rr[0], t = rr[1]; if (t && t.sessions) { d.sessions = t.sessions; d.teamLabel = t.scope === 'own' ? null : t.label; } d.redos = (rr[2] && rr[2].redos) || []; return d;
     });
   }
   function prAudioHtml(sid) {
@@ -2604,12 +2629,12 @@ export function mountOpsisQA(ROOT, cfg) {
     } catch (e) { }
   }
   function prStart(id) {
-    var sc = ((PR.d && PR.d.scenarios) || []).filter(function (s) { return s.id === id; })[0]; if (!sc || PR.busy) return;
+    var sc = prAllSc().filter(function (s) { return s.id === id; })[0]; if (!sc || PR.busy) return;
     PR.busy = true; PR.err = null; PR.result = null;
-    var brand = LOCK || PR.brand || 'Quality Overhead Door';
+    var brand = (sc.source_brand) || LOCK || PR.brand || 'Quality Overhead Door';
     var L = PR.live = { sc: sc, brand: brand, lines: [], state: 'ringing', mode: 'listening', secs: 0, conv: null, sid: null, ready: false, assist: { items: null, checks: 0, nudged: {}, busy: false, again: false } };
     drawPractice(); prRing(true);
-    L.prep = Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can\u2019t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
+    L.prep = Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can\u2019t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([sc.source_review_id ? redoApi({ op: 'start', scenario_id: id }) : api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
       .then(function (rr) { L.st = rr[0]; L.SDK = rr[1]; L.sid = rr[0].session_id; L.ready = true; if (PR.live === L && L.state === 'ringing') drawPractice(); })
       .catch(function (e) { prFail(L, e); });
     L.giveUp = setTimeout(function () { if (PR.live === L && L.state === 'ringing') { prRing(false); PR.live = null; PR.busy = false; PR.err = 'Missed call \u2014 click Start call to try again.'; drawPractice(); } }, 45000);
@@ -2644,7 +2669,7 @@ export function mountOpsisQA(ROOT, cfg) {
     go('finish');
   }
   function prView(id) {
-    prTeam({ op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
+    prTeam({ op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && (prAllSc().filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
   }
   // ---------- AI CSR (Broccoli replacement, phase 1, pilot) ----------
   var RC = { d: null, brand: '', live: null, res: null, err: null, tab: CFG.recepDash ? 'dash' : 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
@@ -5473,7 +5498,7 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     h += (noq ? '</details>' : '</div>') + trCard(c) + '<div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
-      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + '</div>';
+      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + (PR.allowed && CAN_EDIT && !CFG.csrSelf && c.agent && c.score != null ? '<button class="sel" data-act="redocall" data-id="' + c.id + '" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo this call</button>' : '') + '</div>';
     var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
     $('cd').innerHTML = h; bindTr();
     if (keep && $('cnbody')) $('cnbody').value = keep;
@@ -6595,6 +6620,9 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'prcancel') { prCancel(); }
       else if (a === 'prback') { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); }
       else if (a === 'prview') { prView(d.id); }
+      else if (a === 'redocall') { el.disabled = true; el.textContent = 'Building the redo…';
+        redoApi({ op: 'create', review_id: d.id }).then(function (r) { toast(r.existing ? 'This call already has a redo. Opening Practice.' : 'Redo ready in Practice: ' + (r.title || '')); PR.result = null; PR.d = null; closeLayer(); go('practice'); })
+          .catch(function (e2) { el.disabled = false; el.textContent = '↻ Redo this call'; toast(e2.message || 'Couldn’t build the redo.'); }); }
       else if (a === 'vxprev') {
         var vs = el.parentNode && el.parentNode.querySelector('select'), vid = vs && (VX_DEF[vs.value] || vs.value), vv = (VX.list || []).filter(function (x) { return x.id === vid; })[0];
         if (VX.audio) { try { VX.audio.pause(); } catch (x) { } var wb = VX.btn; VX.audio = null; VX.btn = null; if (wb) wb.textContent = '▶ Sample'; if (wb === el) return; }
