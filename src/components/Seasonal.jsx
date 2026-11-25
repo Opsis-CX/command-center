@@ -535,16 +535,17 @@ function TgFrame() {
   const w = right - left, h = bottom - top
   if (w < 640 || h < 320) { layoutRef.current = null; return null }
   const k = Math.max(.7, Math.min(1.1, w / 1490))
-  const L = -1, R = w - 3, B = h - 3   // the 2px line's center, measured from inside the border
+  const R = w - 3, B = h - 3  // the 2px line's center, measured from inside the border
   // each piece: the point (cx, cy) in the art (where its corner of the line was painted) lands on (x, y) in the frame box
   const piece = (name, cx, cy, x, y) => ({ name: 'tg_' + name, art: name, src: ART + 'frame_' + name + '.png', place: (sc) => {
     const [nw, nh] = FRAME_ART[name], kk = k * sc
     return { left: left + x - cx * kk, top: top + y - cy * kk, w: nw * kk, h: nh * kk, rel: { left: x - cx * kk, top: y - cy * kk } }
   } })
-  // just two touches: the leaf cluster in the bottom-left corner and the pumpkin patch on the bottom edge
-  // always shown in their corners (Brittney, 2026-11-22). Chat names, buttons and Send sit in front of them;
-  // the pumpkins sit over the empty corner of the message box (noLift) so they stay visible
-  const pieces = [{ ...piece('bl', 3, 146, L, B), always: true }, { ...piece('pumpkins', 314, 92, R, B), always: true, noLift: '.re-wrap' }]
+  // just one touch now: the pumpkin patch on the bottom edge, always shown in its corner (Brittney, 2026-11-22).
+  // The bottom-left leaf cluster was removed on 2026-11-25 (Brittney) because it sat over the chat list.
+  // Chat names, buttons and Send sit in front of the pumpkins; they sit over the empty corner of the
+  // message box (noLift) so they stay visible
+  const pieces = [{ ...piece('pumpkins', 314, 92, R, B), always: true, noLift: '.re-wrap' }]
   layoutRef.current = pieces
   return (
     // zIndex 29: under the app's header (30), so menus that open from the header always sit on top
