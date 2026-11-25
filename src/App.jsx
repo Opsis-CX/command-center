@@ -75,6 +75,7 @@ import AppHeader from './components/AppHeader'
 import { RefreshProvider, RefreshBoundary } from './lib/refresh'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import Seasonal from './components/Seasonal'
+import PortalThanksgiving from './components/PortalThanksgiving'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
@@ -360,8 +361,8 @@ function ClientPortal({ session, clientId }) {
 
   const newView = myV2 ?? !!brand.portal_v2
   if (newView && !classic) {
-    return <OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
-      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} />
+    return <><OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
+      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} /><PortalThanksgiving /></>
   }
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || brand.name || 'Call QA'
@@ -370,6 +371,7 @@ function ClientPortal({ session, clientId }) {
   )
   return (
     <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
+      <PortalThanksgiving />
       <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {brand.portal_logo_url
