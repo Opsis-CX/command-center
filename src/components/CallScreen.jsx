@@ -106,6 +106,26 @@ export default function CallScreen({
   }
 
   const cur = steps[Math.min(step, steps.length - 1)]
+  // 11/25 cleanup: a rule shows on the step it's about (alert.step = step number or title, else matched by words),
+  // so the CSR sees the zip rule while finding the need and the 2-days-out rule while offering times.
+  const alertStep = a => {
+    if (a.step != null && a.step !== '') {
+      const n = Number(a.step); if (Number.isFinite(n)) return n - 1
+      const k = steps.findIndex(s => (s.title || '').toLowerCase().includes(String(a.step).toLowerCase())); if (k >= 0) return k
+    }
+    const t = `${a.label || ''} ${a.text || ''}`.toLowerCase()
+    const find = re => steps.findIndex(s => re.test(`${s.title || ''} ${(s.blocks || []).map(b => b.text || (b.items || []).join(' ')).join(' ')}`.toLowerCase()))
+    if (/\bzip|service area/.test(t)) return find(/zip|address|service area|need|issue|problem/)
+    if (/days? out|business days?|first open|schedul|book/.test(t)) return find(/offer|schedul|appointment|book|time|date/)
+    return -1
+  }
+  const stepAlerts = (sc.alerts || []).map(a => ({ a, at: alertStep(a) }))
+  const Rule = ({ a }) => { const t = TONES[a.tone] || TONES.info; return (
+    <div style={{ ...S.alert, background: t.bg, borderColor: t.border }}>
+      {a.label && <span style={{ ...S.alertChip, background: t.chip }}>{a.label}</span>}
+      <span style={{ color: t.text, fontWeight: 700 }}><Merged text={a.text} ctx={mctx} /></span>
+    </div>) }
+  const firstLine = st => { const b = (st.blocks || []).find(x => x.type === 'say') || (st.blocks || [])[0]; return b ? (b.text || (b.items || [])[0] || '') : '' }
 
   return (
     <div style={{ '--cs-accent': '#0e7490' }}>
@@ -139,15 +159,7 @@ export default function CallScreen({
                 ))}
               </div>
             )}
-            {(sc.alerts || []).map((a, i) => {
-              const t = TONES[a.tone] || TONES.info
-              return (
-                <div key={i} style={{ ...S.alert, background: t.bg, borderColor: t.border }}>
-                  {a.label && <span style={{ ...S.alertChip, background: t.chip }}>{a.label}</span>}
-                  <span style={{ color: t.text, fontWeight: 700 }}><Merged text={a.text} ctx={mctx} /></span>
-                </div>
-              )
-            })}
+            {stepAlerts.filter(x => x.at < 0).map((x, i) => <Rule key={i} a={x.a} />)}
             {(sc.booking_url || sc.booking_label) && (
               <div style={{ marginTop: 10 }}>
                 {sc.booking_url
@@ -174,16 +186,60 @@ export default function CallScreen({
             )}
           </div>
 
-          {/* stepper */}
-          <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px' }}>
-            {steps.map((s, i) => (
-              <button key={i} onClick={() => setStep(i)} style={{ ...S.stepBtn, ...(i === step ? S.stepOn : {}) }}>
-                <span style={{ ...S.stepNum, ...(i === step ? S.stepNumOn : i < step ? S.stepNumDone : {}) }}>{i < step ? '✓' : i + 1}</span>{s.title}
+          {/* the whole script: the step you're on is open and large, the rest are one quiet line (11/25 cleanup) */}
+          <div style={{ ...S.card, padding: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 8px' }}>
+              <div style={{ ...S.cardTitle, marginBottom: 0 }}>Script</div>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 12.5, opacity: 0.7 }}>Step {step + 1} of {steps.length}</span>
+            </div>
+            {steps.map((st, si) => si === step ? (
+              <div key={si} style={S.stepCur}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ ...S.stepNum, ...S.stepNumOn }}>{si + 1}</span>
+                  <span style={{ fontWeight: 800, fontSize: 17 }}>{st.title}</span>
+                </div>
+                <div style={{ marginLeft: 34 }}>
+                  {(st.blocks || []).map((b, i) => (
+                    <div key={i} style={{ marginTop: 10 }}>
+                      {b.type === 'say' && <blockquote style={S.say}>"<Merged text={b.text} ctx={mctx} />"</blockquote>}
+                      {b.type === 'note' && <div style={S.note}><Merged text={b.text} ctx={mctx} /></div>}
+                      {b.type === 'ask' && (
+                        <ul style={S.ask}>{(b.items || []).map((q, j) => <li key={j} style={{ margin: '4px 0' }}><Merged text={q} ctx={mctx} /></li>)}</ul>
+                      )}
+                      {b.type === 'check' && (
+                        <div>{(b.items || []).map((q, j) => {
+                          const k = `${si}.${i}.${j}`
+                          return (
+                            <label key={j} style={S.check}>
+                              <input type="checkbox" checked={!!checks[k]} onChange={e => setChecks(c => ({ ...c, [k]: e.target.checked }))} />
+                              <span style={{ textDecoration: checks[k] ? 'line-through' : 'none', opacity: checks[k] ? 0.6 : 1 }}><Merged text={q} ctx={mctx} /></span>
+                            </label>
+                          )
+                        })}</div>
+                      )}
+                    </div>
+                  ))}
+                  {stepAlerts.filter(x => x.at === si).map((x, i) => <Rule key={i} a={x.a} />)}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
+                    <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0} style={{ ...S.btn, opacity: step === 0 ? 0.4 : 1 }}>← Back</button>
+                    {step < steps.length - 1 && <button onClick={() => setStep(s => s + 1)} style={{ ...S.btn, background: '#0e7490', color: '#fff', borderColor: '#0e7490' }}>Next: {steps[step + 1].title} →</button>}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button key={si} onClick={() => setStep(si)} style={S.stepRow}>
+                <span style={{ ...S.stepNum, ...(si < step ? S.stepNumDone : {}) }}>{si < step ? '✓' : si + 1}</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, opacity: si < step ? 0.6 : 1 }}>{st.title}</span>
+                  {firstLine(st) && <span style={{ display: 'block', fontSize: 13, opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><Merged text={firstLine(st)} ctx={mctx} /></span>}
+                </span>
               </button>
             ))}
           </div>
 
-          {(sc.principles || []).length > 0 && (
+          {/* tip cards (principles) are for training — Scripts preview only, not the live call */}
+          {preview && (sc.principles || []).length > 0 && (
             <div style={S.principles}>
               {sc.principles.map((p, i) => (
                 <div key={i} style={S.principle}>
@@ -193,35 +249,6 @@ export default function CallScreen({
               ))}
             </div>
           )}
-
-          {/* current step */}
-          <div style={S.card}>
-            <div style={S.cardTitle}>{step + 1}. {cur.title}</div>
-            {(cur.blocks || []).map((b, i) => (
-              <div key={i} style={{ marginTop: 10 }}>
-                {b.type === 'say' && <blockquote style={S.say}>"<Merged text={b.text} ctx={mctx} />"</blockquote>}
-                {b.type === 'note' && <div style={S.note}><Merged text={b.text} ctx={mctx} /></div>}
-                {b.type === 'ask' && (
-                  <ul style={S.ask}>{(b.items || []).map((q, j) => <li key={j} style={{ margin: '4px 0' }}><Merged text={q} ctx={mctx} /></li>)}</ul>
-                )}
-                {b.type === 'check' && (
-                  <div>{(b.items || []).map((q, j) => {
-                    const k = `${step}.${i}.${j}`
-                    return (
-                      <label key={j} style={S.check}>
-                        <input type="checkbox" checked={!!checks[k]} onChange={e => setChecks(c => ({ ...c, [k]: e.target.checked }))} />
-                        <span style={{ textDecoration: checks[k] ? 'line-through' : 'none', opacity: checks[k] ? 0.6 : 1 }}><Merged text={q} ctx={mctx} /></span>
-                      </label>
-                    )
-                  })}</div>
-                )}
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
-              <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0} style={{ ...S.btn, opacity: step === 0 ? 0.4 : 1 }}>← Back</button>
-              {step < steps.length - 1 && <button onClick={() => setStep(s => s + 1)} style={{ ...S.btn, background: '#0e7490', color: '#fff', borderColor: '#0e7490' }}>Next: {steps[step + 1].title} →</button>}
-            </div>
-          </div>
 
           {/* voicemail */}
           {showVoicemail && sc.voicemail?.text && (
@@ -263,7 +290,7 @@ export default function CallScreen({
           {callBar && <div style={S.card}>{callBar}</div>}
 
           {/* disposition */}
-          {!preview && dispositions.length > 0 && (
+          {!preview && canSave && dispositions.length > 0 && (
             <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
               <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
               {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
@@ -367,9 +394,11 @@ const S = {
   fieldGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 },
   fieldLbl: { display: 'block', fontSize: 12, fontWeight: 700 },
   input: { display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14, fontFamily: 'inherit' },
+  stepCur: { padding: '14px 14px 14px 10px', borderRadius: 12, border: '2px solid #0e7490', background: 'light-dark(#f0fdff, #12262c)', margin: '2px 0' },
+  stepRow: { display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', padding: '9px 10px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', borderRadius: 10, fontFamily: 'inherit' },
   stepBtn: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: 'none', borderRadius: 999, background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', opacity: 0.7 },
   stepOn: { opacity: 1, background: 'rgba(14,116,144,0.08)' },
-  stepNum: { width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, background: 'rgba(100,116,139,0.15)' },
+  stepNum: { flex: 'none', width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, background: 'rgba(100,116,139,0.15)' },
   stepNumOn: { background: '#22d3ee', color: '#083344' },
   stepNumDone: { background: '#16a34a', color: '#fff' },
   principles: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 },
