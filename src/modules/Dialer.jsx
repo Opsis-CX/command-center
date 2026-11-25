@@ -117,7 +117,17 @@ function InboundWork({ call, me }) {
 
   const script = ctx?.script || null
   const f = ctx?.ai_fields || {}
-  const name = ctx?.caller_name || (call.callerName || '').replace(/\s*\(.*\)$/, '') || ''
+  const known = ctx?.caller_name || (call.callerName || '').replace(/\s*\(.*\)$/, '') || ''
+  // 11/25: the CSR can type the caller's name (saved on the call as soon as they leave the box)
+  const [typed, setTyped] = useState(null)
+  const [nameMsg, setNameMsg] = useState('')
+  const name = (typed ?? known).trim() || ''
+  async function saveName() {
+    if (typed == null || typed.trim() === (known || '').trim()) return
+    const { error } = await supabase.rpc('csr_set_caller_name', { p_call: call.id, p_name: typed })
+    setNameMsg(error ? error.message : 'Saved')
+    if (!error) setTimeout(() => setNameMsg(''), 2000)
+  }
   const mctx = useMemo(() => ({
     first_name: name.split(' ')[0] || '', last_name: name.split(' ').slice(1).join(' '), customer_name: name,
     agent_name: me.name, agent_first: me.first, brand: ctx?.brand || 'Opsis CX',
@@ -126,7 +136,6 @@ function InboundWork({ call, me }) {
   }), [name, me, ctx, script, f.reason, f.company, call.queueLabel])
 
   const context = [
-    { label: 'Caller', value: name || 'Unknown caller' },
     { label: 'Who they are', value: TYPE_LABEL[ctx?.caller_type] || 'New caller' },
     { label: 'Menu option', value: ctx?.menu_choice || call.queueLabel },
     { label: 'Line', value: ctx?.line || call.lineName },
@@ -139,6 +148,7 @@ function InboundWork({ call, me }) {
     const { error } = await supabase.rpc('inbound_disposition', {
       p_call: call.id, p_code: code, p_notes: notes || null, p_fields: fields || {}, p_callback_at: callbackAt,
     })
+    if (!error && typed != null) await supabase.rpc('csr_set_caller_name', { p_call: call.id, p_name: typed })
     setSaving(false)
     if (error) { setSaveErr(error.message); return }
     await voice.clearInbound()
@@ -148,7 +158,13 @@ function InboundWork({ call, me }) {
   const callBar = (
     <div>
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#d97706' }}>Inbound call</div>
-      <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{name || 'Caller'}</div>
+      <label style={{ display: 'block', marginTop: 4 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.65 }}>Caller name{nameMsg ? ` · ${nameMsg}` : ''}</span>
+        <input value={typed ?? known} onChange={e => setTyped(e.target.value)} onBlur={saveName}
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+          placeholder="Type the caller's name"
+          style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 2, padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 17, fontWeight: 800, fontFamily: 'inherit' }} />
+      </label>
       <div style={{ fontSize: 13, opacity: 0.7 }}>{[call.queueLabel, ctx?.after_hours ? 'after hours' : ''].filter(Boolean).join(' · ')}</div>
       <div style={{ marginTop: 8, fontWeight: 700, color: voice.status === 'in-call' ? '#16a34a' : 'inherit' }}>
         {voice.status === 'in-call' ? `On call · ${mmss(voice.seconds)}` : voice.status === 'connecting' ? 'Connecting…' : live ? 'Connecting…' : `Call ended${talk ? ` · talked ${mmss(talk)}` : ''} — save the disposition`}
