@@ -3560,6 +3560,8 @@ export function mountOpsisQA(ROOT, cfg) {
         : esc(t.assignee || 'Unassigned');
       var open = t.status === 'open' || t.status === 'in_progress';
       var act = !open ? '<div style="font-size:12.5px"><b>' + (t.status === 'done' ? 'Done' : 'Couldn’t reach') + '</b> · ' + esc(t.outcome || '') + (t.closed_by ? '<div class="mut">' + esc(t.closed_by) + '</div>' : '') + '</div>'
+        // Viewers see the task's status only, no Start / Done / Can't reach (TASK-05, Becky 11/24).
+        : (!CAN_EDIT || CFG.portalRole === 'viewer') ? (t.status === 'in_progress' ? '<span class="pill" style="background:#E8F0FC;color:#1E4E9C">In progress</span>' : '<span class="pill">Open</span>')
         : TK.close && TK.close.i === i ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="sr" for="tkout">Outcome</label><input id="tkout" class="oq-field" style="padding:6px 8px;font-size:12.5px;min-width:200px" placeholder="' + (TK.close.st === 'done' ? 'What happened? e.g. booked Tue 9–12' : 'Tried how many times?') + '"><button class="sel btnd" data-tkdo="1"' + dis + '>Save</button><button class="sel" data-tkcancel="1">Cancel</button></div>'
         : '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (t.status === 'open' ? '<button class="sel" data-tkst="in_progress" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Start</button>' : '<span class="pill" style="background:#E8F0FC;color:#1E4E9C">In progress</span>') +
           '<button class="sel btnd" data-tkclose="done" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Done</button><button class="sel" data-tkclose="cant_reach" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Can’t reach</button></div>';
