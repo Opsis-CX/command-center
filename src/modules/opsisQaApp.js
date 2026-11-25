@@ -2617,7 +2617,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var dd = r.orig != null ? Math.round(r.best - r.orig) : null;
       return '<button class="pill" data-act="hubredo" data-sid="' + esc(r.bestSid || '') + '" style="border:none;cursor:pointer;white-space:nowrap;' + (dd == null || dd >= 0 ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FFF4E5;color:#8A3B0E') + '" title="Open the best redo’s call review (' + r.tries + ' tr' + (r.tries === 1 ? 'y' : 'ies') + (r.csrTried ? '' : ', not by the CSR yet') + ')">↻ Redo ' + Math.round(r.best) + '%' + (dd == null ? '' : ' ' + (dd >= 0 ? '▲' : '▼') + Math.abs(dd)) + '</button>';
     }
-    if (PR.allowed && CAN_EDIT && !CFG.csrSelf && c.score != null) return '<button class="sel" data-act="redocall" data-id="' + esc(c.id) + '" style="padding:3px 10px;font-size:12px;min-height:0;white-space:nowrap" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo</button>';
+    if (PR.allowed && CAN_EDIT && !CFG.csrSelf && c.score != null && c.score < 80) return '<button class="sel" data-act="redocall" data-id="' + esc(c.id) + '" style="padding:3px 10px;font-size:12px;min-height:0;white-space:nowrap" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo</button>';
     return '';
   }
   // Scenarios come from the portal function; history comes from practice-audio so RMs see their brand, GMs their location, admins everyone.
@@ -4664,6 +4664,16 @@ export function mountOpsisQA(ROOT, cfg) {
     if (HUB.tab === 'wins') return hubWins(tok);
     return hubHome(tok);
   }
+  // Practice + redo use per CSR, last 7 days (Clement 11/25: who's actually using it, and is it working?)
+  function hubUseLine(r) {
+    var u = HUB.use && HUB.use[r.brand + '|' + String(r.name).toLowerCase().trim()]; if (!HUB.use) return '';
+    if (!u || (!u.practice_calls && !u.redos_open && !u.redos_done)) return '<span class="mut" style="font-size:11.5px;width:100%;border-top:1px solid var(--line2);padding-top:6px" title="Practice calls this CSR took in the last 7 days">Practice: none in the last 7 days</span>';
+    var g = u.avg_redo_gain;
+    return '<span style="font-size:11.5px;width:100%;border-top:1px solid var(--line2);padding-top:6px;color:#2B3A67" title="Last 7 days: practice calls taken (redos included); redos done and their average point gain vs the real call; redos still waiting">' +
+      '☎ ' + u.practice_calls + ' practice call' + (u.practice_calls === 1 ? '' : 's') +
+      (u.redos_done ? ' · ↻ ' + u.redos_done + ' redo' + (u.redos_done === 1 ? '' : 's') + (g != null ? ' <b style="color:' + (g >= 0 ? '#1F5A41' : '#A8441A') + '">' + (g >= 0 ? '▲' : '▼') + Math.abs(Math.round(g)) + '</b>' : '') : '') +
+      (u.redos_open ? ' · ' + u.redos_open + ' waiting' : '') + '</span>';
+  }
   function hubRoster(tok) {
     setHub('<div class="oq-crumb"><span style="color:var(--ink);font-weight:600">Coaching Hub</span></div><div id="hubr" style="display:flex;flex-direction:column;gap:4px">' + skel(60, 4) + '</div>');
     var paint = function () {
@@ -4690,7 +4700,7 @@ export function mountOpsisQA(ROOT, cfg) {
               '<span style="display:flex;align-items:center;gap:10px;width:100%"><span class="av">' + esc(r.name.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span><span style="flex:1;min-width:0"><b style="font-weight:600;display:block">' + esc(r.name) + '</b><span class="mut" style="font-size:12px">' + r.n + ' scored calls this week</span></span>' +
               (r.requests ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + r.requests + ' to review</span>' : '') + '</span>' +
               '<span style="display:flex;gap:16px;align-items:baseline;width:100%"><span><span class="num" style="font-size:22px;font-weight:700">' + (r.score == null ? '—' : r.score + '%') + '</span> <span class="mut" style="font-size:12px">score</span></span><span style="font-size:12px">' + dl(r.score, r.last) + '</span><span class="mut" style="font-size:12px;margin-left:auto">' + (r.opps ? r.booked + '/' + r.opps + ' booked' : '') + '</span></span>' +
-              '<span class="mut" style="font-size:12px;line-height:1.4;width:100%">' + (r.focus ? '<b style="color:var(--ink);font-weight:600">Focus:</b> ' + esc(r.focus) : 'Focus set when you open them') + (r.kudos ? ' · ♥ ' + r.kudos : '') + '</span></button>';
+              '<span class="mut" style="font-size:12px;line-height:1.4;width:100%">' + (r.focus ? '<b style="color:var(--ink);font-weight:600">Focus:</b> ' + esc(r.focus) : 'Focus set when you open them') + (r.kudos ? ' · ♥ ' + r.kudos : '') + '</span>' + hubUseLine(r) + '</button>';
           }).join('') + '</div></div>';
         }).join('');
       bindLoc();
@@ -4698,6 +4708,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var bindLoc = function () { var x = $('hubloc'); if (x) x.addEventListener('change', function () { S.locs = this.value ? [this.value] : []; paint(); }); };
     if (!HUB.locs && CFG.csrLocations) CFG.csrLocations().then(function (d) { var m = {}; (d.rows || []).forEach(function (r) { m[r.brand + '|' + String(r.name).toLowerCase().trim()] = r.location; }); HUB.locs = { map: m, mine: d.my_location || null }; if (HUB.roster) paint(); }).catch(function () {});
     if (HUB.roster) { setTimeout(paint, 0); }
+    if (!HUB.useTried) { HUB.useTried = 1; redoApi({ op: 'usage' }).then(function (u) { var m = {}; (u.rows || []).forEach(function (x) { m[String(x.brand) + '|' + String(x.agent).toLowerCase().trim()] = x; }); HUB.use = m; if (HUB.roster) paint(); }).catch(function () { HUB.use = null; }); }
     api({ action: 'hubroster', week: HUB.week || null }).then(function (r) { HUB.roster = r; paint(); }).catch(function (e) { var el = $('hubr'); if (el && !HUB.roster) el.innerHTML = errBox(e); });
   }
   function loadHome(force) {
@@ -5533,7 +5544,7 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     h += (noq ? '</details>' : '</div>') + trCard(c) + '<div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
-      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + ((RMAP && RMAP[c.id]) ? redoCell(c) : PR.allowed && CAN_EDIT && !CFG.csrSelf && c.agent && c.score != null ? '<button class="sel" data-act="redocall" data-id="' + c.id + '" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo this call</button>' : '') + '</div>';
+      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + ((RMAP && RMAP[c.id]) ? redoCell(c) : PR.allowed && CAN_EDIT && !CFG.csrSelf && c.agent && c.score != null && c.score < 80 ? '<button class="sel" data-act="redocall" data-id="' + c.id + '" title="Rebuild this call as a practice call: the AI plays this same customer so the CSR can take it again">↻ Redo this call</button>' : '') + '</div>';
     var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
     $('cd').innerHTML = h; bindTr();
     if (keep && $('cnbody')) $('cnbody').value = keep;
