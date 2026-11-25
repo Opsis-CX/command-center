@@ -214,7 +214,7 @@ export default function CxCallPanel() {
             {lines.length === 0 && <div style={S.empty}>{i.transcribing ? 'Listening…' : 'No transcript for this call.'}</div>}
             {lines.map(l => (
               <div key={l.id} style={{ display: 'flex', justifyContent: l.speaker === 'customer' ? 'flex-start' : 'flex-end' }}>
-                <div style={{ ...S.bubble, background: l.speaker === 'customer' ? '#f1f5f9' : '#E6F0EA' }}>
+                <div style={{ ...S.bubble, background: l.speaker === 'customer' ? 'light-dark(#f1f5f9, #222c31)' : 'light-dark(#E6F0EA, #1d3a2e)', color: 'light-dark(#0f172a, #e8eef0)' }}>
                   <div style={{ fontSize: 10.5, opacity: 0.6, marginBottom: 2 }}>{l.speaker === 'customer' ? 'Caller' : 'You'}</div>{l.text}
                 </div>
               </div>
