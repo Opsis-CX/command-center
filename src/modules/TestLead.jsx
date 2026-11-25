@@ -1,8 +1,8 @@
 // ============================================================
 //  Test a web lead (/test-lead) — team members submit themselves as a
 //  web lead for "Opsis Overhead Doors" — a made-up garage door brand, so no
-//  real client name is used. The lead drops straight into the
-//  "TEST — Opsis Overhead Doors S2L (team leads)" dial campaign, the agents get a
+//  real client name is used. The lead drops straight into the GarageCo
+//  "Cheney Door Salina — Web leads (test)" campaign (CSR phone; RT-15, 11/24), the agents get a
 //  notification, and this page shows the speed-to-lead stopwatch:
 //  lead received → first dial → first conversation → disposition.
 //
@@ -158,7 +158,7 @@ export default function TestLead() {
                 <Stat label="Booked" value={stats.booked} />
               </div>
               <div style={{ fontSize: 12.5, opacity: 0.7, marginTop: 8 }}>
-                Work these from the <Link to="/dialer" style={S.link}>Agent workspace</Link> (campaign "TEST — Opsis Overhead Doors S2L (team leads)"). Full detail in <Link to="/reporting/calls" style={S.link}>Call reports</Link>.
+                The AI calls first. If it doesn't reach the lead, the lead goes to the CSR phone in the GarageCo portal (campaign "Cheney Door Salina — Web leads (test)") and is fed automatically to a Ready CSR. Full detail in <Link to="/reporting/calls" style={S.link}>Call reports</Link>.
               </div>
             </div>
           )}
