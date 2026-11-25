@@ -79,14 +79,14 @@ export default function PhoneSetup({ clientId = null }) {
           <div style={S.mut}>{can ? 'Build the lines your customers call and the lists your CSRs call out to.' : 'View only. Ask an admin or your RM to make changes.'}</div>
         </div>
         <div style={S.seg}>
-          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).concat([['cx', 'Advanced engine']]).map(([k, l]) => (
+          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat([['access', 'CSR access']]).concat(!d.scope.brand && can ? [['central', 'Central team']] : []).concat([['cx', 'Advanced engine']]).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ ...S.segBtn, ...(tab === k ? S.segOn : {}) }}>{l}</button>
           ))}
         </div>
       </div>
       {msg && <div style={S.ok}>{msg}</div>}
 
-      {tab === 'cx' ? <CxEngineSetup args={args} people={d.people || []} can={can} /> : tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
+      {tab === 'access' ? <CsrAccess d={d} args={args} /> : tab === 'cx' ? <CxEngineSetup args={args} people={d.people || []} can={can} /> : tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
         <>
           {/* Storm / emergency closure — moved here from the Wallboard (Becky 11/20: the wallboard is informational only) */}
           <StormSwitch clientId={clientId} />
@@ -615,6 +615,62 @@ function CentralTeam({ args, onChange }) {
 // ---------- Blending (2026-11-10, Becky) ----------
 // Inbound always comes first. Outbound fills the gaps in this order; outbound pauses while a
 // customer is waiting on the location's line. GMs/RMs can set CSRs to inbound only.
+// CSR access (Becky 11/25): every CSR login gets their scorecard; the phone is on or off per CSR.
+// Off = scorecard only: no Phone tab, can't log in to take calls, and they stop ringing right away.
+function CsrAccess({ d, args }) {
+  const [off, setOff] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('pc_phone_access_get', args({}))
+    if (error) setMsg(error.message); else setOff(new Set(data?.off || []))
+  }, [args])
+  useEffect(() => { load() }, [load])
+  async function setPhone(p, on) {
+    if (!on && !window.confirm(`Turn the phone off for ${p.name}? They'll keep their scorecard, but they won't be able to take or make calls.`)) return
+    setBusy(p.id); setMsg('')
+    const { error } = await supabase.rpc('pc_phone_access_set', args({ p_profile: p.id, p_on: on }))
+    setBusy(null)
+    if (error) setMsg(error.message); else load()
+  }
+  const csrs = (d.people || []).filter(p => p.role === 'CSR' && (!q || `${p.name} ${p.brand || ''} ${p.location || ''}`.toLowerCase().includes(q.toLowerCase())))
+    .sort((a, b) => `${a.brand || ''}${a.location || ''}${a.name}`.localeCompare(`${b.brand || ''}${b.location || ''}${b.name}`))
+  const nOff = off ? (d.people || []).filter(p => p.role === 'CSR' && off.has(p.id)).length : 0
+  return (
+    <Section title="Who gets the phone" hint="Every CSR has their scorecard. Turn the phone on only for CSRs who take or make calls in this portal. Turning it off stops their phone ringing right away.">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search CSRs" style={{ ...S.input, width: 220, marginTop: 0 }} aria-label="Search CSRs" />
+        {off && <span style={S.mut}>{csrs.length} CSRs · {nOff} scorecard only</span>}
+        {msg && <span style={{ fontSize: 13, color: 'light-dark(#b91c1c, #e86464)' }}>{msg}</span>}
+      </div>
+      {!off ? <p style={S.mut}>Loading…</p> : csrs.length === 0 ? <p style={S.mut}>No CSRs here yet.</p> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
+            <thead><tr>{['CSR', 'Brand · location', 'Scorecard', 'Phone'].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid light-dark(#E8E4DC, #2a3439)', fontSize: 12, color: 'light-dark(#5F6763, #b3c1c7)' }}>{h}</th>)}</tr></thead>
+            <tbody>{csrs.map(p => {
+              const on = !off.has(p.id)
+              return (
+                <tr key={p.id}>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)', fontWeight: 600 }}>{p.name}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)' }}>{[p.brand, p.location].filter(Boolean).join(' · ') || '—'}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)', color: 'light-dark(#15803d, #20c55e)' }}>On</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)' }}>
+                    <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={on} disabled={busy === p.id} onChange={() => setPhone(p, !on)} aria-label={`Phone for ${p.name}`} />
+                      <span style={{ fontWeight: 600, color: on ? 'light-dark(#15803d, #20c55e)' : 'light-dark(#5F6763, #b3c1c7)' }}>{on ? 'On' : 'Off (scorecard only)'}</span>
+                    </label>
+                  </td>
+                </tr>
+              )
+            })}</tbody>
+          </table>
+        </div>
+      )}
+    </Section>
+  )
+}
+
 function Blending({ d, args }) {
   const [brand, setBrand] = useState(d.scope.brand || d.brands[0] || '')
   const [loc, setLoc] = useState(d.scope.location || '')
