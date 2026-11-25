@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, createContext, useContext } from 'react'
+import WfmIntraday from '../components/WfmIntraday'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import WfmTarget from '../components/WfmTarget'
@@ -162,9 +163,11 @@ function DayChart({ rows, target }) {
 }
 
 // ============================================================
-export default function Workforce({ data = supabaseData, portal = false }) {
+// One-platform (11/25): Command Center's /workforce and the portal's Workforce + Intraday are one page. `intraday`
+// adds the Intraday tab (WfmIntraday) for that client (null = Opsis CX); `who` names the workspace in the heading.
+export default function Workforce({ data = supabaseData, portal = false, intraday = undefined, who = '' }) {
   const { session } = useAuth() || {}
-  const [tab, setTab] = useState('target')
+  const [tab, setTab] = useState(() => (intraday !== undefined && new URLSearchParams(window.location.search).get('tab') === 'intraday') ? 'intraday' : 'target')
   const [brands, setBrands] = useState([])
   const [clients, setClients] = useState([])
   const [err, setErr] = useState('')
@@ -192,12 +195,12 @@ export default function Workforce({ data = supabaseData, portal = false }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Workforce management</h1>
+          <h1 className="page-title">Workforce management{who ? <span style={{ fontWeight: 500, color: 'var(--ink-soft)' }}> · {who}</span> : null}</h1>
           <p className="page-sub">Forecast volume, staff every interval with Erlang C, and check the schedule against it, for inbound, outbound and speed to lead.</p>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-        {TABS.filter(([k]) => portal || k !== 'actual').map(([k, l]) => <button key={k} style={S.tab(tab === k)} onClick={() => setTab(k)}>{l}</button>)}
+        {TABS.concat(intraday !== undefined ? [['intraday', 'Intraday (today)']] : []).filter(([k]) => portal || k !== 'actual').map(([k, l]) => <button key={k} style={S.tab(tab === k)} onClick={() => setTab(k)}>{l}</button>)}
       </div>
       {err && <div className="card" style={{ padding: 12, color: 'var(--failed)', background: 'var(--failed-bg)' }}>{err}</div>}
       {toast && <div style={{ position: 'fixed', right: 24, bottom: 24, background: 'var(--ink)', color: 'var(--surface)', padding: '10px 16px', borderRadius: 10, zIndex: 50 }}>{toast}</div>}
@@ -207,6 +210,7 @@ export default function Workforce({ data = supabaseData, portal = false }) {
       {tab === 'outbound' && <OutboundPlanner brands={brands} onSave={savePlan} preset={loadPlan?.kind === 'outbound' ? loadPlan : null} />}
       {tab === 's2l' && <SpeedToLeadPlanner onSave={savePlan} preset={loadPlan?.kind === 'speed_to_lead' ? loadPlan : null} />}
       {tab === 'calc' && <Calculator />}
+      {tab === 'intraday' && intraday !== undefined && <WfmIntraday clientId={intraday} />}
       {tab === 'plans' && <Plans onOpen={p => { setLoadPlan({ ...p, _t: Date.now() }); setTab(p.kind === 'speed_to_lead' ? 's2l' : p.kind) }} />}
     </div>
     </DataCtx.Provider>

@@ -214,8 +214,7 @@ const NAV_ONE = [
     { type: 'link', to: '/schedule', label: 'Schedule', ic: '◷', perm: 'schedule.view_my_schedule', tag: 'cc' },
     { type: 'link', to: '/schedule-builder', label: 'Schedule builder', ic: '🧱', perm: 'schedule.create_schedules', tag: 'cc' },
     { type: 'link', to: '/insights', label: 'Schedule insights', ic: '🔎', perm: 'schedule.view_insights_assigned', tag: 'cc' },
-    { type: 'link', to: '/workforce', label: 'Workforce (WFM)', ic: '📐', perm: '__caller', tag: 'b' },
-    { type: 'link', to: '/w/intraday', label: 'Intraday', ic: '⏱️', perm: '__portal', tag: 'b' },
+    { type: 'link', to: '/workforce', label: 'Workforce (WFM)', ic: '📐', perm: '__wfm', tag: 'b' },
     { type: 'link', to: '/w/wallboard', label: 'Wallboard', ic: '🖥️', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/supervisor', label: 'Supervisor', ic: '👀', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/live', label: "Who's On", ic: '🟢', perm: 'live_status', tag: 'cc' },
@@ -368,6 +367,7 @@ export default function Sidebar({ open, onNavigate }) {
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
     : p === '__portal' ? isPortalStaff(isAdmin, appRole)
+    : p === '__wfm' ? (!NO_CALL_ROLES.includes(appRole) || isPortalStaff(isAdmin, appRole))
     : p === '__phone' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign || inQueue)
     : (!p || canAny(appRole, p))
   // One shared ordering now; both names resolve to the same array.

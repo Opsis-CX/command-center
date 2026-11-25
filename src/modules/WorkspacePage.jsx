@@ -2,11 +2,14 @@
 // /w/<view> shows that portal page for the workspace picked at the top of the sidebar. Access is the
 // same as the Portals ▾ menu: my_portals() → can_view_portal(), and every portal edge function / RPC
 // checks the signed-in person again.
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import OpsisQAPortal from './OpsisQAPortal'
 import { useWorkspace } from '../lib/workspace'
 import { canAny } from '../lib/permissions'
 import { useAuth } from '../lib/auth'
+
+// Portal pages that were merged into one Command Center page (duplicate merges, 11/25+).
+const MERGED = { wfm: '/workforce', intraday: '/workforce?tab=intraday' }
 
 export default function WorkspacePage() {
   const { view } = useParams()
@@ -14,6 +17,7 @@ export default function WorkspacePage() {
   const { appRole } = useAuth()
   const { id, list, current, set } = useWorkspace()
 
+  if (MERGED[view]) return <Navigate to={MERGED[view]} replace />
   if (list === null) return <p className="page-sub">Loading…</p>
   if (!current) {
     return (

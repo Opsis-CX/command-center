@@ -57,6 +57,7 @@ import OpsisQAPortal from './modules/OpsisQAPortal'
 import Overview from './modules/Overview'
 import WorkspacePage from './modules/WorkspacePage'
 import AgentPhone from './modules/AgentPhone'
+import WorkforcePage from './modules/WorkforcePage'
 import { isPortalStaff } from './components/PortalMenu'
 import { useOneMenu } from './components/Sidebar'
 import HelpCenter from './modules/HelpCenter'
@@ -150,7 +151,6 @@ import Scripts from './modules/Scripts'
 // Call Reports = Five9-style custom reports (Call Log, Agent Occupancy, List Details) + scheduled emails.
 import CallReports from './modules/CallReports'
 // Workforce = Erlang C forecasting, staffing and capacity planning (inbound, outbound, speed to lead). 2026-11-09
-import Workforce from './modules/Workforce'
 // AI Speed to Lead = the AI agent that calls new leads in seconds, books, and hands off to live agents. 2026-11-09
 import AiSpeedToLead from './modules/AiSpeedToLead'
 const NO_CALL_ROLES = ['agent', 'client', 'csr']
@@ -593,7 +593,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* Test a web lead — any signed-in team member can submit themselves as an Opsis Overhead Doors (made-up brand) test lead. */}
               <Route path="/test-lead" element={<TestLead />} />
               {/* Call Reports — managers (report_data RPC checks can_manage_dialer()). */}
-              <Route path="/workforce" element={canPlaceCalls(appRole) ? <Workforce /> : <NoAccess />} />
+              <Route path="/workforce" element={(canPlaceCalls(appRole) || isPortalStaff(isAdmin, appRole)) ? <WorkforcePage /> : <NoAccess />} />
               <Route path="/ai-speed-to-lead" element={canPlaceCalls(appRole) ? <AiSpeedToLead /> : <NoAccess />} />
               <Route path="/reporting/calls" element={canPlaceCalls(appRole) ? <CallReports /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
@@ -682,7 +682,7 @@ function titleFor(path) {
   // existing bookmarks keep working, but every nested tab should still read
   // "Sales" in the header rather than falling through to "Command Center".
   if (path.startsWith('/w/')) {
-    const W = { insights: 'Insights', reviews: 'Business reviews', trends: 'Call trends', phone: 'Phone stats', csrs: 'Agents', csr: 'Agent', calls: 'Call reviews', calib: 'Calibration', hub: 'Coaching Hub', hubqs: 'Coaching Hub', practice: 'Practice calls', receptionist: 'AI CSR', intraday: 'Intraday', wallboard: 'Wallboard', reporting: 'Client reports', connect: 'Connect your calls', callflow: 'Call flow', qasettings: 'QA settings', team: 'Client team & access', brandset: 'Client portal settings', overview: 'Client overview', brands: 'Brands', brand: 'Brand', cardcap: 'Card capture', pricetalk: 'Price talk', money: 'Revenue', kb: 'Knowledge base', aistl: 'AI Speed to Lead', wfm: 'Workforce', coach: 'Coach view', tasks: 'Tasks', callbacks: 'Callbacks', leadtime: 'Booking lead time', repeat: 'Repeat callers', kpi: 'KPI', supervisor: 'Supervisor', phonesetup: 'Phone setup' }
+    const W = { insights: 'Insights', reviews: 'Business reviews', trends: 'Call trends', phone: 'Phone stats', csrs: 'Agents', csr: 'Agent', calls: 'Call reviews', calib: 'Calibration', hub: 'Coaching Hub', hubqs: 'Coaching Hub', practice: 'Practice calls', receptionist: 'AI CSR', wallboard: 'Wallboard', reporting: 'Client reports', connect: 'Connect your calls', callflow: 'Call flow', qasettings: 'QA settings', team: 'Client team & access', brandset: 'Client portal settings', overview: 'Client overview', brands: 'Brands', brand: 'Brand', cardcap: 'Card capture', pricetalk: 'Price talk', money: 'Revenue', kb: 'Knowledge base', aistl: 'AI Speed to Lead', wfm: 'Workforce', coach: 'Coach view', tasks: 'Tasks', callbacks: 'Callbacks', leadtime: 'Booking lead time', repeat: 'Repeat callers', kpi: 'KPI', supervisor: 'Supervisor', phonesetup: 'Phone setup' }
     return W[path.slice(3)] || 'Client workspace'
   }
   if (path.startsWith('/sales/')) return 'Sales'
