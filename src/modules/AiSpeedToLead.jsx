@@ -29,7 +29,10 @@ const OUTCOME = {
   do_not_call: { l: 'Opted out', c: 'var(--failed)', bg: 'var(--failed-bg)' },
   already_handled: { l: 'Already handled', c: 'var(--ink-soft)', bg: 'var(--canvas)' },
   failed: { l: 'Call failed', c: 'var(--failed)', bg: 'var(--failed-bg)' },
+  callback_to_csr: { l: 'Callback to a CSR', c: 'var(--accent)', bg: 'var(--accent-bg)' },
 }
+const KIND = { first: 'First call', retry: 'Re-dial', callback: 'Callback they asked for' }
+const TASK_ST = { open: 'Waiting on a person', in_progress: 'CSR working it', done: 'Done', cant_reach: 'Couldn’t reach' }
 const SRC = { yelp: 'Yelp', angi: 'Angi', thumbtack: 'Thumbtack', meta: 'Facebook', nextdoor: 'Nextdoor', modernize: 'Modernize', google_lsa: 'Google LSA', website: 'Website', other: 'Other' }
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 const fmtSec = s => (s == null ? '—' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s` : `${(s / 3600).toFixed(1)}h`)
@@ -143,6 +146,8 @@ export default function AiSpeedToLead({ data = supabaseData, portal = false }) {
         <Kpi n={st.after_hours ?? 0} l="After-hours & weekend leads covered" />
       </div>
 
+      <Funnel st={st} />
+
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
         {[['live', 'Live feed'], ['perf', 'Performance']].concat(cfg?.can_test === false ? [] : [['test', 'Test the AI']]).concat(cfg?.can_edit === false ? [] : [['settings', 'Settings']]).map(([k, l]) => <button key={k} style={S.tab(tab === k)} onClick={() => setTab(k)}>{l}</button>)}
       </div>
@@ -157,6 +162,40 @@ export default function AiSpeedToLead({ data = supabaseData, portal = false }) {
   )
 }
 
+// ---------------- funnel (2026-11-25): lead in → AI → reached → booked, and what the live team did with the rest ----------------
+function Funnel({ st }) {
+  const steps = [
+    ['Leads in', st.leads, null],
+    ['AI called', st.ai_called, st.leads],
+    ['Reached a person', st.reached, st.ai_called],
+    ['Booked by the AI', st.booked, st.reached],
+  ]
+  const max = Math.max(1, st.leads || 0)
+  return (
+    <Card title="Every lead, start to finish" right={<span style={S.note}>Bar width = share of all leads</span>}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(220px, 2fr)', gap: 20, alignItems: 'start' }} className="s2l-funnel">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {steps.map(([l, n, of]) => (
+            <div key={l} style={{ display: 'grid', gridTemplateColumns: '150px 1fr 90px', gap: 10, alignItems: 'center', fontSize: 13 }}>
+              <span>{l}</span>
+              <div style={{ height: 22, background: 'var(--canvas)', borderRadius: 6 }}><div style={{ width: `${((n || 0) / max) * 100}%`, height: '100%', background: l.startsWith('Booked') ? 'var(--passed)' : 'var(--accent)', opacity: l.startsWith('Booked') ? 0.85 : 0.75, borderRadius: 6 }} /></div>
+              <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}><b>{n ?? 0}</b>{of != null ? <span style={S.note}> · {pct(n || 0, of)}</span> : null}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+          <div style={{ fontWeight: 700 }}>Handed to the live team</div>
+          <div><b>{st.handed_off ?? 0}</b> leads · {st.transferred ?? 0} warm transfers during the call</div>
+          <div><b>{st.csr_reached ?? 0}</b> reached by a CSR afterwards · <b>{st.csr_booked ?? 0}</b> booked</div>
+          <div style={{ color: (st.waiting_now || 0) > 0 ? 'light-dark(#8a5a00, #e0b35a)' : undefined }}><b>{st.waiting_now ?? 0}</b> waiting on a person right now (Tasks){st.task_median_min != null ? ` · median ${st.task_median_min} min to close` : ''}</div>
+          <div><b>{st.callbacks_scheduled ?? 0}</b> callbacks scheduled at the time the customer asked</div>
+        </div>
+      </div>
+      <style>{'@media (max-width: 760px) { .s2l-funnel { grid-template-columns: 1fr !important; } }'}</style>
+    </Card>
+  )
+}
+
 // ---------------- live feed ----------------
 function Timeline({ l }) {
   const calls = l.calls || []
@@ -164,15 +203,19 @@ function Timeline({ l }) {
   const last = calls[calls.length - 1]
   const steps = [{ t: l.received_at, label: `Lead in · ${SRC[l.source] || l.source || 'Web'}` }]
   if (first) steps.push({ t: first.placed_at, label: `AI dialed in ${fmtSec(first.seconds_to_dial)}`, hi: true })
-  calls.filter(c => c.attempt > 1 && c.placed_at).forEach(c => steps.push({ t: c.placed_at, label: `Re-dial #${c.attempt}` }))
-  if (last?.outcome) steps.push({ t: last.ended_at, label: (OUTCOME[last.outcome] || {}).l || last.outcome, outcome: last.outcome })
-  if (l.handed_off_at) steps.push({ t: l.handed_off_at, label: 'To live agent' })
+  calls.filter(c => c.attempt > 1 && (c.placed_at || c.status === 'scheduled')).forEach(c => steps.push({ t: c.placed_at || c.scheduled_at, label: c.status === 'scheduled' ? `${c.kind === 'callback' ? 'Callback' : 'AI call'} set for ${when(c.scheduled_at)}` : c.kind === 'callback' ? 'Called back as asked' : `Re-dial #${c.attempt}` }))
+  const done = calls.filter(c => c.outcome)
+  const lastDone = done[done.length - 1]
+  if (lastDone && lastDone === last) steps.push({ t: lastDone.ended_at, label: (OUTCOME[lastDone.outcome] || {}).l || lastDone.outcome, outcome: lastDone.outcome })
+  if (l.handed_off_at) steps.push({ t: l.handed_off_at, label: 'To a CSR' })
+  ;(l.dials || []).forEach(d => steps.push({ t: d.at, label: `${d.by || 'CSR'}: ${d.result || 'called'}` }))
+  if (l.task) steps.push({ t: l.task.closed_at || l.task.due, label: `Task: ${TASK_ST[l.task.status] || l.task.status}${l.task.owner && l.task.status !== 'done' ? ` (${l.task.owner})` : ''}`, task: l.task.status })
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       {steps.map((s, i) => (
         <React.Fragment key={i}>
           {i > 0 && <span style={{ color: 'var(--line)' }}>→</span>}
-          <span title={when(s.t)} style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, background: s.hi ? 'var(--accent-bg)' : s.outcome ? (OUTCOME[s.outcome]?.bg || 'var(--canvas)') : 'var(--canvas)', color: s.hi ? 'var(--accent)' : s.outcome ? (OUTCOME[s.outcome]?.c || 'var(--ink)') : 'var(--ink)', fontWeight: s.hi || s.outcome ? 600 : 500 }}>{s.label}</span>
+          <span title={when(s.t)} style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, background: s.hi ? 'var(--accent-bg)' : s.outcome ? (OUTCOME[s.outcome]?.bg || 'var(--canvas)') : s.task === 'open' || s.task === 'in_progress' ? 'light-dark(#fff3d6, #392e13)' : 'var(--canvas)', color: s.hi ? 'var(--accent)' : s.outcome ? (OUTCOME[s.outcome]?.c || 'var(--ink)') : s.task === 'open' || s.task === 'in_progress' ? 'light-dark(#8a5a00, #e0b35a)' : 'var(--ink)', fontWeight: s.hi || s.outcome || s.task ? 600 : 500 }}>{s.label}</span>
         </React.Fragment>
       ))}
       {calls.some(c => ['scheduled', 'dialing', 'in_progress'].includes(c.status)) && <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700 }}>● on the call</span>}
@@ -219,7 +262,7 @@ function LeadDrawer({ lead, onClose, onRetry, canRetry = true }) {
         {calls.map(c => (
           <div key={c.id} className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-              <b>Call {c.attempt}{c.placed_at ? ` · ${time(c.placed_at)}` : ''}{c.duration_secs ? ` · ${fmtSec(c.duration_secs)}` : ''}</b>
+              <b>{KIND[c.kind] || `Call ${c.attempt}`}{c.placed_at ? ` · ${when(c.placed_at)}` : c.status === 'scheduled' ? ` · set for ${when(c.scheduled_at)}` : ''}{c.duration_secs ? ` · ${fmtSec(c.duration_secs)}` : ''}</b>
               <Pill o={c.outcome || (['scheduled', 'dialing', 'in_progress'].includes(c.status) ? null : c.status)} />
             </div>
             {c.error && <div style={{ color: 'var(--failed)', fontSize: 13 }}>{c.error}</div>}
@@ -242,6 +285,13 @@ function LeadDrawer({ lead, onClose, onRetry, canRetry = true }) {
             )}
           </div>
         ))}
+        {((lead.dials || []).length > 0 || lead.task) && (
+          <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <b>Live team</b>
+            {lead.task && <div style={{ fontSize: 13 }}>Task: <b>{TASK_ST[lead.task.status] || lead.task.status}</b>{lead.task.reason ? ` · ${lead.task.reason.replace(/^Speed to Lead: /, '')}` : ''}{lead.task.owner ? ` · ${lead.task.owner}` : ' · unassigned'}{lead.task.outcome ? <div style={S.note}>{lead.task.outcome}</div> : null}</div>}
+            {(lead.dials || []).map((d, i) => <div key={i} style={{ fontSize: 13 }}>{when(d.at)} · <b>{d.by || 'CSR'}</b>: {d.result || 'called'}{d.talk_secs ? ` · ${fmtSec(d.talk_secs)} talk` : ''}{d.notes ? <div style={S.note}>{d.notes}</div> : null}</div>)}
+          </div>
+        )}
         {canRetry && <div><button className="btn" onClick={onRetry}>Have the AI call again</button></div>}
       </div>
     </div>
@@ -270,6 +320,15 @@ function Performance({ st, days }) {
           </div>
         )) : <span style={S.note}>No finished calls yet.</span>}
         <div style={S.note}>{st.calls || 0} calls · {st.talk_minutes || 0} talk minutes · {st.handed_off || 0} leads handed to live agents</div>
+      </Card>
+      <Card title="By brand" pad={0}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr><th style={S.th}>Brand</th><th style={S.th}>Leads</th><th style={S.th}>First call in</th><th style={S.th}>Reached</th><th style={S.th}>Booked</th><th style={S.th}>To a CSR</th></tr></thead>
+            <tbody>{(st.by_brand || []).map(r => <tr key={r.brand}><td style={S.td}>{r.brand}</td><td style={S.td}>{r.leads}</td><td style={S.td}>{fmtSec(r.median_sec_to_dial)}</td><td style={S.td}>{pct(r.reached, r.ai_called)}</td><td style={S.td}>{pct(r.booked, r.reached)}</td><td style={S.td}>{r.handed_off}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <div style={{ ...S.note, padding: '0 16px 12px' }}>Reached = of leads the AI called. Booked = of leads it reached.</div>
       </Card>
       <Card title="By lead source" pad={0}>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -385,6 +444,8 @@ function Settings({ cfg, brand: pickBrand, onSaved }) {
           <L l="Hold from live agents (min)"><input type="number" style={S.input} value={f.hold_minutes} onChange={e => set('hold_minutes', Number(e.target.value))} /></L>
           <L l="Live transfer number"><input style={S.input} value={f.handoff_number} placeholder="Opsis CX agent line" onChange={e => set('handoff_number', e.target.value)} /></L>
           <L l="Calls from (AI phone line)"><select style={S.input} value={f.el_phone_id} onChange={e => set('el_phone_id', e.target.value)}><option value="">Brand default</option>{(cfg.lines || []).map(l => <option key={l.el_phone_id} value={l.el_phone_id}>{l.label} · {l.number}</option>)}</select></L>
+          <L l="Someone asks to be called back at a set time"><select style={S.input} value={f.callback_by || 'csr_first'} onChange={e => set('callback_by', e.target.value)}><option value="csr_first">At that time: a free CSR first, else the AI</option><option value="team">Hand it to the team right away</option></select></L>
+          <L l="Callbacks per lead"><select style={S.input} value={f.callback_cap ?? 2} onChange={e => set('callback_cap', Number(e.target.value))}>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></L>
           {cfg.staff !== false && <L l="Live dialer campaign (hand-offs)"><select style={S.input} value={f.campaign_id} onChange={e => set('campaign_id', e.target.value)}><option value="">(lead source's campaign)</option>{(cfg.campaigns || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></L>}
         </div>
       </Card>
