@@ -146,7 +146,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
   var KNOWN = { brands: [], agents: [] };
   // brands shown as checked in the picker: [] while the user has cleared everything (picker open), else the filter (empty filter = every brand)
-  function brandSel() { if (S.brandsNone && S.pop === 'brands' && !S.brands.length) return []; if (S.brands.length) return S.brands.slice(); if (S.view === 'brand' && S.brand) return [S.brand]; return KNOWN.brands.slice(); }
+  function pickedBrands() { if (S.brandsNone && S.pop === 'brands' && !S.brands.length) return []; if (S.brands.length) return S.brands.slice(); if (S.view === 'brand' && S.brand) return [S.brand]; return KNOWN.brands.slice(); }
 
   // ---------------- tiny helpers ----------------
   function toast(m) { var t = $('toast'); if (!t) return; t.textContent = m; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { t.style.display = 'none'; }, 2600); }
@@ -304,7 +304,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var list = KNOWN.brands.length ? KNOWN.brands : [];
       return '<div class="pop" style="right:150px;top:52px"><div class="cap" style="margin-bottom:8px">Brands</div>' +
         // Excel-style picker (Rob 11/25): "All brands" checks every brand; uncheck one to drop it, or uncheck All to clear and pick
-        (function () { var sel = brandSel(), allOn = list.length && sel.length === list.length;
+        (function () { var sel = pickedBrands(), allOn = list.length && sel.length === list.length;
           return '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px;font-weight:600"><input type="checkbox" data-allbrands ' + (allOn ? 'checked' : '') + '> All brands</label>' +
             list.map(function (b) { return '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px"><input type="checkbox" data-brandcb="' + esc(b) + '" ' + (sel.indexOf(b) >= 0 ? 'checked' : '') + '> ' + esc(b) + '</label>'; }).join('') +
             (list.length && !sel.length ? '<div class="mut" style="font-size:12px;padding:4px">Pick at least one brand. Showing all brands until you do.</div>' : ''); })() +
@@ -6427,7 +6427,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var d = el.dataset;
     if (d.brandcb !== undefined || d.allbrands !== undefined) {
       // Excel-style (Rob 11/25): All on → every brand checked; uncheck one = all but that one; uncheck All = clear, then pick
-      var bsel = brandSel(), ball = KNOWN.brands.length;
+      var bsel = pickedBrands(), ball = KNOWN.brands.length;
       if (d.allbrands !== undefined) { if (d.allbrands !== '1' && ball && bsel.length === ball) bsel = []; else bsel = KNOWN.brands.slice(); if (d.allbrands === '1') S.pop = null; }
       else { var i = bsel.indexOf(d.brandcb); if (i >= 0) bsel.splice(i, 1); else bsel.push(d.brandcb); }
       S.brandsNone = !bsel.length; S.brands = (!bsel.length || (ball && bsel.length >= ball)) ? [] : bsel;
