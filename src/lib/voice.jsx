@@ -79,6 +79,7 @@ const BLANK_AGENT = { state: 'offline', reason: null, since: null, inbound_membe
 export function VoiceProvider({ children, canDialNumbers = false, canCallPeople = true }) {
   const deviceRef = useRef(null)
   const callRef = useRef(null)
+  const mutedRef = useRef(false)
   const incomingRef = useRef(null)
   const inboundRef = useRef(null)      // answered inbound call waiting for its disposition
   const timerRef = useRef(null)
@@ -96,6 +97,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   // Wire up events for an outgoing OR accepted incoming call.
   const wire = useCallback((c) => {
     callRef.current = c
+    mutedRef.current = false
     c.on('ringing', () => patch({ status: 'ringing' }))
     c.on('accept', () => {
       patch({ status: 'in-call', seconds: 0 })
@@ -349,12 +351,22 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     else deviceRef.current?.disconnectAll?.()
   }, [])
 
-  const toggleMute = useCallback(() => {
+  // Mute (11/25 fix): muting only the browser mic wasn't reliable on CX-engine (conference) calls, so the
+  // CSR is also muted in the conference itself — the caller can't hear them either way.
+  const toggleMute = useCallback(async () => {
     const c = callRef.current
     if (!c) return
-    const next = !c.isMuted()
-    c.mute(next)
+    const next = !mutedRef.current
+    mutedRef.current = next
+    try { c.mute(next) } catch (e) { console.warn('local mute failed', e) }
     patch({ muted: next })
+    try {
+      const { data } = await supabase.rpc('csr_cx_my_call')
+      if (data?.interaction_id && ['connected', 'held'].includes(data.status)) {
+        const { error } = await supabase.functions.invoke('cx-control', { body: { action: next ? 'mute' : 'unmute', interaction_id: data.interaction_id } })
+        if (error) console.warn('conference mute failed', error)
+      }
+    } catch (e) { console.warn('conference mute failed', e) }
   }, [patch])
 
   const sendDigit = useCallback(d => { callRef.current?.sendDigits?.(d) }, [])
