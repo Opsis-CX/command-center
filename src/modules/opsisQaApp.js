@@ -3522,7 +3522,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- Tasks (Becky 11/20, scope doc "Product catalog + Task dashboard") ----------
   // Every customer follow-up the platform creates (AI CSR messages and requests, queue callbacks, callers who hung up
   // waiting, CSR callbacks), each assigned to a person, closed with a one-line outcome. RPCs: cx_task_* (CFG.tasks).
-  var TK = { view: 'open', d: null, busy: false, close: null, set: null, showSet: false };
+  var TK = { view: 'open', d: null, busy: false, close: null, set: null, showSet: false, hist: {}, histOpen: {}, ai: null };
   var TK_KIND = { ai_csr: 'AI CSR message', billing: 'Billing / collections', phone_callback: 'Queue callback', abandoned: 'Hung up waiting', csr_callback: 'CSR callback', s2l: 'Speed to lead', manual: 'Added by hand' };
   var TK_KINDS = ['phone_callback', 'abandoned', 'ai_csr', 'billing', 'csr_callback', 's2l'];
   function tkDue(t) {
@@ -3535,6 +3535,20 @@ export function mountOpsisQA(ROOT, cfg) {
   // Becky 11/20: a rule or task for Apple only offers Apple's people (and that location's, when one is picked)
   function tkBrandOk(p, brand) { return !brand || (p.brand && String(p.brand).toLowerCase().split(' ')[0] === String(brand).toLowerCase().split(' ')[0]); }
   function tkPeople(brand, loc) { return ((TK.d && TK.d.people) || []).filter(function (p) { return p.brand && tkBrandOk(p, brand) && (!loc || !p.location || String(p.location).toLowerCase() === String(loc).toLowerCase()); }); }
+  // Speed to Lead tasks (Becky 11/25): what the AI already did with this lead, and "Send back to the AI".
+  var TK_OUT = { booked: 'Booked', transferred: 'Live transfer', callback: 'Asked for a callback', question_answered: 'Question answered', voicemail: 'Voicemail left', no_answer: 'No answer', busy: 'Busy', not_interested: 'Not interested', wrong_number: 'Wrong number', do_not_call: 'Opted out', already_handled: 'Already handled', failed: 'Call didn’t go through', callback_to_csr: 'Callback handed to a CSR' };
+  var TK_CK = { first: 'First AI call', retry: 'AI re-dial', callback: 'AI callback they asked for' };
+  function tkWhen(x) { return x ? new Date(x).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; }
+  function tkHistHtml(h) {
+    if (h === 'loading') return '<div class="mut" style="font-size:12.5px;margin-top:6px">Loading the AI’s calls…</div>';
+    if (!h || h.error) return '<div class="mut" style="font-size:12.5px;margin-top:6px">' + esc((h && h.error) || 'No AI history for this task.') + '</div>';
+    var ev = (h.calls || []).map(function (c) {
+      var d = c.data || {}, extra = [d.callback_time ? 'wants a call ' + d.callback_time : '', d.urgency && d.urgency !== 'unknown' ? d.urgency : '', d.property_type && d.property_type !== 'unknown' ? d.property_type : ''].filter(Boolean).join(' · ');
+      return '<div style="padding:6px 0;border-top:1px solid #EEF1F2"><b style="font-weight:600">' + esc(TK_CK[c.kind] || ('AI call ' + c.attempt)) + '</b> · ' + esc(tkWhen(c.placed_at || c.scheduled_at)) + ' · ' + esc(c.status === 'scheduled' ? 'scheduled' : (TK_OUT[c.outcome] || c.outcome || c.status || '')) + (c.duration_secs ? ' · ' + Math.round(c.duration_secs / 60 * 10) / 10 + ' min' : '') +
+        (extra ? '<div class="mut" style="font-size:12px">' + esc(extra) + '</div>' : '') + (c.summary ? '<div style="font-size:12.5px;margin-top:2px">' + esc(c.summary) + '</div>' : '') + '</div>';
+    }).concat((h.dials || []).map(function (a) { return '<div style="padding:6px 0;border-top:1px solid #EEF1F2"><b style="font-weight:600">' + esc(a.by || 'CSR') + '</b> called · ' + esc(tkWhen(a.at)) + ' · ' + esc(a.result || '') + (a.notes ? '<div class="mut" style="font-size:12px">' + esc(a.notes) + '</div>' : '') + '</div>'; })).join('');
+    return '<div style="margin-top:8px;max-width:520px;font-size:12.5px">' + '<div class="mut" style="font-size:12px">Request: ' + esc(h.service || '') + (h.message ? ' — ' + esc(h.message) : '') + '</div>' + (ev || '<div class="mut">No calls yet.</div>') + '</div>';
+  }
   function tkPhone(p) { p = String(p || ''); return p.length === 10 ? '(' + p.slice(0, 3) + ') ' + p.slice(3, 6) + '-' + p.slice(6) : p; }
   function vTasks(tok) {
     setMain(crumb([['Tasks']]) + '<div id="tkwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
@@ -3567,8 +3581,12 @@ export function mountOpsisQA(ROOT, cfg) {
           '<button class="sel btnd" data-tkclose="done" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Done</button><button class="sel" data-tkclose="cant_reach" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Can’t reach</button></div>';
       return '<tr><td style="white-space:nowrap">' + tkDue(t) + (t.urgent ? '<div><span class="pill" style="background:#FBE9E4;color:#9A3412">Urgent</span></div>' : '') + '</td>' +
         '<td><b style="font-weight:600">' + esc(t.name || 'Unknown caller') + '</b>' + (t.phone ? '<div><a href="tel:+1' + esc(t.phone) + '" style="font-size:12.5px">' + esc(tkPhone(t.phone)) + '</a></div>' : '') + '<div class="mut" style="font-size:12px">' + esc(short(t.brand || '') + (t.location ? ' · ' + t.location : '')) + '</div></td>' +
-        '<td><div style="font-size:12px" class="mut">' + esc(TK_KIND[t.kind] || t.kind) + (t.calls > 1 ? ' · ' + t.calls + ' calls' : '') + '</div><div style="font-weight:500">' + esc(t.reason || '') + '</div>' + (t.summary ? '<div class="mut" style="font-size:12.5px;max-width:420px">' + esc(t.summary) + '</div>' : '') + '</td>' +
-        '<td>' + owner + '</td><td>' + act + '</td></tr>';
+        '<td><div style="font-size:12px" class="mut">' + esc(TK_KIND[t.kind] || t.kind) + (t.calls > 1 ? ' · ' + t.calls + ' calls' : '') + '</div><div style="font-weight:500">' + esc(t.reason || '') + '</div>' + (t.summary ? '<div class="mut" style="font-size:12.5px;max-width:420px">' + esc(t.summary) + '</div>' : '') +
+        (t.kind === 's2l' ? '<button class="sel" data-tkhist="' + i + '" style="padding:3px 9px;font-size:12px;margin-top:6px">' + (TK.histOpen[t.id] ? 'Hide AI calls' : 'AI calls so far') + '</button>' + (TK.histOpen[t.id] ? tkHistHtml(TK.hist[t.id]) : '') : '') + '</td>' +
+        '<td>' + owner + '</td><td>' + act +
+        (t.kind === 's2l' && open && CAN_EDIT && CFG.portalRole !== 'viewer' && CFG.tasks.s2lToAi ? (TK.ai === i
+          ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><span class="mut" style="font-size:12px">AI calls:</span><button class="sel" data-tkaigo="now" style="padding:4px 9px;font-size:12px"' + dis + '>Now</button><button class="sel" data-tkaigo="1h" style="padding:4px 9px;font-size:12px"' + dis + '>In 1 hour</button><button class="sel" data-tkaigo="tomorrow" style="padding:4px 9px;font-size:12px"' + dis + '>Tomorrow morning</button><button class="sel" data-tkaix="1" style="padding:4px 9px;font-size:12px">Cancel</button></div>'
+          : '<div style="margin-top:6px"><button class="sel" data-tkai="' + i + '" style="padding:4px 9px;font-size:12px">Send back to the AI</button></div>') : '') + '</td></tr>';
     }).join('');
     var empty = '<div class="mut" style="padding:28px 4px;text-align:center">' + (TK.view === 'done' ? 'Nothing closed in the last 14 days.' : TK.view === 'mine' ? 'Nothing assigned to you right now.' : 'No open tasks. New ones appear here as calls come in.') + '</div>';
     w.innerHTML = '<div style="display:flex;flex-direction:column;gap:16px"><div class="oq-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">Tasks</h2><p class="sub">Callbacks and follow-ups from AI CSR, the phone queue and CSR calls. Each has an owner and closes with an outcome.</p></div>' +
@@ -3612,6 +3630,23 @@ export function mountOpsisQA(ROOT, cfg) {
     if (d.tkset) { TK.showSet = !TK.showSet; drawTasks(); if (TK.showSet && !TK.set) tkLoadSet(); return true; }
     if (d.tkcancel) { TK.close = null; drawTasks(); return true; }
     if (d.tkclose) { TK.close = { i: +d.i, st: d.tkclose }; drawTasks(); return true; }
+    if (d.tkhist) {
+      var ht = D.tasks[+d.tkhist]; if (!ht) return true;
+      TK.histOpen[ht.id] = !TK.histOpen[ht.id];
+      if (TK.histOpen[ht.id] && (!TK.hist[ht.id] || TK.hist[ht.id].error) && CFG.tasks.s2lTimeline) {
+        TK.hist[ht.id] = 'loading';
+        CFG.tasks.s2lTimeline(ht.id).then(function (x) { TK.hist[ht.id] = x || { error: 'No AI history for this task.' }; drawTasks(); }).catch(function (e) { TK.hist[ht.id] = { error: e.message || 'Couldn’t load the AI calls.' }; drawTasks(); });
+      }
+      drawTasks(); return true;
+    }
+    if (d.tkai) { TK.ai = +d.tkai; drawTasks(); return true; }
+    if (d.tkaix) { TK.ai = null; drawTasks(); return true; }
+    if (d.tkaigo) {
+      var at = D.tasks[TK.ai]; if (!at || TK.busy) return true;
+      TK.busy = true;
+      CFG.tasks.s2lToAi({ id: at.id, when: d.tkaigo }).then(function (r) { TK.busy = false; TK.ai = null; toast('Sent back to the AI' + (r && r.label ? ': calls ' + r.label + ' their time' : '')); tkLoad(); }).catch(function (e) { TK.busy = false; toast(e.message || 'Couldn’t send it back.'); drawTasks(); });
+      return true;
+    }
     var save = function (p, msg) { if (TK.busy) return; TK.busy = true; CFG.tasks.set(p).then(function () { TK.busy = false; TK.close = null; toast(msg); tkLoad(); }).catch(function (e) { TK.busy = false; toast(e.message || 'Couldn’t save.'); drawTasks(); }); };
     if (d.tkst) { save({ id: D.tasks[+d.i].id, status: d.tkst }, 'Started'); return true; }
     if (d.tkdo) { var o = $('tkout'), v = o ? o.value.trim() : ''; if (!v) { toast('Add a one-line outcome'); return true; } save({ id: D.tasks[TK.close.i].id, status: TK.close.st, outcome: v }, TK.close.st === 'done' ? 'Task closed' : 'Marked can’t reach'); return true; }
