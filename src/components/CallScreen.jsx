@@ -18,7 +18,7 @@
 //  {{agent_first}} {{brand}} {{callback_number}} {{reason}} {{lead_source}}
 //  {{menu_option}} {{company}} … and {{any_key}} from the contact's data or qualifiers.
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 export const MERGE_TAGS = ['first_name', 'last_name', 'customer_name', 'agent_name', 'agent_first', 'brand', 'callback_number', 'reason', 'lead_source', 'menu_option', 'company']
 
@@ -107,6 +107,12 @@ export default function CallScreen({
   }
 
   const cur = steps[Math.min(step, steps.length - 1)]
+  // 11/25: live assist knows which step the call is on — move forward with it (never backward; the CSR can still click)
+  useEffect(() => {
+    const on = e => { const n = Number(e.detail?.step_no) - 1; if (Number.isFinite(n) && n >= 0 && n < steps.length) setStep(s => (n > s ? n : s)) }
+    window.addEventListener('cx-step', on)
+    return () => window.removeEventListener('cx-step', on)
+  }, [steps.length])
   // 11/25 cleanup: a rule shows on the step it's about (alert.step = step number or title, else matched by words),
   // so the CSR sees the zip rule while finding the need and the 2-days-out rule while offering times.
   const alertStep = a => {

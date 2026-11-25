@@ -31,6 +31,14 @@ export async function cxWrapNow(interactionId) {
   return data?.wrap || null
 }
 
+// Ask box (11/25): instant answer from this brand's facts / knowledge / top-CSR playbook
+export async function cxAsk(interactionId, q) {
+  const { data, error } = await supabase.functions.invoke(`cx-transcript?action=ask&i=${interactionId}`, { body: { q } })
+  if (error) throw new Error(await fnError(error, 'Could not answer right now.'))
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
 export const cxRpc = async (fn, args = {}) => {
   const { data, error } = await supabase.rpc(fn, args)
   if (error) throw new Error(error.message)
