@@ -67,7 +67,7 @@ export default function CxCallPanel() {
   useEffect(() => {
     if (!iid) return
     load()
-    const t = setInterval(load, ended ? 6000 : 1500)
+    const t = setInterval(load, ended ? 6000 : 1000)
     return () => clearInterval(t)
   }, [iid, load, ended])
   useEffect(() => { if (!iid) return; supabase.rpc('csr_cx_customer', { p_interaction: iid }).then(({ data }) => setCust(data || null)) }, [iid])
@@ -82,6 +82,13 @@ export default function CxCallPanel() {
   const alerts = useMemo(() => (live?.assist || []).filter(a => a.kind === 'alert').slice(-3).reverse(), [live])
   const wrap = useMemo(() => [...(live?.assist || [])].reverse().find(a => a.kind === 'wrap')?.payload || i?.ai_wrap || null, [live, i])
   const liveNow = i && ['connected', 'held'].includes(i.status)
+
+  // 11/25: while the panel is open it is docked as the right column; the call screen makes room (body.cx-docked)
+  const showing = !!(voice && iid && i && open && (liveNow || ended))
+  useEffect(() => {
+    document.body.classList.toggle('cx-docked', showing)
+    return () => document.body.classList.remove('cx-docked')
+  }, [showing])
 
   if (!voice || !iid || !i) return null
   if (!liveNow && !ended) return null
@@ -337,7 +344,7 @@ function TransferBox({ iid, onDone, onErr, inbound }) {
 }
 
 const S = {
-  panel: { position: 'fixed', top: 72, right: 16, zIndex: 999, width: 380, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0f172a, #e8eef0)', borderRadius: 16, border: '1px solid rgba(20,48,42,0.15)', boxShadow: '0 16px 48px rgba(0,0,0,0.22)', fontFamily: 'inherit' },
+  panel: { position: 'fixed', top: 72, right: 16, bottom: 16, zIndex: 999, width: 380, maxWidth: 'calc(100vw - 32px)', overflowY: 'auto', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0f172a, #e8eef0)', borderRadius: 16, border: '1px solid rgba(20,48,42,0.15)', boxShadow: '0 16px 48px rgba(0,0,0,0.22)', fontFamily: 'inherit' },
   head: { display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px 14px', background: G, color: '#fff', borderRadius: '16px 16px 0 0' },
   min: { background: 'transparent', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px', opacity: 0.85 },
   tab: { position: 'fixed', top: 72, right: 16, zIndex: 999, color: '#fff', border: 'none', borderRadius: 999, padding: '8px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },

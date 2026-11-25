@@ -125,40 +125,72 @@ export default function CallScreen({
       {a.label && <span style={{ ...S.alertChip, background: t.chip }}>{a.label}</span>}
       <span style={{ color: t.text, fontWeight: 700 }}><Merged text={a.text} ctx={mctx} /></span>
     </div>) }
+  const zipBox = zips.size > 0 && (
+    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <input value={zip} onChange={e => setZip(e.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="Zip code" inputMode="numeric"
+        style={{ ...S.input, width: 130, marginTop: 0, fontSize: 17, textAlign: 'center', letterSpacing: 2 }} />
+      {zip.length === 5 && (zips.has(zip)
+        ? <span style={{ fontWeight: 700, color: '#15803d' }}>✓ In the service area</span>
+        : <span style={{ fontWeight: 700, color: '#b91c1c' }}>✗ NOT in the service area</span>)}
+    </div>)
+  const zipStep = zips.size > 0 ? Math.max(0, stepAlerts.find(x => /zip|service area/i.test(`${x.a.label || ''} ${x.a.text || ''}`))?.at ?? 0) : -1
   const firstLine = st => { const b = (st.blocks || []).find(x => x.type === 'say') || (st.blocks || [])[0]; return b ? (b.text || (b.items || [])[0] || '') : '' }
 
   return (
-    <div style={{ '--cs-accent': '#0e7490' }}>
-      {/* ---------- header ---------- */}
-      <div style={S.hero}>
-        <div style={{ minWidth: 0 }}>
-          {sc.eyebrow && <div style={S.eyebrow}>{sc.eyebrow}</div>}
-          <div style={S.title}>{sc.title || 'Call'}</div>
-          {sc.subtitle && <div style={S.subtitle}><Merged text={sc.subtitle} ctx={mctx} /></div>}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {sc.kpi && <span style={S.kpi}>{sc.kpi}</span>}
-          <a href={sc.knowledge_url || '/knowledge'} target="_blank" rel="noreferrer" style={S.kb}>Knowledge Base</a>
-        </div>
+    <div className="cs-root" style={{ '--cs-accent': '#0e7490' }}>
+      {/* ---------- header: one thin line (11/25 declutter) ---------- */}
+      <div style={S.topline}>
+        <span style={{ fontWeight: 800 }}>{sc.title || 'Call'}</span>
+        {sc.eyebrow && <span style={{ opacity: 0.6 }}>{sc.eyebrow}</span>}
+        <span style={{ flex: 1 }} />
+        <a href={sc.knowledge_url || '/knowledge'} target="_blank" rel="noreferrer" style={{ color: 'light-dark(#0e7490, #1da4c9)', fontWeight: 700, fontSize: 13 }}>Knowledge Base ↗</a>
       </div>
 
-      <style>{'@media (max-width: 900px){.cs-grid{grid-template-columns:minmax(0,1fr) !important}}'}</style>
+      {/* when the live call panel is docked on the right (CX calls), this screen is one column: call bar, script, disposition */}
+      <style>{'@media (max-width: 900px){.cs-grid{grid-template-columns:minmax(0,1fr) !important}} body.cx-docked .cs-root{padding-right:404px} body.cx-docked .cs-grid{grid-template-columns:minmax(0,1fr) !important} body.cx-docked .cs-side{display:none !important}'}</style>
       <div className="cs-grid" style={S.grid}>
         {/* ================= main column ================= */}
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-          {/* context */}
-          <div style={S.card}>
-            <div style={S.cardTitle}>Context <span style={S.cardHint}>Confirm what's already here rather than making them repeat it.</span></div>
-            {context.length > 0 && (
-              <div style={S.ctxGrid}>
-                {context.map(c => (
-                  <div key={c.label}>
-                    <div style={S.ctxLabel}>{c.label}</div>
-                    <div style={S.ctxValue}>{c.value || <span style={{ opacity: 0.45 }}>—</span>}</div>
+          {callBar && <div style={S.card}>{callBar}</div>}
+          {/* disposition */}
+          {!preview && canSave && dispositions.length > 0 && (
+            <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
+              <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
+              {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
+                  so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
+              {(dispositions.some(d => d.group) ? DISPO_GROUPS.filter(g => dispositions.some(d => (d.group || 'none') === g.key)) : [{ key: null }]).map(g => (
+                <div key={g.key || 'all'} style={{ marginBottom: g.key ? 8 : 0 }}>
+                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{(dispositions.find(d => (d.group || 'none') === g.key && d.group_label) || {}).group_label || g.label}</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {dispositions.filter(d => !g.key || (d.group || 'none') === g.key).map(d => (
+                      <button key={d.code} onClick={() => setCode(d.code)}
+                        style={{ ...S.chip, ...(code === d.code ? { background: d.color || g.color || '#0e7490', borderColor: d.color || g.color || '#0e7490', color: '#fff' } : {}) }}>
+                        {d.label}
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+              {dispo?.outcome === 'callback' && (
+                <label style={{ ...S.fieldLbl, marginTop: 10 }}>Callback date & time (your time)
+                  <input type="datetime-local" value={callbackAt} onChange={e => setCallbackAt(e.target.value)} style={S.input} />
+                </label>
+              )}
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Notes"
+                style={{ ...S.input, marginTop: 10, resize: 'vertical' }} />
+              {missingRequired.length > 0 && code && dispo?.is_contact && (
+                <div style={{ fontSize: 12.5, color: 'light-dark(#b45309, #e07524)', marginTop: 6 }}>Still needed: {missingRequired.map(f => f.label).join(', ')}</div>
+              )}
+              {error && <div style={S.error}>{error}</div>}
+              <button onClick={save} disabled={!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)}
+                style={{ ...S.saveBtn, opacity: (!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)) ? 0.5 : 1 }}>
+                {saving ? 'Saving…' : saveLabel}
+              </button>
+            </div>
+          )}
+
+          {/* rules that aren't tied to a step, the booking link, and details to fill in */}
+          {(stepAlerts.some(x => x.at < 0) || sc.booking_url || sc.booking_label || (sc.fields || []).length > 0) && <div style={S.card}>
             {stepAlerts.filter(x => x.at < 0).map((x, i) => <Rule key={i} a={x.a} />)}
             {(sc.booking_url || sc.booking_label) && (
               <div style={{ marginTop: 10 }}>
@@ -169,7 +201,7 @@ export default function CallScreen({
             )}
             {(sc.fields || []).length > 0 && (
               <>
-                <div style={{ ...S.cardTitle, marginTop: 14 }}>Details & qualifiers <span style={S.cardHint}>saved with the disposition</span></div>
+                <div style={{ ...S.cardTitle, marginTop: 10 }}>Details <span style={S.cardHint}>saved with the disposition</span></div>
                 <div style={S.fieldGrid}>
                   {sc.fields.map(f => (
                     <label key={f.key} style={S.fieldLbl}>
@@ -184,7 +216,7 @@ export default function CallScreen({
                 </div>
               </>
             )}
-          </div>
+          </div>}
 
           {/* the whole script: the step you're on is open and large, the rest are one quiet line (11/25 cleanup) */}
           <div style={{ ...S.card, padding: 8 }}>
@@ -221,6 +253,7 @@ export default function CallScreen({
                     </div>
                   ))}
                   {stepAlerts.filter(x => x.at === si).map((x, i) => <Rule key={i} a={x.a} />)}
+                  {si === zipStep && zipBox}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
                     <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0} style={{ ...S.btn, opacity: step === 0 ? 0.4 : 1 }}>← Back</button>
                     {step < steps.length - 1 && <button onClick={() => setStep(s => s + 1)} style={{ ...S.btn, background: '#0e7490', color: '#fff', borderColor: '#0e7490' }}>Next: {steps[step + 1].title} →</button>}
@@ -286,45 +319,7 @@ export default function CallScreen({
         </div>
 
         {/* ================= right column ================= */}
-        <div style={{ display: 'grid', gap: 12, alignContent: 'start', minWidth: 0 }}>
-          {callBar && <div style={S.card}>{callBar}</div>}
-
-          {/* disposition */}
-          {!preview && canSave && dispositions.length > 0 && (
-            <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
-              <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
-              {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
-                  so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
-              {(dispositions.some(d => d.group) ? DISPO_GROUPS.filter(g => dispositions.some(d => (d.group || 'none') === g.key)) : [{ key: null }]).map(g => (
-                <div key={g.key || 'all'} style={{ marginBottom: g.key ? 8 : 0 }}>
-                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{(dispositions.find(d => (d.group || 'none') === g.key && d.group_label) || {}).group_label || g.label}</div>}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {dispositions.filter(d => !g.key || (d.group || 'none') === g.key).map(d => (
-                      <button key={d.code} onClick={() => setCode(d.code)}
-                        style={{ ...S.chip, ...(code === d.code ? { background: d.color || g.color || '#0e7490', borderColor: d.color || g.color || '#0e7490', color: '#fff' } : {}) }}>
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {dispo?.outcome === 'callback' && (
-                <label style={{ ...S.fieldLbl, marginTop: 10 }}>Callback date & time (your time)
-                  <input type="datetime-local" value={callbackAt} onChange={e => setCallbackAt(e.target.value)} style={S.input} />
-                </label>
-              )}
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Notes"
-                style={{ ...S.input, marginTop: 10, resize: 'vertical' }} />
-              {missingRequired.length > 0 && code && dispo?.is_contact && (
-                <div style={{ fontSize: 12.5, color: 'light-dark(#b45309, #e07524)', marginTop: 6 }}>Still needed: {missingRequired.map(f => f.label).join(', ')}</div>
-              )}
-              {error && <div style={S.error}>{error}</div>}
-              <button onClick={save} disabled={!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)}
-                style={{ ...S.saveBtn, opacity: (!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)) ? 0.5 : 1 }}>
-                {saving ? 'Saving…' : saveLabel}
-              </button>
-            </div>
-          )}
+        <div className="cs-side" style={{ display: 'grid', gap: 12, alignContent: 'start', minWidth: 0 }}>
 
           {/* contact */}
           <div style={S.card}>
@@ -340,7 +335,7 @@ export default function CallScreen({
           </div>
 
           {/* zip lookup */}
-          {zips.size > 0 && (
+          {false && zips.size > 0 && (
             <div style={S.card}>
               <div style={{ ...S.cardTitle, display: 'flex', justifyContent: 'space-between' }}>Zip code lookup <span style={S.cardHint}>{zips.size} zips on file</span></div>
               <input value={zip} onChange={e => setZip(e.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="Type a zip code" inputMode="numeric"
@@ -375,6 +370,7 @@ export default function CallScreen({
 }
 
 const S = {
+  topline: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 2px 10px', fontSize: 14 },
   hero: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '18px 22px', borderRadius: 16, color: '#fff', background: 'linear-gradient(120deg, #0b3954 0%, #0e7490 60%, #0891b2 100%)', marginBottom: 12 },
   eyebrow: { fontSize: 11.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#67e8f9' },
   title: { fontSize: 24, fontWeight: 800, lineHeight: 1.2, marginTop: 2 },
