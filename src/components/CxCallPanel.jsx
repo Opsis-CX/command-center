@@ -16,7 +16,6 @@ const G = '#14302A'
 const GT = 'light-dark(#14302A, #9fd6bd)'  // brand green for text/lines: lighter in dark mode
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`
 const ago = t => { const s = Math.round((Date.now() - new Date(t).getTime()) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(t).toLocaleDateString() }
-const INTENT = { new_service: 'New door / install', repair: 'Repair', existing_customer: 'Existing customer', price_shopping: 'Price shopping', not_a_customer: 'Not a customer', other: 'Other' }
 
 export default function CxCallPanel() {
   const voice = useVoice()
@@ -26,7 +25,7 @@ export default function CxCallPanel() {
   const [lines, setLines] = useState([])           // transcript
   const [cust, setCust] = useState(null)
   const [open, setOpen] = useState(true)
-  const [tab, setTab] = useState('assist')
+  const [tab, setTab] = useState('check')
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [xfer, setXfer] = useState(false)
@@ -45,7 +44,7 @@ export default function CxCallPanel() {
       if (!alive) return
       setMine(data || null)
       if (data?.interaction_id && data.status === 'connected') {
-        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('assist') }
+        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('check') }
       }
     }
     run()
@@ -124,7 +123,10 @@ export default function CxCallPanel() {
           <div style={{ fontSize: 12, opacity: 0.85 }}>{[i.line_name || i.campaign_name, i.queue].filter(Boolean).join(' · ')}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          {liveNow && <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 18 }}>{mmss(talk)}</div>}
+          {liveNow && <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+            {Number.isFinite(Number(assist?.sentiment)) && <span title="Caller mood" style={{ fontSize: 16 }}>{assist.sentiment >= 0.3 ? '🙂' : assist.sentiment <= -0.3 ? '🙁' : '😐'}</span>}
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 18 }}>{mmss(talk)}</span>
+          </div>}
           <button onClick={() => setOpen(false)} style={S.min} aria-label="Minimize">–</button>
           {!liveNow && <button onClick={() => { setIid(null); setEnded(null); setLive(null) }} style={S.min} aria-label="Close">×</button>}
         </div>
@@ -173,40 +175,45 @@ export default function CxCallPanel() {
         <div style={S.alert}>⚠ {alerts[0].payload?.text}</div>
       )}
 
+      {liveNow && (
+        <div style={{ margin: '0 14px 10px' }}>
+          {assist ? (
+            <div style={S.next}>
+              <div style={S.cap}>Next</div>
+              <div>{assist.next}</div>
+              {assist.say && <div style={{ fontWeight: 500, fontSize: 13.5, marginTop: 6, color: 'light-dark(#0f172a, #e8eef0)' }}>“{assist.say}”</div>}
+              <button style={{ ...S.small, marginTop: 8, fontSize: 11.5, padding: '3px 8px' }} onClick={() => cxAssistNow(iid).then(load).catch(e => setErr(e.message))}>Refresh</button>
+            </div>
+          ) : (
+            <div style={S.empty}>{i.transcribing ? 'Suggestions appear a few seconds after the caller starts talking.' : 'Turn on live transcript to get suggestions while you talk.'}</div>
+          )}
+        </div>
+      )}
+
       <div style={S.tabs}>
-        {(liveNow ? [['assist', 'Assist'], ['transcript', `Transcript${lines.length ? ` (${lines.length})` : ''}`], ['customer', 'Caller']] : [['wrap', 'Wrap-up'], ['transcript', 'Transcript'], ['customer', 'Caller']]).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ ...S.tabBtn, ...((tab === k || (!liveNow && tab === 'assist' && k === 'wrap')) ? S.tabOn : {}) }}>{l}</button>
+        {(liveNow ? [['check', `Checklist${(assist?.checklist || []).length ? ` · ${assist.checklist.filter(c => c.done).length} of ${assist.checklist.length}` : ''}`], ['transcript', 'Transcript'], ['facts', 'Facts'], ['customer', 'History']] : [['wrap', 'Wrap-up'], ['transcript', 'Transcript'], ['customer', 'Caller']]).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ ...S.tabBtn, ...((tab === k || (!liveNow && ['assist', 'check', 'facts'].includes(tab) && k === 'wrap')) ? S.tabOn : {}) }}>{l}</button>
         ))}
       </div>
 
       <div style={S.body}>
-        {(tab === 'assist' && liveNow) && (
-          assist ? (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={S.next}><div style={S.cap}>Do this now</div>{assist.next}</div>
-              {assist.say && <div style={S.say}><div style={S.cap}>Try saying</div>“{assist.say}”</div>}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {assist.step && <span style={S.chip}>Step: {String(assist.step).replace(/[[\]]/g, '')}</span>}
-                {assist.intent && <span style={S.chip}>{INTENT[assist.intent] || assist.intent}</span>}
-                {Number.isFinite(Number(assist.booking_likelihood)) && <span style={{ ...S.chip, background: assist.booking_likelihood >= 60 ? 'light-dark(#dcfce7, #133920)' : assist.booking_likelihood >= 35 ? 'light-dark(#fef9c3, #393613)' : 'light-dark(#fee2e2, #391313)' }}>Booking chance {assist.booking_likelihood}%</span>}
-                {assist.objection && <span style={{ ...S.chip, background: 'light-dark(#ffedd5, #392913)' }}>Objection: {assist.objection}</span>}
-                {Number.isFinite(Number(assist.sentiment)) && <span style={S.chip}>Mood {assist.sentiment >= 0.3 ? '🙂' : assist.sentiment <= -0.3 ? '🙁' : '😐'}</span>}
-              </div>
-              {(assist.checklist || []).length > 0 && (
-                <div><div style={S.cap}>Call checklist</div>
-                  {assist.checklist.map(c => <div key={c.key || c.label} style={{ fontSize: 13, padding: '2px 0', color: c.done ? 'light-dark(#166534, #29bc61)' : 'light-dark(#334155, #b3c1c7)' }}>{c.done ? '✓' : '○'} {c.label}</div>)}
+        {(tab === 'check' && liveNow) && (
+          (assist?.checklist || []).length > 0 ? (
+            <div>
+              {assist.checklist.map(c => (
+                <div key={c.key || c.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid light-dark(#f1f5f9, #222c31)' }}>
+                  <span style={{ width: 16, height: 16, flex: 'none', borderRadius: '50%', boxSizing: 'border-box', ...(c.done ? { background: '#16a34a' } : { border: '2px solid light-dark(#cbd5e1, #3a464c)' }) }} />
+                  <span style={{ fontSize: 13.5, color: c.done ? 'light-dark(#64748b, #9fb4bb)' : 'inherit' }}>{c.label}</span>
                 </div>
-              )}
-              {(assist.facts || []).length > 0 && (
-                <div><div style={S.cap}>Facts for this call</div>
-                  {assist.facts.map((f, n) => <div key={n} style={{ fontSize: 13, padding: '2px 0' }}><b>{f.label}:</b> {f.value}</div>)}
-                </div>
-              )}
-              <button style={S.small} onClick={() => cxAssistNow(iid).then(load).catch(e => setErr(e.message))}>Refresh suggestions</button>
+              ))}
             </div>
-          ) : (
-            <div style={S.empty}>{i.transcribing ? 'Suggestions appear a few seconds after the caller starts talking.' : 'Turn on live transcript to get suggestions while you talk.'}</div>
-          )
+          ) : <div style={S.empty}>The checklist fills in once the caller starts talking.</div>
+        )}
+
+        {(tab === 'facts' && liveNow) && (
+          (assist?.facts || []).length > 0
+            ? <div>{assist.facts.map((f, n) => <div key={n} style={{ fontSize: 13, padding: '4px 0' }}><b>{f.label}:</b> {f.value}</div>)}</div>
+            : <div style={S.empty}>No facts needed yet.</div>
         )}
 
         {tab === 'transcript' && (
@@ -248,7 +255,7 @@ export default function CxCallPanel() {
           </div>
         )}
 
-        {(!liveNow && (tab === 'wrap' || tab === 'assist')) && (
+        {(!liveNow && ['wrap', 'assist', 'check', 'facts'].includes(tab)) && (
           wrap ? (
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={S.next}><div style={S.cap}>AI summary</div>{wrap.summary}</div>
