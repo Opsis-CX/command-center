@@ -198,6 +198,9 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
           settings: () => rpc('cx_task_settings', { p_client: cid }, 'Could not load task settings.'),
           ruleSet: ({ brand, location, kind, assignee }) => rpc('cx_task_rule_set', { p_client: cid, p_brand: brand, p_location: location || null, p_kind: kind || null, p_assignee: assignee || null }, 'Could not save.'),
           dueSet: ({ kind, minutes, business_hours }) => rpc('cx_task_due_set', { p_client: cid, p_kind: kind, p_minutes: minutes, p_business_hours: business_hours }, 'Could not save.'),
+          // Speed to Lead tasks (Becky 11/25): the AI's calls on this lead, and send it back to the AI.
+          s2lTimeline: (id) => rpc('csr_s2l_task_timeline', { p_task: id }, 'Could not load the AI calls.'),
+          s2lToAi: ({ id, when }) => rpc('csr_s2l_task_send_to_ai', { p_task: id, p_when: when || 'now' }, 'Could not send it back to the AI.'),
         }
       })(),
       // Team & access (Becky 11/20): real roles admin / rm / gm / coach / viewer, read and set with the user's own session.
