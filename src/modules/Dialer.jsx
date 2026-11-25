@@ -21,14 +21,14 @@ import { useVoice } from '../lib/voice'
 import CallScreen, { prettyPhone } from '../components/CallScreen'
 import AgentStatus from '../components/AgentStatus'
 
-const LS_KEY = 'dialer_campaign'
 const POLL_MS = 15000
-const AUTO_POLL_MS = 4000   // auto-dial (speed-to-lead) campaigns look for new leads every 4s
+const AUTO_POLL_MS = 4000
+// Becky 11/25: CSRs don't choose outbound work. The next contact pops with who and why, and dials itself
+// after this many seconds. Speed-to-lead (auto-dial) campaigns still dial right away.
+const POP_SECS = 15   // auto-dial (speed-to-lead) campaigns look for new leads every 4s
 // Auto-dial = progressive with a 0-second countdown: calls go out as soon as a lead is handed over.
 const isAutoDial = c => !!c && c.mode === 'progressive' && Number(c.progressive_delay_sec) === 0
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-function lsGet() { try { return localStorage.getItem(LS_KEY) || 'all' } catch { return 'all' } }
-function lsSet(v) { try { localStorage.setItem(LS_KEY, v) } catch { /* ignore */ } }
 function mmss(s) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 function fmt(ts) { return ts ? new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' }
 const TYPE_LABEL = { team: 'Team member', applicant: 'Job applicant', campaign_contact: 'Campaign contact', unknown: 'New caller' }
@@ -212,7 +212,7 @@ function InboundWork({ call, me }) {
 function OutboundWork({ me }) {
   const voice = useVoice()
   const [campaigns, setCampaigns] = useState(null)
-  const [sel, setSel] = useState(lsGet())
+  const sel = 'all'   // always every campaign I'm on, in the location's order (no picker)
   const [contact, setContact] = useState(null)        // dialer_next row + campaign_id
   const [phase, setPhase] = useState('idle')            // idle | preview | countdown | calling | dispo
   const [countdown, setCountdown] = useState(0)
@@ -239,7 +239,6 @@ function OutboundWork({ me }) {
     setCampaigns(data || [])
   }, [])
   useEffect(() => { loadCampaigns() }, [loadCampaigns])
-  useEffect(() => { lsSet(sel) }, [sel])
 
   // Leaving the page hands back a contact we never called.
   const contactRef = useRef(null); const phaseRef = useRef('idle')
@@ -266,7 +265,7 @@ function OutboundWork({ me }) {
         setContact(row); setInfo(null); callStarted.current = false
         // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
         // lead is handed over — no Call, Pause or Skip for the agent.
-        if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
+        setPhase('countdown'); setCountdown(isAutoDial(c) ? 0 : POP_SECS)
         return
       }
       setContact(null); setPhase('idle'); setMsg('No one to call right now. Checking again every few seconds…')
@@ -289,7 +288,7 @@ function OutboundWork({ me }) {
     if (!ready && ['preview', 'countdown'].includes(phase) && voice.agent.state !== 'on_call') {
       supabase.rpc('dialer_skip', { p_queue: contact.queue_id }); setContact(null); setPhase('idle')
     }
-    if (voice.incoming && phase === 'countdown' && !isAutoDial(campaign)) setPhase('preview')
+    if (voice.incoming && phase === 'countdown' && countdown < 3) setCountdown(3)
   }, [ready, voice.incoming, phase, contact, voice.agent.state]) // eslint-disable-line
 
   // Progressive countdown → auto-dial.
@@ -331,8 +330,7 @@ function OutboundWork({ me }) {
     // An inbound call is ringing / on screen: hold the auto-dial and retry in a moment
     // instead of dropping the agent into a manual preview.
     if (voice.incoming || voice.inboundCall) {
-      if (isAutoDial(campaign)) { setCountdown(2); return }
-      setPhase('preview'); return
+      setPhase('countdown'); setCountdown(3); return
     }
     wasReady.current = wasReady.current || voice.agent.state === 'ready'
     callStarted.current = true
@@ -368,7 +366,6 @@ function OutboundWork({ me }) {
 
   if (campaigns === null) return <p className="page-sub">Loading…</p>
 
-  const totalReady = campaigns.reduce((n, c) => n + (c.ready_now || 0), 0)
   if (!contact) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -380,16 +377,8 @@ function OutboundWork({ me }) {
         ) : (
           <>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{ready ? 'Waiting for your next call…' : "You're not Ready"}</div>
-            <div className="page-sub" style={{ margin: '6px 0 14px' }}>
-              {ready ? (msg || 'Looking…') : `Set yourself Ready at the top to start. ${totalReady} contact${totalReady === 1 ? '' : 's'} ready to call now.`}
-            </div>
-            <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-              <span style={S.small}>Outbound from</span>
-              <select value={sel} onChange={e => setSel(e.target.value)} style={S.select}>
-                <option value="all">All my campaigns ({totalReady} ready)</option>
-                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}{c.brand ? ` · ${c.brand}` : ''} ({c.ready_now} ready)</option>)}
-              </select>
-              {ready && <button onClick={fetchNext} style={S.btn}>Check now</button>}
+            <div className="page-sub" style={{ margin: '6px 0 0' }}>
+              {ready ? 'Calls come to you automatically.' : 'Set yourself Ready at the top to start taking calls.'}
             </div>
           </>
         )}
@@ -420,8 +409,9 @@ function OutboundWork({ me }) {
 
   const callBar = (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)' }}>{campaign?.name}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)' }}>{phase === 'countdown' ? 'Next call' : campaign?.name}</div>
       <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{contact.contact_name || 'Unknown name'}</div>
+      <div style={{ fontSize: 14, marginTop: 4 }}><b>Why:</b> {mctx.reason || campaign?.name || 'Follow-up call'}{campaign?.brand ? ` · ${campaign.brand}` : ''}</div>
       <div style={S.small}>{info?.phone ? prettyPhone(info.phone) : `Phone ending ${contact.phone_last4}`} · their time {contact.customer_local_time}</div>
       {contact.dial_no && <div style={{ marginTop: 6, display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'light-dark(#E6F0EA, #222c31)', color: 'light-dark(#14532d, #2db964)' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
@@ -430,18 +420,9 @@ function OutboundWork({ me }) {
       </div>}
       {contact.last_disposition && <div style={{ ...S.small, marginTop: 2 }}>Last result: {(campaign?.dispositions || []).find(x => x.code === contact.last_disposition)?.label || contact.last_disposition}</div>}
       <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-        {phase === 'preview' && <>
-          <button onClick={placeCall} disabled={voice.incoming} style={{ ...S.callBtn, flex: 2 }}>📞 Call</button>
-          <button onClick={skip} style={{ ...S.btn, flex: 1 }}>Skip</button>
-        </>}
-        {phase === 'countdown' && isAutoDial(campaign) && (
-          <div style={{ width: '100%', fontWeight: 700 }}>📞 Auto-dialing…</div>
+        {['preview', 'countdown'].includes(phase) && (
+          <div style={{ width: '100%', fontWeight: 800, fontSize: 15, color: 'light-dark(#15803d, #2db964)' }}>📞 {countdown > 0 ? `Dialing in ${countdown}…` : 'Dialing…'}</div>
         )}
-        {phase === 'countdown' && !isAutoDial(campaign) && <>
-          <button onClick={placeCall} style={{ ...S.callBtn, flex: 2 }}>📞 Dialing in {countdown}…</button>
-          <button onClick={() => setPhase('preview')} style={S.btn}>Pause</button>
-          <button onClick={skip} style={S.btn}>Skip</button>
-        </>}
         {phase === 'calling' && <>
           <div style={{ width: '100%', fontWeight: 700, color: voice.status === 'in-call' ? '#16a34a' : 'inherit' }}>
             {voice.status === 'connecting' ? 'Connecting…' : voice.status === 'ringing' ? 'Ringing…' : voice.status === 'in-call' ? `On call · ${mmss(voice.seconds)}` : 'Ending…'}
