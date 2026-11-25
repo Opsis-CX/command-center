@@ -193,8 +193,9 @@ function Editor({ id, clients, onBack, onDuplicated }) {
                 <L label="Do not…"><input style={S.input} value={cfg.voicemail?.dont || ''} onChange={e => setCfg({ voicemail: { ...(cfg.voicemail || {}), dont: e.target.value } })} /></L>
               </div>
               <H>If they say… (objections)</H>
-              <ListEditor items={cfg.objections || []} onChange={v => setCfg({ objections: v })} newItem={{ q: '', a: '' }}
-                cols={[{ k: 'q', l: 'They say', w: 260 }, { k: 'a', l: 'You say', area: true }]} />
+              <ListEditor items={cfg.objections || []} onChange={v => setCfg({ objections: v })} newItem={{ q: '', a: '', k: '' }}
+                cols={[{ k: 'q', l: 'They say', w: 240 }, { k: 'a', l: 'You say', area: true }, { k: 'k', l: 'Pop when caller says (words, | between)', w: 220 }]} />
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Live assist pops the "You say" line the moment the caller says one of these words — e.g. <code>email|e-mail</code>. Leave blank to skip the pop (the AI still uses the answer).</div>
             </div>
           )}
 

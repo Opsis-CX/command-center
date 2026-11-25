@@ -38,6 +38,7 @@ export default function CxCallPanel() {
   const [streaming, setStreaming] = useState(null)  // { next, say } while the suggestion is still being written
   const [partial, setPartial] = useState(null)      // { speaker, text } the sentence being spoken right now
   const [risk, setRisk] = useState(null)            // { kind, label, reason }
+  const [rebuttal, setRebuttal] = useState(null)    // { q, a } popped the instant the caller says the trigger words
   const [askQ, setAskQ] = useState('')
   const [askA, setAskA] = useState(null)
   const [asking, setAsking] = useState(false)
@@ -52,7 +53,7 @@ export default function CxCallPanel() {
       if (!alive) return
       setMine(data || null)
       if (data?.interaction_id && data.status === 'connected') {
-        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('check'); setPushed(null); setStreaming(null); setPartial(null); setRisk(null); setAskA(null); setAskQ('') }
+        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('check'); setPushed(null); setStreaming(null); setPartial(null); setRisk(null); setRebuttal(null); setAskA(null); setAskQ('') }
       }
     }
     run()
@@ -79,6 +80,7 @@ export default function CxCallPanel() {
     const t = setInterval(load, ended ? 6000 : 2000)
     return () => clearInterval(t)
   }, [iid, load, ended])
+  useEffect(() => { if (!rebuttal) return; const t = setTimeout(() => setRebuttal(r => (r && r.at === rebuttal.at ? null : r)), 60000); return () => clearTimeout(t) }, [rebuttal])
   // live push channel
   useEffect(() => {
     if (!iid) return
@@ -95,6 +97,7 @@ export default function CxCallPanel() {
         .on('broadcast', { event: 'assist_partial' }, ({ payload }) => setStreaming(payload))
         .on('broadcast', { event: 'assist' }, ({ payload }) => { setPushed(payload); setStreaming(null) })
         .on('broadcast', { event: 'at_risk' }, ({ payload }) => setRisk(payload))
+        .on('broadcast', { event: 'rebuttal' }, ({ payload }) => { setRebuttal({ ...payload, at: Date.now() }); window.dispatchEvent(new CustomEvent('cx-rebuttal', { detail: payload })) })
         .on('broadcast', { event: 'alert' }, () => load())
         .on('broadcast', { event: 'wrap' }, () => load())
         .subscribe()
@@ -224,6 +227,16 @@ export default function CxCallPanel() {
 
       {alerts.length > 0 && liveNow && (
         <div style={S.alert}>⚠ {alerts[0].payload?.text}</div>
+      )}
+
+      {liveNow && rebuttal && (
+        <div style={{ margin: '0 14px 10px', padding: '10px 12px', borderRadius: 12, background: 'light-dark(#fef9c3, #393613)', border: '1px solid light-dark(#fde047, #6b5f1a)' }}>
+          <div style={{ ...S.cap, display: 'flex', justifyContent: 'space-between', color: 'light-dark(#854d0e, #e0c35a)' }}>
+            <span>They asked: {rebuttal.q}</span>
+            <button onClick={() => setRebuttal(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14 }} aria-label="Close">×</button>
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 15, lineHeight: 1.4, color: 'light-dark(#0f172a, #f5f1d8)' }}>“{rebuttal.a}”</div>
+        </div>
       )}
 
       {liveNow && risk && (

@@ -107,6 +107,11 @@ export default function CallScreen({
   }
 
   const cur = steps[Math.min(step, steps.length - 1)]
+  useEffect(() => {
+    const on = e => { const q = String(e.detail?.q || '').toLowerCase(); const k = (sc.objections || []).findIndex(o => String(o.q || '').toLowerCase() === q); if (k >= 0) setOpenObj(k) }
+    window.addEventListener('cx-rebuttal', on)
+    return () => window.removeEventListener('cx-rebuttal', on)
+  }, [sc.objections])
   // 11/25: live assist knows which step the call is on — move forward with it (never backward; the CSR can still click)
   useEffect(() => {
     const on = e => { const n = Number(e.detail?.step_no) - 1; if (Number.isFinite(n) && n >= 0 && n < steps.length) setStep(s => (n > s ? n : s)) }
@@ -159,43 +164,6 @@ export default function CallScreen({
         {/* ================= main column ================= */}
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
           {callBar && <div style={S.card}>{callBar}</div>}
-          {/* disposition */}
-          {!preview && canSave && dispositions.length > 0 && (
-            <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
-              <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
-              {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
-                  so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
-              {(dispositions.some(d => d.group) ? DISPO_GROUPS.filter(g => dispositions.some(d => (d.group || 'none') === g.key)) : [{ key: null }]).map(g => (
-                <div key={g.key || 'all'} style={{ marginBottom: g.key ? 8 : 0 }}>
-                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{(dispositions.find(d => (d.group || 'none') === g.key && d.group_label) || {}).group_label || g.label}</div>}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {dispositions.filter(d => !g.key || (d.group || 'none') === g.key).map(d => (
-                      <button key={d.code} onClick={() => setCode(d.code)}
-                        style={{ ...S.chip, ...(code === d.code ? { background: d.color || g.color || '#0e7490', borderColor: d.color || g.color || '#0e7490', color: '#fff' } : {}) }}>
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {dispo?.outcome === 'callback' && (
-                <label style={{ ...S.fieldLbl, marginTop: 10 }}>Callback date & time (your time)
-                  <input type="datetime-local" value={callbackAt} onChange={e => setCallbackAt(e.target.value)} style={S.input} />
-                </label>
-              )}
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Notes"
-                style={{ ...S.input, marginTop: 10, resize: 'vertical' }} />
-              {missingRequired.length > 0 && code && dispo?.is_contact && (
-                <div style={{ fontSize: 12.5, color: 'light-dark(#b45309, #e07524)', marginTop: 6 }}>Still needed: {missingRequired.map(f => f.label).join(', ')}</div>
-              )}
-              {error && <div style={S.error}>{error}</div>}
-              <button onClick={save} disabled={!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)}
-                style={{ ...S.saveBtn, opacity: (!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)) ? 0.5 : 1 }}>
-                {saving ? 'Saving…' : saveLabel}
-              </button>
-            </div>
-          )}
-
           {/* rules that aren't tied to a step, the booking link, and details to fill in */}
           {stepAlerts.some(x => x.at < 0) && <div style={S.card}>
             {stepAlerts.filter(x => x.at < 0).map((x, i) => <Rule key={i} a={x.a} />)}
@@ -253,6 +221,43 @@ export default function CallScreen({
               </button>
             ))}
           </div>
+
+          {/* disposition */}
+          {!preview && canSave && dispositions.length > 0 && (
+            <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
+              <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
+              {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
+                  so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
+              {(dispositions.some(d => d.group) ? DISPO_GROUPS.filter(g => dispositions.some(d => (d.group || 'none') === g.key)) : [{ key: null }]).map(g => (
+                <div key={g.key || 'all'} style={{ marginBottom: g.key ? 8 : 0 }}>
+                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{(dispositions.find(d => (d.group || 'none') === g.key && d.group_label) || {}).group_label || g.label}</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {dispositions.filter(d => !g.key || (d.group || 'none') === g.key).map(d => (
+                      <button key={d.code} onClick={() => setCode(d.code)}
+                        style={{ ...S.chip, ...(code === d.code ? { background: d.color || g.color || '#0e7490', borderColor: d.color || g.color || '#0e7490', color: '#fff' } : {}) }}>
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {dispo?.outcome === 'callback' && (
+                <label style={{ ...S.fieldLbl, marginTop: 10 }}>Callback date & time (your time)
+                  <input type="datetime-local" value={callbackAt} onChange={e => setCallbackAt(e.target.value)} style={S.input} />
+                </label>
+              )}
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Notes"
+                style={{ ...S.input, marginTop: 10, resize: 'vertical' }} />
+              {missingRequired.length > 0 && code && dispo?.is_contact && (
+                <div style={{ fontSize: 12.5, color: 'light-dark(#b45309, #e07524)', marginTop: 6 }}>Still needed: {missingRequired.map(f => f.label).join(', ')}</div>
+              )}
+              {error && <div style={S.error}>{error}</div>}
+              <button onClick={save} disabled={!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)}
+                style={{ ...S.saveBtn, opacity: (!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)) ? 0.5 : 1 }}>
+                {saving ? 'Saving…' : saveLabel}
+              </button>
+            </div>
+          )}
 
           {/* tip cards (principles) are for training — Scripts preview only, not the live call */}
           {preview && (sc.principles || []).length > 0 && (
