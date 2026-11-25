@@ -404,7 +404,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- Booking lead time (Rob 11/17) ----------
   // Business days (Mon–Fri) from the day a service order was booked in Acumatica to its first scheduled appointment.
   // Booked Friday for Monday = 1 day. Data: RPC qa_lead_time_report via CFG.leadTime (daily copy from Switchboard).
-  var LT_TIP = 'Business days from booking to the first scheduled appointment, residential service orders (repairs, springs, openers, tune-ups). Weekends are not counted: booked Friday for Monday = 1 day. From Acumatica, through Switchboard. Lower is better; same or next business day is the goal.';
+  var LT_TIP = 'Business days from the customer’s call to the first scheduled appointment, residential service orders (repairs, springs, openers, tune-ups). Weekends are not counted: a Friday call for a Monday appointment = 1 day. Only orders with a matching customer call in LightSpeed count. From Acumatica, through Switchboard. Lower is better; same or next business day is the goal.';
   var LTC = {};
   function loadLead(brands) {
     brands = brands || S.brands;
@@ -427,26 +427,42 @@ export function mountOpsisQA(ROOT, cfg) {
     loadLead().then(function (r) { if (tok !== T) return; drawLead(r || {}); })
       .catch(function (e) { if (tok === T && $('ltwrap')) $('ltwrap').innerHTML = errBox(e); });
   }
+  // Install / replace (Becky 11/25): business days from the customer's call to the first free-estimate appointment, from the
+  // estimate scheduled on the install opportunity in Acumatica. Brands that don't schedule estimates there show
+  // "Not tracked", never a stand-in number; under 5 estimates shows the count only.
+  var LT_EST_MIN = 5;
+  function ltEstCell(x) {
+    var n = (x || {}).orders || 0;
+    if (!n) return '<td class="mut" style="font-size:12px">Not tracked</td>';
+    if (n < LT_EST_MIN) return '<td class="mut" style="font-size:12px">Too few (' + fmt(n) + ')</td>';
+    return '<td class="num" style="color:' + ltColor(x.avg) + ';font-weight:600">' + ltDays(x.avg) + ' <span class="mut" style="font-weight:400;font-size:11.5px">(' + fmt(n) + ')</span></td>';
+  }
+  function ltEstTip(rows) {
+    var ok = rows.filter(function (b) { return ((b.install || {}).orders || 0) >= LT_EST_MIN; }).map(function (b) { return b.brand; });
+    var no = rows.filter(function (b) { return !((b.install || {}).orders || 0); }).map(function (b) { return b.brand; });
+    return 'Average business days from the customer’s call to the first free-estimate appointment on a new door, replacement or install opportunity (number of estimates in brackets). Counted only when the estimate is scheduled on the opportunity in Acumatica and the call is in LightSpeed. ' +
+      (ok.length ? 'Tracked in this range: ' + ok.join(', ') + '. ' : '') + (no.length ? 'Not tracked (estimates aren’t scheduled in Acumatica): ' + no.join(', ') + '.' : '');
+  }
   function drawLead(r) {
     var el = $('ltwrap'); if (!el) return;
     var o = r.overall || {}, rows = r.by_brand || [], locs = r.by_location || [];
     var cell = function (v, pct) { return '<td class="num" style="' + (pct ? '' : 'color:' + ltColor(v) + ';font-weight:600') + '">' + (pct ? dPct(v) : ltDays(v)) + '</td>'; };
-    var h = '<div class="oq-card"><h2 class="ttl">Booking Lead Time: Days From Booking to Appointment</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · business days from the day a job was booked in Acumatica to its first scheduled appointment. Weekends don’t count, so booked Friday for Monday is 1 day. Lower is better.' + (r.thru ? ' Acumatica data through ' + fdate(r.thru) + '.' : '') + '</p>' +
+    var h = '<div class="oq-card"><h2 class="ttl">Booking Lead Time: Days From Booking to Appointment</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · business days from the customer’s call to the first scheduled appointment. Weekends don’t count, so a Friday call for a Monday appointment is 1 day. Only orders with a matching customer call in LightSpeed are counted. Lower is better.' + (r.thru ? ' Acumatica data through ' + fdate(r.thru) + '.' : '') + '</p>' +
       '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:12px">' +
       dTile('Residential service', '<span style="color:' + ltColor(o.avg) + '">' + ltDays(o.avg) + '</span>', 'Average business days to the appointment', '', LT_TIP) +
       dTile('Same or next business day', dPct(o.le1), 'Share of residential service orders', '', 'Residential service orders whose first appointment is the same business day or the next one.') +
       dTile('Orders', fmt(o.orders), 'Residential service orders booked', '', 'Residential service orders created in Acumatica in this date range that have a scheduled appointment.') + '</div></div>';
-    h += '<div class="oq-card"><h2 class="ttl">By ' + W_BRAND + '</h2><p class="sub">Service = repairs, springs, openers, gates and entry-door service. Install = new doors, replacements and new builds, which naturally book further out.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th>' +
+    h += '<div class="oq-card"><h2 class="ttl">By ' + W_BRAND + '</h2><p class="sub">Service = repairs, springs, openers, gates and entry-door service. Install / replace = call to the free estimate appointment, only where the estimate is scheduled in Acumatica.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th>' +
       '<th>Resi service' + itip('Average business days from booking to the first appointment, residential service orders.') + '</th>' +
       '<th>Same / next day' + itip('Residential service orders scheduled the same or the next business day.') + '</th>' +
       '<th>2–3 days' + itip('Residential service orders scheduled 2 or 3 business days out.') + '</th>' +
       '<th>Orders' + itip('Residential service orders with a scheduled appointment.') + '</th>' +
       '<th>Commercial service' + itip('Average business days, commercial service orders.') + '</th>' +
-      '<th>Install / replace' + itip('Average business days, new doors, replacements and new builds (residential and commercial).') + '</th>' +
+      '<th>Install / replace: call to free estimate' + itip(ltEstTip(rows)) + '</th>' +
       '<th>Maintenance' + itip('Average business days, maintenance agreement visits.') + '</th></tr></thead><tbody>';
     if (!rows.length) h += '<tr><td colspan="8" class="mut">No Acumatica service orders for these ' + W_BRANDS.toLowerCase() + ' in this range. PDQ and Dan’s Doors aren’t in Acumatica.</td></tr>';
     rows.forEach(function (b) { var rs = b.resi_service || {};
-      h += '<tr><td style="font-weight:600">' + esc(b.brand) + '</td>' + cell(rs.avg) + cell(rs.le1, 1) + cell(rs.d2_3, 1) + '<td class="num">' + fmt(rs.orders || 0) + '</td>' + cell((b.comm_service || {}).avg) + cell((b.install || {}).avg) + cell((b.maint || {}).avg) + '</tr>'; });
+      h += '<tr><td style="font-weight:600">' + esc(b.brand) + '</td>' + cell(rs.avg) + cell(rs.le1, 1) + cell(rs.d2_3, 1) + '<td class="num">' + fmt(rs.orders || 0) + '</td>' + cell((b.comm_service || {}).avg) + ltEstCell(b.install) + cell((b.maint || {}).avg) + '</tr>'; });
     h += '</tbody></table></div></div>';
     h += '<div class="oq-card"><h2 class="ttl">Residential Service by Location</h2><p class="sub">Same measure, by the Acumatica branch that took the order.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th><th>Location</th><th>Avg days' + itip('Average business days from booking to the first appointment.') + '</th><th>Same / next day' + itip('Share scheduled the same or the next business day.') + '</th><th>Orders</th></tr></thead><tbody>' +
       (locs.length ? locs.map(function (l) { return '<tr><td>' + esc(l.brand) + '</td><td style="font-weight:600">' + esc(l.location) + '</td>' + cell(l.avg) + cell(l.le1, 1) + '<td class="num">' + fmt(l.orders) + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="mut">No orders in this range.</td></tr>') + '</tbody></table></div></div>';
