@@ -1015,8 +1015,9 @@ body.cc-christmas .topbar {
 body.cc-christmas .workbar { background: color-mix(in srgb, #EDF5FA calc(var(--xm-a) * .9), var(--workbar-bg)); border-bottom-color: color-mix(in srgb, #BCD8E6 45%, var(--workbar-line)); }
 body.cc-christmas .main { background: color-mix(in srgb, #C9DFEC var(--xm-b), var(--canvas)); }
 body.cc-christmas [data-cc-chatpane] { background: linear-gradient(180deg, color-mix(in srgb, #F0F6FA var(--xm-a), var(--surface)) 0%, color-mix(in srgb, #E3EEF5 var(--xm-a), var(--surface)) 100%); }
-/* the snowy forest sits behind the messages, anchored bottom-right (it never scrolls with them) */
-body.cc-christmas [data-cc-chatpane] > div[style*="overflow-y: auto"] {
+/* the snowy forest sits behind the messages, anchored bottom-right (it never scrolls with them).
+   Only when Christmas Mode is switched on (the toggle in the top corner) — Brittney, 2026-11-27 */
+html.cc-xmas body.cc-christmas [data-cc-chatpane] > div[style*="overflow-y: auto"] {
   background: linear-gradient(rgba(15,23,32,var(--xm-shade)), rgba(15,23,32,var(--xm-shade))), url(${'/seasonal/christmas/scene.webp'}) right bottom / contain no-repeat;
 }
 @media (min-width: 1000px) { body.cc-christmas .topbar .tb-right { margin-right: 196px; } }
