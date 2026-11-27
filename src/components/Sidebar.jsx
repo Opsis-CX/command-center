@@ -41,7 +41,6 @@ const NAV_MAIN = [
     items: [
       // Top of the menu (2026-11-04): My Profile → My Tools → Dashboard.
       // Opsis Weekly's content now lives on My Profile (quote, spotlight, updates, my week).
-      { type: 'link', to: '/profile', label: 'My Profile', ic: '👤', perm: null },
       {
         type: 'section', key: 'my-tools', label: 'My Tools', ic: '🧰',
         children: [
@@ -162,7 +161,6 @@ const NAV_ONE = [
     { type: 'link', to: '/overview', label: 'Overview', ic: '📊', perm: 'dashboard', tag: 'n' },
     { type: 'link', to: '/dashboard', label: 'Staffing dashboard', ic: '📋', perm: 'dashboard', tag: 'cc' },
     { type: 'link', to: '/my-phone', label: 'My phone', ic: '🎧', perm: '__phone', tag: 'b' },
-    { type: 'link', to: '/profile', label: 'My Profile', ic: '👤', perm: null, tag: 'cc' },
     { type: 'link', to: '/w/insights', label: 'Insights', ic: '💡', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/overview', label: 'Client dashboard', ic: '🏠', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/w/reviews', label: 'Business reviews', ic: '🗓️', perm: '__portal', tag: 'b' },
