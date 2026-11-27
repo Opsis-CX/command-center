@@ -17,6 +17,9 @@ import { useRadio, setRadio, parsePlaylistId, loadYT, useRadioConfig, refreshRad
 // ============================================================
 
 const TEAL = '#1B8590'
+const posKey = (uid) => `cc.radio.pos.${uid}`
+function readPos(uid) { try { const j = JSON.parse(localStorage.getItem(posKey(uid)) || 'null'); return j && Number.isFinite(j.x) && Number.isFinite(j.y) ? j : null } catch { return null } }
+function savePos(uid, p) { try { if (p) localStorage.setItem(posKey(uid), JSON.stringify(p)); else localStorage.removeItem(posKey(uid)) } catch { /* private mode */ } }
 
 export const RadioIcon = ({ size = 20, ...p }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...p}>
@@ -39,7 +42,7 @@ export function RadioButton() {
   const r = useRadio()
   if (!allowed) return null
   // closed → open (not playing yet) · open & big → minimize (music keeps going) · minimized → expand
-  const click = () => { if (!r.open) setRadio({ open: true, min: false }); else setRadio({ min: !r.min }) }
+  const click = () => { if (!r.open) setRadio({ open: true, min: true }); else setRadio({ min: !r.min }) }
   return (
     <>
       <style>{BTN_CSS}</style>
@@ -63,22 +66,30 @@ export default function OpsisRadio() {
   const [vol, setVol] = useState(() => readVol(uid))
   const [err, setErr] = useState(null)
   const [showSet, setShowSet] = useState(false)
-  const [top, setTop] = useState(118)
+  const [anchor, setAnchor] = useState({ left: null, top: 118 })
+  const [pos, setPos] = useState(() => readPos(uid))
+  const boxRef = useRef(null), dragRef = useRef(null)
   volRef.current = vol
 
-  // keep the panel just under the header
+  // Default spot: over the Opsis logo block at the top of the sidebar (Brittney, 2026-11-27); falls back to under the header.
+  // Drag the title bar to put it anywhere; it is remembered on this device. Double-click the title bar to send it back.
   useEffect(() => {
     if (!r.open) return
-    const read = () => { const el = document.querySelector('.header-wrap'); const b = el && el.getBoundingClientRect().bottom; if (b && b > 40) setTop(Math.round(b) + 8) }
+    const read = () => {
+      const brand = document.querySelector('.sidebar .brand')
+      const br = brand && brand.getBoundingClientRect()
+      if (br && br.width > 60) { setAnchor({ left: Math.round(br.left + Math.max(0, (br.width - (r.min ? 226 : 380)) / 2)), top: Math.round(br.top) }); return }
+      const el = document.querySelector('.header-wrap'); const b = el && el.getBoundingClientRect().bottom
+      setAnchor({ left: null, top: b && b > 40 ? Math.round(b) + 8 : 118 })
+    }
     read()
     const t = setInterval(read, 1000)
     window.addEventListener('resize', read)
     return () => { clearInterval(t); window.removeEventListener('resize', read) }
-  }, [r.open])
-
+  }, [r.open, r.min])
   // if this person may not see the radio (any more), make sure it is closed
   useEffect(() => { if (ready && !allowed && r.open) setRadio({ open: false, min: false, playing: false }) }, [ready, allowed, r.open])
-  useEffect(() => { setVol(readVol(uid)) }, [uid])
+  useEffect(() => { setVol(readVol(uid)); setPos(readPos(uid)) }, [uid])
 
   // create the YouTube player only while the panel is open (cued, never autoplay); destroying it stops the music
   useEffect(() => {
@@ -124,13 +135,29 @@ export default function OpsisRadio() {
   const close = () => { setShowSet(false); setRadio({ open: false, min: false, playing: false }) }
   const onVol = (v) => { setVol(v); saveVol(uid, v); try { const p = playerRef.current; if (p) { if (v > 0 && p.isMuted && p.isMuted()) p.unMute(); p.setVolume(v) } } catch { /* ignore */ } }
   const min = r.min
+  const startDrag = (e) => {
+    if (e.target.closest('button') || e.button > 0) return
+    const b = boxRef.current && boxRef.current.getBoundingClientRect()
+    if (!b) return
+    dragRef.current = { dx: e.clientX - b.left, dy: e.clientY - b.top, w: b.width, h: b.height }
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  }
+  const moveDrag = (e) => {
+    const d = dragRef.current
+    if (!d) return
+    const x = Math.min(Math.max(0, e.clientX - d.dx), Math.max(0, window.innerWidth - d.w))
+    const y = Math.min(Math.max(0, e.clientY - d.dy), Math.max(0, window.innerHeight - 60))
+    setPos({ x: Math.round(x), y: Math.round(y) })
+  }
+  const endDrag = () => { if (dragRef.current) { dragRef.current = null; setPos(p => { if (p) savePos(uid, p); return p }) } }
 
   return (
     <>
       <style>{CSS}</style>
-      <div className={'cc-radio' + (min ? ' is-min' : '')} role="dialog" aria-label="Opsis Radio" style={{ top }}>
+      <div ref={boxRef} className={'cc-radio' + (min ? ' is-min' : '')} role="dialog" aria-label="Opsis Radio"
+        style={pos ? { left: pos.x, top: pos.y } : (anchor.left == null ? { right: 18, top: anchor.top } : { left: anchor.left, top: anchor.top })}>
         <div className="cc-radio-lights" aria-hidden="true" />
-        <div className="cc-radio-head">
+        <div className="cc-radio-head" title="Drag to move · double-click to put it back" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onDoubleClick={() => { setPos(null); savePos(uid, null) }}>
           <span className="cc-radio-badge"><RadioIcon size={18} /></span>
           <span className="cc-radio-title">Opsis Radio</span>
           {r.playing ? <Eq /> : null}
@@ -220,11 +247,11 @@ body.cc-christmas .cc-radio-btn { color: #0F6F7C; }
 `
 
 const CSS = BTN_CSS + `
-.cc-radio { position: fixed; right: 18px; z-index: 2300; width: 380px; max-width: calc(100vw - 24px); box-sizing: border-box; border-radius: 18px; overflow: hidden;
+.cc-radio { position: fixed; z-index: 2300; width: 380px; max-width: calc(100vw - 24px); box-sizing: border-box; border-radius: 18px; overflow: hidden;
   background: var(--surface, #fff); color: var(--ink, #0F2B36); border: 1.5px solid color-mix(in srgb, ${TEAL} 45%, var(--line, #d7e3e8));
   box-shadow: 0 18px 40px -18px rgba(10, 60, 75, .55), 0 2px 6px rgba(10, 60, 75, .12); font-family: inherit; }
 .cc-radio.is-min { width: 226px; }
-.cc-radio-head { display: flex; align-items: center; gap: 8px; padding: 9px 8px 8px 12px; background: linear-gradient(180deg, color-mix(in srgb, ${TEAL} 14%, var(--surface, #fff)), var(--surface, #fff)); }
+.cc-radio-head { cursor: grab; touch-action: none; user-select: none; display: flex; align-items: center; gap: 8px; padding: 9px 8px 8px 12px; background: linear-gradient(180deg, color-mix(in srgb, ${TEAL} 14%, var(--surface, #fff)), var(--surface, #fff)); }
 .cc-radio-badge { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; color: #fff; background: linear-gradient(180deg, #2BB3C2, ${TEAL}); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
 .cc-radio-title { font-weight: 800; font-size: 15px; letter-spacing: .2px; white-space: nowrap; }
 .cc-radio.is-min .cc-radio-title { font-size: 14px; }
@@ -250,7 +277,7 @@ const CSS = BTN_CSS + `
 .cc-radio-cancel { padding: 7px 12px; border: 0; background: transparent; color: inherit; font-weight: 600; cursor: pointer; opacity: .75; }
 .cc-radio-msg { font-weight: 600; color: #1B7F4A; } .cc-radio-msg.bad { color: #A8441A; }
 .cc-radio-lights { display: none; }
-@media (max-width: 700px) { .cc-radio { right: 12px; left: 12px; width: auto; max-width: none; } .cc-radio.is-min { left: auto; width: 226px; } }
+
 
 /* Christmas look: icy panel, a string of twinkling lights, script title, snow */
 body.cc-christmas .cc-radio { background: linear-gradient(180deg, #F4FAFD, #E4F1F7); border: 2px solid #38A3B0;
