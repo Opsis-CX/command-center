@@ -6,6 +6,7 @@ import { loadPreviewAccounts, enterPreview, isPreviewing } from '../lib/rolePrev
 import useDismiss from '../lib/useDismiss'
 import { isPortalStaff, PortalPopup } from './PortalMenu'
 import { useWorkspace } from '../lib/workspace'
+import { formatRole } from './Sidebar'
 import { useLocation } from 'react-router-dom'
 import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon } from './HeaderIcons'
 
@@ -26,7 +27,7 @@ export function initialsOf(name) {
 }
 
 export default function ProfileMenu() {
-  const { user, isAdmin, appRole, inTraining, signOut } = useAuth()
+  const { user, isAdmin, appRole, inTraining, signOut, level, roles } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [me, setMe] = useState({ full_name: '', avatar_url: '' })
@@ -68,8 +69,9 @@ export default function ProfileMenu() {
 
   if (!userId) return null
   const name = me.full_name || user?.email?.split('@')[0] || 'User'
-  const email = user?.email || ''
   const ini = initialsOf(name)
+  // Role under your name (11/27, Brittney) — same wording as the sidebar's name card.
+  const roleLabel = (level >= 100 || (roles || []).includes('owner')) ? 'Owner' : isAdmin ? 'Admin' : formatRole(appRole)
 
   const go = (path) => { close(); navigate(path) }
   const pickRole = async (a) => {
@@ -97,8 +99,12 @@ export default function ProfileMenu() {
         </span>
       )}
       <button ref={btnRef} type="button" className="hd-avatar-btn" onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open}
-        aria-label={`Account menu for ${name}`} title={name}>
+        aria-label={`Account menu for ${name}, ${roleLabel}`} title={name}>
         <Avatar size={36} />
+        <span className="hd-who">
+          <b>{name}</b>
+          <span>{roleLabel}</span>
+        </span>
         <CaretIcon className="hd-avatar-caret" />
       </button>
       {open && (
@@ -107,7 +113,7 @@ export default function ProfileMenu() {
             <Avatar size={42} />
             <div className="hd-menu-who">
               <b>{name}</b>
-              <span>{email}</span>
+              <span>{roleLabel}</span>
             </div>
           </div>
           <div className="hd-sep" />

@@ -305,7 +305,7 @@ const ROLE_LABELS = {
   sales: 'Sales', asc: 'ASC', marketing: 'Marketing',
   reviewer: 'App Reviewer', qa_reviewer: 'QA Reviewer',
 }
-function formatRole(raw) {
+export function formatRole(raw) {
   const parts = String(raw || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
   if (!parts.length) return 'Agent'
   return parts

@@ -1303,3 +1303,9 @@ body{
 .hd-ws-chip button+button{padding:5px 10px 5px 4px;color:var(--ink-soft);flex:none}
 .hd-ws-chip button:hover,.hd-ws-chip button:focus-visible{color:var(--accent)}
 @media (max-width:640px){.hd-ws-chip{max-width:120px}}
+/* Name + role beside your picture in the top bar (11/27) */
+.hd-avatar-btn{gap:8px;padding:3px 8px 3px 3px}
+.hd-who{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;min-width:0;max-width:180px;text-align:left}
+.hd-who b{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.hd-who span{font-size:11.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+@media (max-width:720px){.hd-who{display:none}}
