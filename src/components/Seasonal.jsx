@@ -978,7 +978,7 @@ export function SeasonHeaderDecor() {
 // The bottom-right corner is left empty on purpose so the phone button stays clear.
 // ============================================================
 const XART = '/seasonal/christmas/'
-const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], xm_sleigh: [487, 122], xm_trees_cl: [142, 68], xm_trees_cr: [187, 70], xm_trees_hl: [402, 113], xm_trees_hr: [285, 114], xm_trees_side: [206, 146], scene: [1225, 924], gift: [64, 64] }
+const XART_SIZE = { top_garland: [365, 133], xm_tree: [120, 128], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], xm_sleigh: [487, 122], xm_trees_cl: [142, 68], xm_trees_cr: [187, 70], xm_trees_hl: [402, 113], xm_trees_hr: [285, 114], xm_trees_side: [206, 146], scene: [1225, 924], gift: [64, 64] }
 const XTEAL = '#13707A', XTEAL_D = '#0B555E'
 const XMAS_KEY = 'christmas_mode-2026'
 function XImg({ name, w, h, style, ...rest }) {
@@ -1110,14 +1110,15 @@ function XmToggle({ on, onChange, compact }) {
     </button>
   )
 }
-// The pine branch hanging from the top bar, just to the right of the page name.
+// A little Christmas tree on the top bar, just to the right of the page name (it replaced the hanging pine branch, 2026-11-27).
 function XmTopGarland({ onRight, hidden }) {
   const crumb = useAnchorRect('.topbar .crumb', 800), bar = useAnchorRect('.topbar', 800)
-  const right = crumb && bar ? crumb.right + 8 + (XART_SIZE.top_garland[0] / 2) * Math.min(1.15, Math.max(.8, bar.height / 64)) : null
+  const k = bar ? Math.min(1.15, Math.max(.8, bar.height / 64)) : 1
+  const tw = XART_SIZE.xm_tree[0] / 2 * k
+  const right = crumb && bar ? crumb.right + 8 + tw : null
   useEffect(() => { onRight?.(right) }, [right]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!crumb || !bar || window.innerWidth < 900 || hidden) return null
-  const k = Math.min(1.15, Math.max(.8, bar.height / 64))
-  return <XImg name="top_garland" w={XART_SIZE.top_garland[0] / 2 * k} className="cc-desktop-only" style={{ position: 'fixed', left: crumb.right + 8, top: bar.top, zIndex: 2355, pointerEvents: 'none' }} />
+  return <XImg name="xm_tree" w={tw} className="cc-desktop-only" style={{ position: 'fixed', left: crumb.right + 8, top: bar.top + 1, zIndex: 2355, pointerEvents: 'none' }} />
 }
 // "25 Days of Christmas" — the main button, centered in the work bar under the header.
 const xmDay = () => {
