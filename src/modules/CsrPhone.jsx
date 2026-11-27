@@ -53,6 +53,8 @@ export default function CsrPhone({ accent = '#14302A' }) {
     if (error) setErr(error.message); else { setD(data); setErr('') }
   }, [])
   useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t) }, [load])
+  // 11/27 (Becky): this page has the call controls — the floating Phone popup stays closed here
+  useEffect(() => { if (voice?.open) voice.setOpen(false) }, [voice?.open]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
   // keep the softphone's own status in step with ours
   useEffect(() => { voice?.refreshStatus?.() }, [d?.status?.state]) // eslint-disable-line

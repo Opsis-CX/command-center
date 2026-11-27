@@ -55,7 +55,7 @@ export default function Softphone() {
       <CxCallPanel />
       <button onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onDoubleClick={resetPos}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); v.setOpen(!v.open) } }}
-        aria-label="Phone" title="Phone (drag to move, double-click to reset)"
+        className="sp-fab" aria-label="Phone" title="Phone (drag to move, double-click to reset)"
         style={{ ...S.fab, right: pos.right, bottom: pos.bottom, touchAction: 'none', cursor: 'grab', background: fabColor, animation: v.incoming ? 'ccRing 1s ease-in-out infinite' : 'none' }}>
         {v.incoming ? '🔔' : v.busy ? '📞' : '☎'}
         {v.worksCalls && !v.busy && !v.incoming && <span style={{ ...S.dot, background: statusLook(v.agent.state).color }} />}
