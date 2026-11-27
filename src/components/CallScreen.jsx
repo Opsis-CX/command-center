@@ -159,11 +159,11 @@ export default function CallScreen({
       </div>
 
       {/* when the live call panel is docked on the right (CX calls), this screen is one column: call bar, script, disposition */}
-      <style>{'@media (max-width: 900px){.cs-grid{grid-template-columns:minmax(0,1fr) !important}} body.cx-docked .cs-root{padding-right:404px} body.cx-docked .cs-grid{grid-template-columns:minmax(0,1fr) !important} body.cx-docked .cs-side{display:none !important}'}</style>
+      <style>{'@media (max-width: 900px){.cs-grid{grid-template-columns:minmax(0,1fr) !important}} body.cx-docked .cs-root{padding-right:404px} body.cx-docked .cs-grid{grid-template-columns:minmax(0,1fr) !important} body.cx-docked .cs-side{display:none !important} body.cx-docked .csr-wrap{max-width:none !important;margin:0 !important;padding-left:24px !important} body.cx-docked .csr-wrap .cs-callbar{display:none !important}'}</style>
       <div className="cs-grid" style={S.grid}>
         {/* ================= main column ================= */}
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-          {callBar && <div style={S.card}>{callBar}</div>}
+          {callBar && <div className="cs-callbar" style={S.card}>{callBar}</div>}
           {/* rules that aren't tied to a step, the booking link, and details to fill in */}
           {stepAlerts.some(x => x.at < 0) && <div style={S.card}>
             {stepAlerts.filter(x => x.at < 0).map((x, i) => <Rule key={i} a={x.a} />)}

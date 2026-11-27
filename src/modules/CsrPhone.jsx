@@ -100,7 +100,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
     await act('csr_set_status', { p_state: 'ready' })
   }
 
-  if (!d) return <div style={S.wrap}><div style={S.card}>{err || 'Loading your phone…'}</div></div>
+  if (!d) return <div className="csr-wrap" style={S.wrap}><div style={S.card}>{err || 'Loading your phone…'}</div></div>
 
   const st = d.status?.state || 'offline'
   const loggedIn = !!d.day
@@ -112,7 +112,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
 
   // ---------- an answered inbound call: the guided call screen ----------
   if (onInbound && phase === 'idle') {
-    return <div style={S.wrap}><StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} /><div style={{ marginTop: 12 }}><Dialer embedded /></div></div>
+    return <div className="csr-wrap" style={S.wrap}><StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} /><div style={{ marginTop: 12 }}><Dialer embedded /></div></div>
   }
 
   // ---------- a manual call in progress / wrapping up ----------
@@ -134,7 +134,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
       </div>
     )
     return (
-      <div style={S.wrap}>
+      <div className="csr-wrap" style={S.wrap}>
         <StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} />
         <div style={{ marginTop: 12 }}>
           <CallScreen script={call.script} ctx={{ first_name: (call.name || '').split(' ')[0] || '', brand: call.brand || '' }}
@@ -150,7 +150,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
   // ---------- home ----------
   const t = d.today || {}
   return (
-    <div style={S.wrap}>
+    <div className="csr-wrap" style={S.wrap}>
       <StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} />
       {err && <div style={{ ...S.error, marginTop: 10 }}>{err}</div>}
 
