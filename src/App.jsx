@@ -150,6 +150,7 @@ function MaybeVoice({ enabled, canCallPeople, canDialNumbers, children }) {
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
+import TechDay from './modules/TechDay'
 // /profile = your own page; /profile/:id = anyone's page (Admins and Owners only; the database enforces it)
 function ProfileRoute() {
   const { id } = useParams()
@@ -198,7 +199,7 @@ export default function App() {
   // signed in can reach the application and assessment forms.
   // /sms-consent is the agent SMS opt-in page — public on purpose (carrier/Twilio
   // review). Note it's an exact match: the admin report at /sms-consents is NOT public.
-  const publicPaths = ['/apply', '/assessment', '/sms-consent']
+  const publicPaths = ['/apply', '/assessment', '/sms-consent', '/tech'] // /tech/:token = FSM tech/rep phone page (secret link)
   const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
   // /mock-call is public ONLY for someone with no session at all (the legacy
   // emailed link). Anyone signed in — client portal, trainee, staff — must fall
@@ -217,6 +218,7 @@ export default function App() {
         <Route path="/assessment/:appId" element={<AssessmentRoute />} />
         <Route path="/assessment" element={<AssessmentForm />} />
         <Route path="/sms-consent" element={<SmsConsentForm />} />
+        <Route path="/tech/:token" element={<TechDay />} />
         <Route path="/mock-call/:appId" element={<MockCallRoute />} />
         <Route path="/mock-call" element={<Login />} />
       </Routes>

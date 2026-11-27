@@ -36,6 +36,7 @@ import CxTrends from '../components/CxTrends'
 import { CoachingDesk, CoachingInbox } from '../components/Coaching'
 import WfmIntraday from '../components/WfmIntraday'
 import CallFlowBuilder from '../components/CallFlowBuilder'
+import FieldService from './FieldService'
 import Softphone from '../components/Softphone'
 import { VoiceProvider, RingBounce } from '../lib/voice'
 import { loadAccounts, switchAccount } from '../components/AccountSwitcher'
@@ -390,6 +391,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
               : kind === 'mycoach' ? <CoachingInbox />
               : kind === 'intraday' ? <WfmIntraday clientId={clientId} />
               : kind === 'callflow' ? <CallFlowBuilder clientId={clientId} />
+              : kind === 'field' ? <FieldService clientId={clientId} />
               : kind === 'myphone' ? (
                 <MemoryRouter>
                   <VoiceProvider canCallPeople={false} canDialNumbers={false}><CsrPhone accent="#14302A" /><Softphone /></VoiceProvider>
