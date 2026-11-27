@@ -75,7 +75,6 @@ import AppHeader from './components/AppHeader'
 import { RefreshProvider, RefreshBoundary } from './lib/refresh'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import Seasonal from './components/Seasonal'
-import OpsisRadio from './components/OpsisRadio'
 import PortalThanksgiving from './components/PortalThanksgiving'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
@@ -515,8 +514,6 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
       <UpdatePopup />
       {/* holiday decorations (date-based; each person can turn off in Settings) */}
       <Seasonal />
-      {/* Opsis Radio player: mounted here so the music keeps playing between pages (button lives in AppHeader) */}
-      <OpsisRadio />
       <ReminderPopup />
       <div className="app">
         <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
