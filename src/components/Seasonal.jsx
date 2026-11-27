@@ -1110,15 +1110,13 @@ function XmToggle({ on, onChange, compact }) {
     </button>
   )
 }
-// A little Christmas tree on the top bar, just to the right of the page name (it replaced the hanging pine branch, 2026-11-27).
+// Nothing hangs from the top bar next to the page name any more (the pine branch, then a small tree, were removed 2026-11-27).
+// This still reports where the page name ends so the "Wishing you…" banner keeps its place.
 function XmTopGarland({ onRight, hidden }) {
   const crumb = useAnchorRect('.topbar .crumb', 800), bar = useAnchorRect('.topbar', 800)
-  const k = bar ? Math.min(1.15, Math.max(.8, bar.height / 64)) : 1
-  const tw = XART_SIZE.xm_tree[0] / 2 * k
-  const right = crumb && bar ? crumb.right + 8 + tw : null
+  const right = crumb && bar ? crumb.right + 8 : null
   useEffect(() => { onRight?.(right) }, [right]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!crumb || !bar || window.innerWidth < 900 || hidden) return null
-  return <XImg name="xm_tree" w={tw} className="cc-desktop-only" style={{ position: 'fixed', left: crumb.right + 8, top: bar.top + 1, zIndex: 2355, pointerEvents: 'none' }} />
+  return null
 }
 // "25 Days of Christmas" — the main button, centered in the work bar under the header.
 const xmDay = () => {
