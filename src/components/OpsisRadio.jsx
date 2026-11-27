@@ -66,27 +66,32 @@ export default function OpsisRadio() {
   const [vol, setVol] = useState(() => readVol(uid))
   const [err, setErr] = useState(null)
   const [showSet, setShowSet] = useState(false)
-  const [anchor, setAnchor] = useState({ left: null, top: 118 })
+  const [anchor, setAnchor] = useState({ left: null, top: 118, brandH: 0 })
+  const [tileH, setTileH] = useState(0)
   const [pos, setPos] = useState(() => readPos(uid))
   const boxRef = useRef(null), dragRef = useRef(null)
   volRef.current = vol
 
-  // Default spot: over the Opsis logo block at the top of the sidebar (Brittney, 2026-11-27); falls back to under the header.
-  // Drag the title bar to put it anywhere; it is remembered on this device. Double-click the title bar to send it back.
+  // Default spot (minimized): docked into the Opsis logo block at the top of the sidebar. The block makes room for the tile
+  // (the menu slides down, nothing is covered, and it all springs back when the radio closes).
+  // Big view: floats under the header. Drag the title bar to put it anywhere; double-click it to send it back.
   useEffect(() => {
     if (!r.open) return
     const read = () => {
       const brand = document.querySelector('.sidebar .brand')
       const br = brand && brand.getBoundingClientRect()
-      if (br && br.width > 60) { setAnchor({ left: Math.round(br.left + Math.max(0, (br.width - (r.min ? 226 : 380)) / 2)), top: Math.round(br.top) }); return }
+      if (boxRef.current) setTileH(Math.round(boxRef.current.offsetHeight))
+      if (r.min && br && br.width > 60) { setAnchor({ left: Math.round(br.left + Math.max(0, (br.width - 226) / 2)), top: Math.round(br.top), brandH: Math.round(br.height) }); return }
       const el = document.querySelector('.header-wrap'); const b = el && el.getBoundingClientRect().bottom
-      setAnchor({ left: null, top: b && b > 40 ? Math.round(b) + 8 : 118 })
+      setAnchor({ left: null, top: b && b > 40 ? Math.round(b) + 8 : 118, brandH: 0 })
     }
     read()
-    const t = setInterval(read, 1000)
+    const t = setInterval(read, 700)
     window.addEventListener('resize', read)
     return () => { clearInterval(t); window.removeEventListener('resize', read) }
   }, [r.open, r.min])
+  const reserve = r.open && r.min && !pos && anchor.left != null && tileH ? Math.max(0, tileH - anchor.brandH + 10) : 0
+
   // if this person may not see the radio (any more), make sure it is closed
   useEffect(() => { if (ready && !allowed && r.open) setRadio({ open: false, min: false, playing: false }) }, [ready, allowed, r.open])
   useEffect(() => { setVol(readVol(uid)); setPos(readPos(uid)) }, [uid])
@@ -154,6 +159,7 @@ export default function OpsisRadio() {
   return (
     <>
       <style>{CSS}</style>
+      {reserve > 0 && <style>{`.sidebar .brand { margin-bottom: ${reserve}px !important; }`}</style>}
       <div ref={boxRef} className={'cc-radio' + (min ? ' is-min' : '')} role="dialog" aria-label="Opsis Radio"
         style={pos ? { left: pos.x, top: pos.y } : (anchor.left == null ? { right: 18, top: anchor.top } : { left: anchor.left, top: anchor.top })}>
         <div className="cc-radio-lights" aria-hidden="true" />
