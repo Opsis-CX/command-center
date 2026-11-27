@@ -5,11 +5,9 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
-import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny, hasPerm, usingNewPermissions } from '../lib/permissions'
 import { useRsnAccess } from '../lib/rsnAccess'
 import { useFinanceAccess } from '../lib/financeAccess'
-import ChangePassword from './ChangePassword'
 import { isPortalStaff } from './PortalMenu'
 // Sidebar navigation, organized into labelled GROUPS.
 //
@@ -374,6 +372,11 @@ export default function Sidebar({ open, onNavigate }) {
   const NAV = oneMenu ? NAV_ONE : (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
   const [showTags, setShowTags] = useState(() => { try { return localStorage.getItem('cc_nav_tags') !== '0' } catch { return true } })
   const flipTags = () => setShowTags(v => { try { localStorage.setItem('cc_nav_tags', v ? '0' : '1') } catch { /* ignore */ } return !v })
+  // the account menu (top right) can turn the labels back on
+  useEffect(() => {
+    const h = () => { try { setShowTags(localStorage.getItem('cc_nav_tags') !== '0') } catch { /* ignore */ } }
+    window.addEventListener('cc-nav-tags', h); return () => window.removeEventListener('cc-nav-tags', h)
+  }, [])
   const tagEl = (t) => (oneMenu && showTags && t && TAGS[t]) ? <span className={'nav-tag nav-tag-' + t} title={TAGS[t][1]}>{TAGS[t][0]}</span> : null
   // Show the person's real name. useAuth only gives us the auth user (email),
   // so pull full_name from their profile. Fall back to the email prefix only
@@ -389,10 +392,6 @@ export default function Sidebar({ open, onNavigate }) {
   const name = fullName || user?.email?.split('@')[0] || 'User'
   const initial = (name.trim()[0] || 'U').toUpperCase()
   // Theme toggle (System → Light → Dark)
-  const [theme, setThemeState] = useState(getTheme())
-  const [pwOpen, setPwOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
   // Which collapsible sections are open. Several can be open at once.
   const [openSections, setOpenSections] = useState({})
   const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
@@ -501,55 +500,6 @@ export default function Sidebar({ open, onNavigate }) {
           <div><span className="nav-tag nav-tag-b">Both</span> In both today <span className="nav-tag nav-tag-n">New</span> New</div>
         </div>
       )}
-      <div className="user-chip" role="link" tabIndex={0} title="My profile" style={{ cursor: 'pointer' }}
-        onClick={() => { navigate('/profile'); onNavigate && onNavigate() }}
-        onKeyDown={e => { if (e.key === 'Enter') { navigate('/profile'); onNavigate && onNavigate() } }}>
-        <div className="user-av">{initial}</div>
-        <div>
-          <div className="user-name">{name}</div>
-          <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : formatRole(appRole)}</div>
-        </div>
-      </div>
-      {/* Settings dropdown (below the name) */}
-      <div className="nav-section">
-        <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
-          style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-          <NavIcon ic="⚙️" line={lineIcons} /> Settings
-          <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
-        </button>
-        {settingsOpen && (
-          <div className="nav-section-body">
-            <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
-              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
-              style={{ paddingLeft: 34 }}>
-              Timezone
-            </NavLink>
-            <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
-              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
-              style={{ paddingLeft: 34 }}>
-              Notifications
-            </NavLink>
-            <button className="nav-item nav-subitem" onClick={cycleTheme}
-              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-              {themeLabel(theme)}
-            </button>
-            <button className="nav-item nav-subitem" onClick={() => setOneMenu(!oneMenu)}
-              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-              {oneMenu ? 'Classic menu' : 'One-platform menu'}
-            </button>
-            {oneMenu && !showTags && <button className="nav-item nav-subitem" onClick={flipTags}
-              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-              Show page origin labels
-            </button>}
-            <button className="nav-item nav-subitem" onClick={() => setPwOpen(true)}
-              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-              Change password
-            </button>
-          </div>
-        )}
-      </div>
-      <button className="signout" onClick={signOut}>Sign out</button>
-      {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </aside>
   )
 }

@@ -6,7 +6,9 @@ import { loadPreviewAccounts, enterPreview, isPreviewing } from '../lib/rolePrev
 import useDismiss from '../lib/useDismiss'
 import { isPortalStaff, PortalPopup } from './PortalMenu'
 import { useWorkspace } from '../lib/workspace'
-import { formatRole } from './Sidebar'
+import { formatRole, useOneMenu } from './Sidebar'
+import ChangePassword from './ChangePassword'
+import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { useLocation } from 'react-router-dom'
 import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon } from './HeaderIcons'
 
@@ -31,11 +33,16 @@ export default function ProfileMenu() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [me, setMe] = useState({ full_name: '', avatar_url: '' })
-  const [sub, setSub] = useState(null)                // 'viewas' | 'portals' | null
+  const [sub, setSub] = useState(null)                // 'viewas' | 'portals' | 'settings' | null
   const [accounts, setAccounts] = useState(null)
   // Workspace (11/27, Brittney): replaces "Portals". Pick a company to switch Command Center over to it,
   // or ⤢ to open that client's portal in a pop-up. No new tabs.
   const ws = useWorkspace()
+  // Settings moved here from the bottom of the sidebar (11/27): theme, menu style, page labels, password.
+  const [oneMenu, setOneMenu] = useOneMenu()
+  const [theme, setThemeState] = useState(getTheme())
+  const [pwOpen, setPwOpen] = useState(false)
+  const [tagsHidden, setTagsHidden] = useState(() => { try { return localStorage.getItem('cc_nav_tags') === '0' } catch { return false } })
   const location = useLocation()
   const portals = ws.list
   const portalErr = ''
@@ -171,13 +178,25 @@ export default function ProfileMenu() {
           {(canViewAs || canPortals) && <div className="hd-sep" />}
 
           <button type="button" role="menuitem" className="hd-mi" onClick={() => go('/profile')}><UserIcon /> <span className="hd-mi-label">My Profile</span></button>
-          <button type="button" role="menuitem" className="hd-mi" onClick={() => go('/settings')}><GearIcon /> <span className="hd-mi-label">Settings</span></button>
+          <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(x => x === 'settings' ? null : 'settings')} aria-expanded={sub === 'settings'}><GearIcon /> <span className="hd-mi-label">Settings</span> <CaretIcon className={'hd-mi-caret' + (sub === 'settings' ? ' on' : '')} /></button>
+          {sub === 'settings' && (
+            <div className="hd-sub" role="group" aria-label="Settings">
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/settings')}>Timezone &amp; notifications</button>
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }}>{themeLabel(theme)}</button>
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => setOneMenu(!oneMenu)}>{oneMenu ? 'Switch to classic menu' : 'Switch to one-platform menu'}</button>
+              {oneMenu && tagsHidden && (
+                <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => { try { localStorage.setItem('cc_nav_tags', '1') } catch { /* ignore */ } setTagsHidden(false); window.dispatchEvent(new Event('cc-nav-tags')) }}>Show page origin labels</button>
+              )}
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => { close(); setPwOpen(true) }}>Change password</button>
+            </div>
+          )}
           <button type="button" role="menuitem" className="hd-mi" onClick={() => go('/help')}><HelpIcon /> <span className="hd-mi-label">Help &amp; Support</span></button>
           <div className="hd-sep" />
           <button type="button" role="menuitem" className="hd-mi" onClick={() => { close(); signOut() }}><LogoutIcon /> <span className="hd-mi-label">Log out</span></button>
         </div>
       )}
       {viewing && <PortalPopup portal={viewing} onClose={() => setViewing(null)} />}
+      {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </div>
   )
 }
