@@ -7,6 +7,7 @@ import ProfileMenu from './ProfileMenu'
 import HeaderShiftControls from './HeaderShiftControls'
 import HeaderTaskTimer from './HeaderTaskTimer'
 import { MyStatusButton } from './Presence'
+import { RadioButton } from './OpsisRadio'
 
 // ============================================================
 // APP HEADER (2026-11-02): two rows.
@@ -24,6 +25,7 @@ export default function AppHeader({ title, onToggleNav, showChat }) {
           <div className="crumb"><b>{title}</b></div>
         </div>
         <div className="tb-right">
+          <RadioButton />
           <GlobalSearch />
           <RefreshButton />
           {showChat && <ChatPopButton />}
