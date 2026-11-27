@@ -391,7 +391,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
               : kind === 'mycoach' ? <CoachingInbox />
               : kind === 'intraday' ? <WfmIntraday clientId={clientId} />
               : kind === 'callflow' ? <CallFlowBuilder clientId={clientId} />
-              : kind === 'field' ? <FieldService clientId={clientId} />
+              : kind === 'field' ? <FieldService clientId={clientId || me.client} />
               : kind === 'myphone' ? (
                 <MemoryRouter>
                   <VoiceProvider canCallPeople={false} canDialNumbers={false}><CsrPhone accent="#14302A" /><Softphone /></VoiceProvider>
