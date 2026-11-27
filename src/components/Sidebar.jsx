@@ -222,11 +222,9 @@ const NAV_ONE = [
     { type: 'link', to: '/w/tasks', label: 'Client follow-up tasks', ic: '✅', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring', tag: 'cc' },
     { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings', tag: 'cc' },
-    { type: 'section', key: 'my-tools', label: 'My tools', ic: '🧰', tag: 'cc', children: [
-      { to: '/tokens', label: 'Tokens', perm: 'tokens' },
-      { to: '/get-to-know-you', label: 'Get to Know You', perm: null },
-      { to: '/help', label: 'Help Center', perm: null },
-    ] },
+    { type: 'link', to: '/tokens', label: 'Tokens', ic: '🪙', perm: 'tokens', tag: 'cc' },
+    { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null, tag: 'cc' },
+    { type: 'link', to: '/help', label: 'Help Center', ic: '❓', perm: null, tag: 'cc' },
     { type: 'section', key: 'team-updates', label: 'Team updates', ic: '📣', tag: 'cc', children: [
       { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
       { to: '/eod', label: 'End of Day Report', perm: '__eod' },
