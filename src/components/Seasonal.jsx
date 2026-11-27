@@ -1110,13 +1110,45 @@ function XmToggle({ on, onChange, compact }) {
     </button>
   )
 }
-// Nothing hangs from the top bar next to the page name any more (the pine branch, then a small tree, were removed 2026-11-27).
-// This still reports where the page name ends so the "Wishing you…" banner keeps its place.
+// Frosty the Snowman stands on the top bar just right of the page name (2026-11-27, Brittney).
+// Click him to play his song, click again to stop it. Nothing plays on its own.
+const FROSTY_SIZE = [97, 128]
 function XmTopGarland({ onRight, hidden }) {
   const crumb = useAnchorRect('.topbar .crumb', 800), bar = useAnchorRect('.topbar', 800)
-  const right = crumb && bar ? crumb.right + 8 : null
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef(null)
+  useEffect(() => () => { try { audioRef.current?.pause() } catch { /* ignore */ } }, [])
+  const h = bar ? Math.round(Math.min(74, Math.max(52, bar.height - 6))) : 0
+  const w = Math.round(h * FROSTY_SIZE[0] / FROSTY_SIZE[1])
+  const right = crumb && bar ? crumb.right + 8 + w : null
   useEffect(() => { onRight?.(right) }, [right]) // eslint-disable-line react-hooks/exhaustive-deps
-  return null
+  if (!crumb || !bar || window.innerWidth < 900 || hidden) return null
+  const toggle = () => {
+    try {
+      if (!audioRef.current) {
+        const a = new Audio(XART + 'frosty.mp3')
+        a.volume = 0.5
+        a.onplay = () => setPlaying(true)
+        a.onpause = () => setPlaying(false)
+        a.onended = () => setPlaying(false)
+        audioRef.current = a
+      }
+      const a = audioRef.current
+      if (a.paused) a.play().catch(() => setPlaying(false))
+      else { a.pause(); a.currentTime = 0 }
+    } catch { /* ignore */ }
+  }
+  return (
+    <>
+      <style>{'@keyframes xmFrostyBop { 0%,100% { transform: rotate(-3deg) } 50% { transform: rotate(3deg) translateY(-2px) } } @media (prefers-reduced-motion: reduce) { .xm-frosty-on { animation: none !important } }'}</style>
+      <button type="button" className={'cc-desktop-only' + (playing ? ' xm-frosty-on' : '')} onClick={toggle}
+        title={playing ? 'Click Frosty to stop his song' : 'Click Frosty to hear his song'} aria-label={playing ? 'Stop Frosty the Snowman song' : 'Play Frosty the Snowman song'} aria-pressed={playing}
+        style={{ position: 'fixed', left: crumb.right + 8, top: bar.top + 3, width: w, height: h, zIndex: 2355, padding: 0, border: 0, background: 'transparent', cursor: 'pointer', transformOrigin: '50% 100%',
+          animation: playing ? 'xmFrostyBop 1.1s ease-in-out infinite' : 'none' }}>
+        <img src={XART + 'frosty.png'} alt="" aria-hidden="true" draggable="false" width={w} height={h} style={{ display: 'block', userSelect: 'none' }} />
+      </button>
+    </>
+  )
 }
 // "25 Days of Christmas" — the main button, centered in the work bar under the header.
 const xmDay = () => {
