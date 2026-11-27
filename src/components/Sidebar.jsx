@@ -261,6 +261,10 @@ const NAV_ONE = [
   ] },
 ]
 const TAGS = { cc: ['CC', 'Command Center'], p: ['P', 'Client portal'], b: ['Both', 'In both today'], n: ['New', 'New'] }
+// Inside each menu section, keep pages from the same place together (Brittney 11/27): New, CC, Both, P.
+// Stable sort, so pages keep their order within a label.
+const TAG_ORDER = { n: 0, cc: 1, b: 2, p: 3 }
+for (const g of NAV_ONE) g.items = g.items.map((it, i) => [it, i]).sort((a, b) => ((TAG_ORDER[a[0].tag] ?? 9) - (TAG_ORDER[b[0].tag] ?? 9)) || (a[1] - b[1])).map(x => x[0])
 // One-platform menu is on by default on staging; Settings → "Classic menu" switches back (per browser).
 export function useOneMenu() {
   const [on, setOn] = useState(() => { try { return localStorage.getItem('cc_classic_nav') !== '1' } catch { return true } })
