@@ -261,10 +261,10 @@ const NAV_ONE = [
   ] },
 ]
 const TAGS = { cc: ['CC', 'Command Center'], p: ['P', 'Client portal'], b: ['Both', 'In both today'], n: ['New', 'New'] }
-// Inside each menu section, keep pages from the same place together (Brittney 11/27): New, CC, Both, P.
-// Stable sort, so pages keep their order within a label.
-const TAG_ORDER = { n: 0, cc: 1, b: 2, p: 3 }
-for (const g of NAV_ONE) g.items = g.items.map((it, i) => [it, i]).sort((a, b) => ((TAG_ORDER[a[0].tag] ?? 9) - (TAG_ORDER[b[0].tag] ?? 9)) || (a[1] - b[1])).map(x => x[0])
+// Menu grouped by where each page came from (Brittney 11/27): New, Command Center, Both, Portal — each label
+// only with its own kind. Pages keep their order inside a group.
+const TAG_GROUPS = [['n', 'New'], ['cc', 'Command Center'], ['b', 'In both'], ['p', 'Client portal']]
+const NAV_ONE_BY_TAG = TAG_GROUPS.map(([t, label]) => ({ group: label, items: NAV_ONE.flatMap(g => g.items.filter(it => it.tag === t)) })).filter(g => g.items.length)
 // One-platform menu is on by default on staging; Settings → "Classic menu" switches back (per browser).
 export function useOneMenu() {
   const [on, setOn] = useState(() => { try { return localStorage.getItem('cc_classic_nav') !== '1' } catch { return true } })
@@ -355,7 +355,7 @@ export default function Sidebar({ open, onNavigate }) {
     : (!p || canAny(appRole, p))
   // One shared ordering now; both names resolve to the same array.
   const [oneMenu, setOneMenu] = useOneMenu()
-  const NAV = oneMenu ? NAV_ONE : (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
+  const NAV = oneMenu ? NAV_ONE_BY_TAG : (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
   const [showTags, setShowTags] = useState(() => { try { return localStorage.getItem('cc_nav_tags') !== '0' } catch { return true } })
   const flipTags = () => setShowTags(v => { try { localStorage.setItem('cc_nav_tags', v ? '0' : '1') } catch { /* ignore */ } return !v })
   // the account menu (top right) can turn the labels back on
