@@ -19,15 +19,21 @@ export default function TechDay() {
   const [open, setOpen] = useState(null)
   const [note, setNote] = useState('')
   const [toast, setToast] = useState('')
+  const [busy, setBusy] = useState(false)
   const load = () => supabase.rpc('fsm_tech_day', { p_token: token, p_day: day }).then(({ data, error }) => error ? setErr(error.message) : setD(data))
   useEffect(() => { document.documentElement.style.colorScheme = 'light'; load() }, [day])
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 6000); return () => clearTimeout(t) }, [toast])
 
   const mark = async (a, outcome) => {
+    if (busy) return
+    setBusy(true)
     const { data, error } = await supabase.rpc('fsm_tech_outcome', { p_token: token, p_appt: a.id, p_outcome: outcome, p_note: note || null })
+    setBusy(false)
     if (error) { setToast(error.message); return }
     setNote('')
     if (data?.sales) setToast(`Sent to sales ✓ ${data.sales.resource} will see ${a.customer} on ${new Date(data.sales.day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${fmtTime(data.sales.starts_at)}.`)
-    else if (outcome !== 'on_my_way') setToast('Saved ✓')
+    else if (outcome === 'on_my_way') setToast(`🚐 On the way to ${a.customer} — the office can see it on the dispatch board.`)
+    else setToast('Saved ✓')
     load()
   }
 
@@ -45,7 +51,7 @@ export default function TechDay() {
           <button onClick={() => setDay(addDays(d.day, 1))} style={{ ...btn, padding: '4px 12px', background: 'rgba(255,255,255,.15)', color: '#fff' }}>›</button>
         </div>
       </div>
-      {toast && <div onClick={() => setToast('')} style={{ margin: 12, background: '#E6F0EA', border: '1px solid #2F7D5B', borderRadius: 10, padding: 12, fontSize: 14 }}>{toast}</div>}
+      {toast && <div onClick={() => setToast('')} style={{ position: 'sticky', top: 8, zIndex: 5, boxShadow: '0 4px 12px rgba(0,0,0,.12)', margin: 12, background: '#E6F0EA', border: '1px solid #2F7D5B', borderRadius: 10, padding: 12, fontSize: 14 }}>{toast}</div>}
       <div style={{ padding: 12, display: 'grid', gap: 10 }}>
         {!d.visits.length && <div style={{ textAlign: 'center', color: '#5F6763', padding: 20 }}>No visits this day.</div>}
         {d.visits.map((a) => {
@@ -71,6 +77,7 @@ export default function TechDay() {
                   {a.status !== 'done' && (<>
                     <textarea rows={2} placeholder="Note (what you found, what they want)…" value={note} onChange={(e) => setNote(e.target.value)}
                       style={{ border: '1px solid #E8E4DC', borderRadius: 10, padding: 10, fontSize: 15, fontFamily: 'inherit' }} />
+                    {a.status === 'en_route' && <div style={{ background: '#FEF3C7', borderRadius: 10, padding: 10, fontWeight: 700, color: '#92400E', textAlign: 'center' }}>🚐 You're on the way — mark the outcome when you're done</div>}
                     {a.status !== 'en_route' && <button style={{ ...btn, background: '#F5F3EE', color: '#1C2421' }} onClick={() => mark(a, 'on_my_way')}>🚐 On my way</button>}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       {isTech ? (<>
