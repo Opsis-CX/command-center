@@ -183,6 +183,12 @@ export default function ProfileMenu() {
             <div className="hd-sub" role="group" aria-label="My Tools">
               <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/notes')}>My Notes</button>
               <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/calendar')}>Calendar</button>
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => {
+                // Reminders open as a panel on My Profile (/profile#reminders)
+                close()
+                if (location.pathname === '/profile') window.dispatchEvent(new Event('cc:open-reminders'))
+                else navigate('/profile#reminders')
+              }}>Reminders</button>
             </div>
           )}
           <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(x => x === 'settings' ? null : 'settings')} aria-expanded={sub === 'settings'}><GearIcon /> <span className="hd-mi-label">Settings</span> <CaretIcon className={'hd-mi-caret' + (sub === 'settings' ? ' on' : '')} /></button>
