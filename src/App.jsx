@@ -58,6 +58,7 @@ import Overview from './modules/Overview'
 import WorkspacePage from './modules/WorkspacePage'
 import AgentPhone from './modules/AgentPhone'
 import WorkforcePage from './modules/WorkforcePage'
+import { AdminFrame, AdminHome } from './components/AdminSettings'
 import { isPortalStaff } from './components/PortalMenu'
 import { useOneMenu } from './components/Sidebar'
 import HelpCenter from './modules/HelpCenter'
@@ -547,7 +548,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                 a one-tap banner. Never shows on a device where they turned it off. */}
             <PushEnrollmentBanner profileId={session.user.id} />
             <RefreshBoundary>
+            <AdminFrame path={location.pathname}>
             <Routes>
+              <Route path="/admin" element={<AdminHome />} />
               <Route path="/" element={canSeeDashboard ? (oneMenu ? <Overview /> : <Dashboard />) : <Profile />} />
               <Route path="/dashboard" element={canSeeDashboard ? <Dashboard /> : <NoAccess />} />
               <Route path="/my-phone" element={<AgentPhone />} />
@@ -658,6 +661,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
               <Route path="*" element={canSeeDashboard ? <Dashboard /> : <Profile />} />
             </Routes>
+            </AdminFrame>
             </RefreshBoundary>
           </div>
         </main>
@@ -669,7 +673,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
 }
 function titleFor(path) {
   const map = {
-    '/': 'Overview', '/dashboard': 'Dashboard', '/my-phone': 'My phone', '/overview': 'Overview', '/certifications': 'Certifications',
+    '/': 'Overview', '/admin': 'Admin settings', '/dashboard': 'Dashboard', '/my-phone': 'My phone', '/overview': 'Overview', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync', '/business-reviews': 'Business reviews',

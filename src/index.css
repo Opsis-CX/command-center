@@ -1309,3 +1309,15 @@ body{
 .hd-who b{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .hd-who span{font-size:11.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 @media (max-width:720px){.hd-who{display:none}}
+/* Admin settings frame (11/27) */
+.adm{display:grid;grid-template-columns:230px minmax(0,1fr);gap:24px;align-items:start}
+.adm-nav{position:sticky;top:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 8px;max-height:calc(100vh - 140px);overflow-y:auto}
+.adm-title{font-weight:800;font-size:15px;padding:4px 10px 8px}
+.adm-group{display:flex;flex-direction:column;gap:1px;margin-bottom:8px}
+.adm-cap{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);padding:8px 10px 4px}
+.adm-item{display:flex;flex-direction:column;padding:7px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:13.5px}
+.adm-item small{font-size:11px;color:var(--ink-soft)}
+.adm-item:hover,.adm-item:focus-visible{background:var(--canvas)}
+.adm-item.on{background:var(--canvas);font-weight:700;box-shadow:inset 3px 0 0 var(--accent)}
+.adm-page{min-width:0}
+@media (max-width:900px){.adm{grid-template-columns:1fr}.adm-nav{position:static;max-height:none}}

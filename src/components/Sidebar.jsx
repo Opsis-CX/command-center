@@ -210,6 +210,7 @@ const NAV_ONE = [
   { group: 'Team', items: [
     { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat', tag: 'cc' },
     { type: 'link', to: '/knowledge', label: 'Knowledge base', ic: '📚', perm: null, tag: 'b' },
+    { type: 'link', to: '/w/kb', label: 'Client knowledge base', ic: '📚', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/projects', label: 'Projects', ic: '🗂️', perm: 'project_management', tag: 'cc' },
     { type: 'link', to: '/w/tasks', label: 'Client follow-up tasks', ic: '✅', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring', tag: 'cc' },
@@ -228,36 +229,6 @@ const NAV_ONE = [
     { type: 'link', to: '/reporting', label: 'Reporting hub', ic: '📈', perm: 'reporting', tag: 'b' },
     { type: 'link', to: '/reporting/hourly', label: 'Hourly', ic: '🕐', perm: 'reporting', tag: 'cc' },
     { type: 'link', to: '/w/reporting', label: 'Client reports', ic: '📑', perm: '__portal', tag: 'p' },
-  ] },
-  { group: 'Setup', items: [
-    { type: 'link', to: '/w/connect', label: 'Connect your calls', ic: '🔌', perm: '__portal', tag: 'p' },
-    { type: 'link', to: '/w/callflow', label: 'Call flow', ic: '🔀', perm: '__portal', tag: 'p' },
-    { type: 'link', to: '/w/phonesetup', label: 'Phone setup', ic: '☎️', perm: '__portal', tag: 'p' },
-    { type: 'link', to: '/w/kb', label: 'Client knowledge base', ic: '📚', perm: '__portal', tag: 'p' },
-    { type: 'link', to: '/w/qasettings', label: 'QA settings', ic: '🧾', perm: '__portal', tag: 'p' },
-    { type: 'link', to: '/w/team', label: 'Client team & access', ic: '👥', perm: '__portal', tag: 'p' },
-    { type: 'link', to: '/integrations', label: 'Integrations', ic: '🧩', perm: '__admin', tag: 'cc' },
-    { type: 'link', to: '/roles', label: 'Access & Permissions', ic: '🔐', perm: '__admin', tag: 'b' },
-    { type: 'section', key: 'backend', label: 'Configuration', ic: '⚙', tag: 'cc', children: [
-      { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
-      { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
-      { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
-      { to: '/branding', label: 'Branding', perm: '__admin' },
-      { to: '/dashboard-settings', label: 'Dashboard', perm: '__admin' },
-      { to: '/schedule-settings', label: 'Schedule', perm: '__admin' },
-      { to: '/schedule-rules', label: 'Schedule rules', perm: '__admin' },
-      { to: '/chat-support', label: 'Chat support lines', perm: '__admin' },
-      { to: '/alerts', label: 'Alerts', perm: '__admin' },
-      { to: '/service-account', label: 'Service account', perm: '__admin' },
-      { to: '/w/brandset', label: 'Client portal settings', perm: '__portal' },
-    ] },
-    { type: 'section', key: 'content-backend', label: 'Backend', ic: '🗄️', tag: 'cc', children: [
-      { to: '/updates', label: 'Updates', perm: '__updates_post' },
-      { to: '/backend/quotes', label: 'Daily Quotes', perm: '__admin' },
-      { to: '/backend/spotlight', label: 'Spotlight', perm: '__admin' },
-      { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },
-      { to: '/survey', label: 'New Hire Survey', perm: '__admin' },
-    ] },
   ] },
 ]
 const TAGS = { cc: ['CC', 'Command Center'], p: ['P', 'Client portal'], b: ['Both', 'In both today'], n: ['New', 'New'] }
@@ -300,6 +271,13 @@ export function formatRole(raw) {
 let _navIndex = []
 export const getNavIndex = () => _navIndex
 
+// Page → permission keys when the new roles system is on (moved to module scope 11/27 so Admin settings can use it).
+export const NEW_PAGE_PERMS = {
+  '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/overview': ['dashboard.overview', 'dashboard.client'], '/dashboard': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
+  '/knowledge': 'kb.view', '/chat-support': 'chat.support_manage', '/integrations': 'admin.integrations', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.dashboard_settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
+  '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
+}
+
 export default function Sidebar({ open, onNavigate }) {
   const branding = useBranding()   // company logo (Configuration → Branding)
   const lineIcons = branding?.nav_icon_style === 'bw'   // "Line icons" option
@@ -331,11 +309,7 @@ export default function Sidebar({ open, onNavigate }) {
   }, [user?.id])
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
   // be "everyone" or "admins only" follow the person's checkboxes too.
-  const NEW_PAGE_PERMS = {
-    '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/overview': ['dashboard.overview', 'dashboard.client'], '/dashboard': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/chat-support': 'chat.support_manage', '/integrations': 'admin.integrations', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.dashboard_settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
-    '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
-  }
+
   const permOk = (p, to) => {
     if (usingNewPermissions() && NEW_PAGE_PERMS[to]) return [].concat(NEW_PAGE_PERMS[to]).some(k => hasPerm(k))
     return permOkOld(p)

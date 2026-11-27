@@ -8,10 +8,11 @@ import { isPortalStaff, PortalPopup } from './PortalMenu'
 import { useWorkspace } from '../lib/workspace'
 import { formatRole, useOneMenu } from './Sidebar'
 import ChangePassword from './ChangePassword'
+import { useAdminNav } from './AdminSettings'
 import { canAny, hasPerm, usingNewPermissions } from '../lib/permissions'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { useLocation } from 'react-router-dom'
-import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon, ToolsIcon, ReportIcon } from './HeaderIcons'
+import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon, ToolsIcon, ReportIcon, AdminIcon } from './HeaderIcons'
 
 // ============================================================
 // PROFILE MENU (top bar, upper right, 2026-11-02)
@@ -39,6 +40,7 @@ export default function ProfileMenu() {
   // Workspace (11/27, Brittney): replaces "Portals". Pick a company to switch Command Center over to it,
   // or ⤢ to open that client's portal in a pop-up. No new tabs.
   const ws = useWorkspace()
+  const adminNav = useAdminNav()   // Admin settings (11/27): shown when there's at least one setup page this person can open
   // Settings moved here from the bottom of the sidebar (11/27): theme, menu style, page labels, password.
   const [oneMenu, setOneMenu] = useOneMenu()
   const [theme, setThemeState] = useState(getTheme())
@@ -218,6 +220,7 @@ export default function ProfileMenu() {
               <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => { close(); setPwOpen(true) }}>Change password</button>
             </div>
           )}
+          {adminNav.length > 0 && <button type="button" role="menuitem" className="hd-mi" onClick={() => go('/admin')}><AdminIcon /> <span className="hd-mi-label">Admin settings</span></button>}
           <button type="button" role="menuitem" className="hd-mi" onClick={() => go('/help')}><HelpIcon /> <span className="hd-mi-label">Help &amp; Support</span></button>
           <div className="hd-sep" />
           <button type="button" role="menuitem" className="hd-mi" onClick={() => { close(); signOut() }}><LogoutIcon /> <span className="hd-mi-label">Log out</span></button>
