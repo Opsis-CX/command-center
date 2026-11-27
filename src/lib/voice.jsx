@@ -31,6 +31,7 @@ import { supabase } from './supabase'
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.5/dist/twilio.min.js'
 const STATUS_POLL_MS = 30000
+const AUTO_ANSWER_MS = 1200      // ring this long, then answer on its own (Becky 11/27)
 
 let sdkPromise = null
 function loadSdk() {
@@ -81,6 +82,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   const callRef = useRef(null)
   const mutedRef = useRef(false)
   const incomingRef = useRef(null)
+  const acceptRef = useRef(null)   // auto-answer calls this (set below, once acceptIncoming exists)
   const inboundRef = useRef(null)      // answered inbound call waiting for its disposition
   const timerRef = useRef(null)
   // status: idle | incoming | connecting | ringing | in-call | ended | error
@@ -140,6 +142,9 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     call.on('cancel', clear)   // caller hung up, or a teammate answered first
     call.on('reject', clear)
     call.on('disconnect', clear)
+    // 11/27 (Becky): auto-answer — the CSR doesn't choose whether to take the call. A short ring so they
+    // know it's coming, then it connects on its own.
+    setTimeout(() => { if (incomingRef.current === call) acceptRef.current?.() }, AUTO_ANSWER_MS)
   }, [patch])
 
   // One device per page, even if two callers ask at once (2026-11-22).
@@ -330,6 +335,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       patch({ status: 'error', error: msg })
     }
   }, [patch, wire])
+  acceptRef.current = acceptIncoming
 
   const declineIncoming = useCallback(() => {
     const c = incomingRef.current
