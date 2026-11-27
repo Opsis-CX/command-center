@@ -5,6 +5,8 @@ import { useAuth } from '../lib/auth'
 import { loadPreviewAccounts, enterPreview, isPreviewing } from '../lib/rolePreview'
 import useDismiss from '../lib/useDismiss'
 import { isPortalStaff, PortalPopup } from './PortalMenu'
+import { useWorkspace } from '../lib/workspace'
+import { useLocation } from 'react-router-dom'
 import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon } from './HeaderIcons'
 
 // ============================================================
@@ -30,8 +32,12 @@ export default function ProfileMenu() {
   const [me, setMe] = useState({ full_name: '', avatar_url: '' })
   const [sub, setSub] = useState(null)                // 'viewas' | 'portals' | null
   const [accounts, setAccounts] = useState(null)
-  const [portals, setPortals] = useState(null)
-  const [portalErr, setPortalErr] = useState('')
+  // Workspace (11/27, Brittney): replaces "Portals". Pick a company to switch Command Center over to it,
+  // or ⤢ to open that client's portal in a pop-up. No new tabs.
+  const ws = useWorkspace()
+  const location = useLocation()
+  const portals = ws.list
+  const portalErr = ''
   const [busy, setBusy] = useState(null)
   const [viewing, setViewing] = useState(null)        // portal shown in the big pop-up (kept here so it survives the menu closing)
   const wrapRef = useRef(null)
@@ -58,10 +64,7 @@ export default function ProfileMenu() {
 
   useEffect(() => {
     if (sub === 'viewas' && !accounts) loadPreviewAccounts().then(setAccounts)
-    if (sub === 'portals' && !portals && !portalErr) {
-      supabase.rpc('my_portals').then(({ data, error }) => { if (error) setPortalErr(error.message); else setPortals(data || []) })
-    }
-  }, [sub, accounts, portals, portalErr])
+  }, [sub, accounts])
 
   if (!userId) return null
   const name = me.full_name || user?.email?.split('@')[0] || 'User'
@@ -73,7 +76,10 @@ export default function ProfileMenu() {
     setBusy(a.role_key)
     try { await enterPreview(a.role_key) } catch (e) { window.alert(e.message); setBusy(null) }
   }
-  const openPortalTab = (p) => { close(); window.open(`/opsis-qa?client=${p.client_id}`, '_blank', 'noopener') }
+  const switchTo = (cid) => {
+    close(); ws.set(cid)
+    if (!cid && location.pathname.startsWith('/w/')) navigate('/overview')
+  }
   const openPortalPop = (p) => { close(); setViewing(p) }
 
   const Avatar = ({ size }) => (
@@ -84,6 +90,12 @@ export default function ProfileMenu() {
 
   return (
     <div ref={wrapRef} className="hd-profile">
+      {canPortals && ws.current && (
+        <span className="hd-ws-chip" title={`You're working in ${ws.current.name}`}>
+          <button type="button" onClick={() => { setOpen(true); setSub('portals') }} aria-label={`Workspace: ${ws.current.name}. Switch workspace`}>{ws.current.name}</button>
+          <button type="button" onClick={() => switchTo('')} aria-label="Back to Opsis CX" title="Back to Opsis CX">✕</button>
+        </span>
+      )}
       <button ref={btnRef} type="button" className="hd-avatar-btn" onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open}
         aria-label={`Account menu for ${name}`} title={name}>
         <Avatar size={36} />
@@ -121,22 +133,27 @@ export default function ProfileMenu() {
 
           {canPortals && (
             <>
-              <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(s => s === 'portals' ? null : 'portals')} aria-expanded={sub === 'portals'} title="Open a client portal">
-                <MonitorIcon /> <span className="hd-mi-label">Portals</span> <CaretIcon className={'hd-mi-caret' + (sub === 'portals' ? ' on' : '')} />
+              <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(s => s === 'portals' ? null : 'portals')} aria-expanded={sub === 'portals'} title="Switch which company you're working in">
+                <MonitorIcon /> <span className="hd-mi-label">Workspace<small className="hd-ws-now">{ws.current ? ws.current.name : 'Opsis CX'}</small></span> <CaretIcon className={'hd-mi-caret' + (sub === 'portals' ? ' on' : '')} />
               </button>
               {sub === 'portals' && (
-                <div className="hd-sub" role="group" aria-label="Portals">
-                  <div className="hd-sub-note">Opens the client's portal in a new tab (or ⤢ for a pop-up), exactly as their account admins see it. Changes you make there are real.</div>
-                  {portalErr && <div className="login-err" style={{ margin: '4px 10px' }}>{portalErr}</div>}
-                  {!portals && !portalErr && <div className="hd-sub-note">Loading…</div>}
-                  {portals && portals.length === 0 && <div className="hd-sub-note">No portals you can open yet.</div>}
+                <div className="hd-sub" role="group" aria-label="Workspace">
+                  <div className="hd-sub-note">Pick a company to switch Command Center over to it, or ⤢ to open a client's portal in a pop-up. Changes you make are real.</div>
+                  <div className="hd-portal-row">
+                    <button type="button" role="menuitemradio" aria-checked={!ws.id} className={'hd-mi hd-mi-sub hd-portal' + (!ws.id ? ' hd-ws-on' : '')} onClick={() => switchTo('')} title="Switch to Opsis CX">
+                      <span className="hd-portal-logo hd-portal-init" style={{ background: '#13D9E8', color: '#021116' }}>O</span>
+                      <span className="hd-portal-name">Opsis CX</span>{!ws.id && <span aria-hidden="true" className="hd-portal-go">✓</span>}
+                    </button>
+                  </div>
+                  {portals === null && <div className="hd-sub-note">Loading…</div>}
+                  {portals && portals.length === 0 && <div className="hd-sub-note">No client workspaces you can open yet.</div>}
                   {(portals || []).map(p => (
                     <div key={p.client_id} className="hd-portal-row">
-                      <button type="button" role="menuitem" className="hd-mi hd-mi-sub hd-portal" onClick={() => openPortalTab(p)} title={`Open ${p.name} portal in a new tab`}>
+                      <button type="button" role="menuitemradio" aria-checked={ws.id === p.client_id} className={'hd-mi hd-mi-sub hd-portal' + (ws.id === p.client_id ? ' hd-ws-on' : '')} onClick={() => switchTo(p.client_id)} title={`Switch to ${p.name}`}>
                         {p.logo_url
                           ? <img src={p.logo_url} alt="" className="hd-portal-logo" />
                           : <span className="hd-portal-logo hd-portal-init" style={{ background: p.accent || 'var(--accent)' }}>{(p.name || '?')[0]}</span>}
-                        <span className="hd-portal-name">{p.name}</span><span aria-hidden="true" className="hd-portal-go">↗</span>
+                        <span className="hd-portal-name">{p.name}</span>{ws.id === p.client_id && <span aria-hidden="true" className="hd-portal-go">✓</span>}
                       </button>
                       <button type="button" className="hd-popbtn" onClick={() => openPortalPop(p)} title={`Open ${p.name} portal in a pop-up`} aria-label={`Open ${p.name} portal in a pop-up`}>⤢</button>
                     </div>

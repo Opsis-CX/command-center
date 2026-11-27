@@ -11,7 +11,6 @@ import { useRsnAccess } from '../lib/rsnAccess'
 import { useFinanceAccess } from '../lib/financeAccess'
 import ChangePassword from './ChangePassword'
 import { isPortalStaff } from './PortalMenu'
-import WorkspaceSwitcher from './WorkspaceSwitcher'
 // Sidebar navigation, organized into labelled GROUPS.
 //
 // NAV = [ { group: 'Main', items: [ ...items ] }, ... ]
@@ -475,7 +474,6 @@ export default function Sidebar({ open, onNavigate }) {
       <div className="brand">
         <img className="brand-logo" src={logoFor(branding, true)} alt={branding?.company_name || 'Opsis'} />
       </div>
-      {oneMenu && isPortalStaff(isAdmin, appRole) && <WorkspaceSwitcher onNavigate={onNavigate} />}
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
       <div className="nav-scroll">

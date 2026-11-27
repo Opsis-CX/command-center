@@ -1294,3 +1294,12 @@ body{
 .ap-home{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
 @media (min-width:1150px){.ap-home{grid-template-columns:minmax(0,1fr) 300px}}
 .ap-phone{min-width:0}
+/* Workspace in the account menu + header chip (11/27) */
+.hd-ws-now{display:block;font-size:11.5px;color:var(--ink-soft);font-weight:500}
+.hd-ws-on{background:var(--canvas)}
+.hd-profile{display:flex;align-items:center;gap:8px}
+.hd-ws-chip{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--canvas);border-radius:999px;font-size:12.5px;font-weight:700;max-width:220px;box-shadow:inset 3px 0 0 #13D9E8}
+.hd-ws-chip button{all:unset;cursor:pointer;padding:5px 6px 5px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.hd-ws-chip button+button{padding:5px 10px 5px 4px;color:var(--ink-soft);flex:none}
+.hd-ws-chip button:hover,.hd-ws-chip button:focus-visible{color:var(--accent)}
+@media (max-width:640px){.hd-ws-chip{max-width:120px}}

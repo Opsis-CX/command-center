@@ -24,7 +24,7 @@ export default function WorkspacePage() {
       <div className="card" style={{ maxWidth: 560 }}>
         <h3 style={{ margin: '0 0 6px' }}>Pick a client workspace</h3>
         <p className="page-sub" style={{ margin: '0 0 14px' }}>
-          This page shows one client's data. Choose whose, or use the Workspace switcher at the top of the menu.
+          This page shows one client's data. Choose whose, or click your picture (top right) → Workspace.
         </p>
         {list.length === 0 && <p className="page-sub">No client workspaces you can open yet.</p>}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

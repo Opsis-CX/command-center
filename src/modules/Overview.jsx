@@ -1,5 +1,5 @@
 // Overview — the one-platform home page from Becky's merged mockup (11/24, staging).
-// Real numbers for the workspace picked at the top of the menu, from RPC cc_overview (scored calls in
+// Real numbers for the workspace picked under your picture (top right), from RPC cc_overview (scored calls in
 // ai_qa_fact + Command Center's phone status log). Opsis CX workspace = our own scored calls.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -85,7 +85,7 @@ export default function Overview() {
       </header>
 
       {!id && list && list.length > 0 && (
-        <div className="ov-banner">Showing <b>Opsis CX</b>. Pick a client in the <b>Workspace</b> switcher at the top of the menu to see their numbers and open their portal pages here.</div>
+        <div className="ov-banner">Showing <b>Opsis CX</b>. Click your picture (top right) → <b>Workspace</b> and pick a client to see their numbers and open their portal pages here.</div>
       )}
       {err && <div className="ov-banner ov-err">{err}</div>}
 
