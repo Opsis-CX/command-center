@@ -8,9 +8,10 @@ import { isPortalStaff, PortalPopup } from './PortalMenu'
 import { useWorkspace } from '../lib/workspace'
 import { formatRole, useOneMenu } from './Sidebar'
 import ChangePassword from './ChangePassword'
+import { canAny, hasPerm, usingNewPermissions } from '../lib/permissions'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { useLocation } from 'react-router-dom'
-import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon, ToolsIcon } from './HeaderIcons'
+import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon, ToolsIcon, ReportIcon } from './HeaderIcons'
 
 // ============================================================
 // PROFILE MENU (top bar, upper right, 2026-11-02)
@@ -33,7 +34,7 @@ export default function ProfileMenu() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [me, setMe] = useState({ full_name: '', avatar_url: '' })
-  const [sub, setSub] = useState(null)                // 'viewas' | 'portals' | 'settings' | null
+  const [sub, setSub] = useState(null)                // 'viewas' | 'portals' | 'tools' | 'reports' | 'settings' | null
   const [accounts, setAccounts] = useState(null)
   // Workspace (11/27, Brittney): replaces "Portals". Pick a company to switch Command Center over to it,
   // or ⤢ to open that client's portal in a pop-up. No new tabs.
@@ -78,6 +79,11 @@ export default function ProfileMenu() {
   const name = me.full_name || user?.email?.split('@')[0] || 'User'
   const ini = initialsOf(name)
   // Role under your name (11/27, Brittney) — same wording as the sidebar's name card.
+  // My Reports (11/27): Weekly Sync + End of Day Report, moved here from the sidebar's Team Updates. Same rules as before.
+  const isOwnerish = level >= 100 || (roles || []).includes('owner')
+  const canWeekly = usingNewPermissions() ? hasPerm('team.weekly_sync') : canAny(appRole, 'weekly_sync')
+  const canEod = usingNewPermissions() ? (hasPerm('team.eod_submit') || hasPerm('team.eod_view'))
+    : (isAdmin || isOwnerish || !String(appRole || '').toLowerCase().split(',').map(r => r.trim()).every(r => r === 'agent'))
   const roleLabel = (level >= 100 || (roles || []).includes('owner')) ? 'Owner' : isAdmin ? 'Admin' : formatRole(appRole)
 
   const go = (path) => { close(); navigate(path) }
@@ -191,6 +197,15 @@ export default function ProfileMenu() {
               }}>Reminders</button>
             </div>
           )}
+          {(canWeekly || canEod) && (<>
+            <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(x => x === 'reports' ? null : 'reports')} aria-expanded={sub === 'reports'}><ReportIcon /> <span className="hd-mi-label">My Reports</span> <CaretIcon className={'hd-mi-caret' + (sub === 'reports' ? ' on' : '')} /></button>
+            {sub === 'reports' && (
+              <div className="hd-sub" role="group" aria-label="My Reports">
+                {canWeekly && <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/weekly-sync')}>Weekly Sync Report</button>}
+                {canEod && <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/eod')}>End of Day Report</button>}
+              </div>
+            )}
+          </>)}
           <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(x => x === 'settings' ? null : 'settings')} aria-expanded={sub === 'settings'}><GearIcon /> <span className="hd-mi-label">Settings</span> <CaretIcon className={'hd-mi-caret' + (sub === 'settings' ? ' on' : '')} /></button>
           {sub === 'settings' && (
             <div className="hd-sub" role="group" aria-label="Settings">

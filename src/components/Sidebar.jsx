@@ -103,14 +103,6 @@ const NAV_MAIN = [
           { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
         ],
       },
-      {
-        // Team Updates (2026-11-04): the team's regular check-ins
-        type: 'section', key: 'team-updates', label: 'Team Updates', ic: '📣',
-        children: [
-          { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
-          { to: '/eod', label: 'End of Day Report', perm: '__eod' },   // non-agents submit; admins also see everyone's
-        ],
-      },
       { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring' },
       { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
@@ -225,10 +217,6 @@ const NAV_ONE = [
     { type: 'link', to: '/tokens', label: 'Tokens', ic: '🪙', perm: 'tokens', tag: 'cc' },
     { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null, tag: 'cc' },
     { type: 'link', to: '/help', label: 'Help Center', ic: '❓', perm: null, tag: 'cc' },
-    { type: 'section', key: 'team-updates', label: 'Team updates', ic: '📣', tag: 'cc', children: [
-      { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
-      { to: '/eod', label: 'End of Day Report', perm: '__eod' },
-    ] },
     { type: 'section', key: 'business', label: 'Business', ic: '💼', tag: 'cc', children: [
       { to: '/sales', label: 'Sales', perm: 'sales' },
       { to: '/rsn', label: 'RSN Pipeline', perm: '__rsn' },
