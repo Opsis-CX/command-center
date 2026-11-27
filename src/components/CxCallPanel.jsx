@@ -133,8 +133,10 @@ export default function CxCallPanel() {
   const showing = !!(voice && iid && i && open && (liveNow || ended))
   useEffect(() => {
     document.body.classList.toggle('cx-docked', showing)
+    // 11/27 (Becky): one set of call controls — the floating phone popup closes while this column is showing
+    if (showing) voice?.setOpen?.(false)
     return () => document.body.classList.remove('cx-docked')
-  }, [showing])
+  }, [showing]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!voice || !iid || !i) return null
   if (!liveNow && !ended) return null
@@ -198,13 +200,13 @@ export default function CxCallPanel() {
 
       {liveNow && (
         <div style={S.controls}>
-          <button onClick={() => voice.toggleMute()} style={{ ...S.ctl, ...(voice.muted ? { background: '#fef3c7', color: '#92400e', borderColor: '#f59e0b' } : {}) }}>{voice.muted ? '🔇 Unmute' : '🎙 Mute'}</button>
-          <button disabled={!!busy || !customer} onClick={() => act(i.status === 'held' ? 'unhold' : 'hold', {}, 'hold')} style={S.ctl}>{i.status === 'held' ? '▶ Resume' : '⏸ Hold'}</button>
-          <button disabled={!!busy} onClick={() => setXfer(x => !x)} style={S.ctl}>⇄ Transfer</button>
-          <button disabled={!!busy || !i.recording_sid} onClick={() => act(i.recording_paused ? 'resume_recording' : 'pause_recording', {}, 'rec')} style={S.ctl} title="Pause while the customer reads card details">{i.recording_paused ? '● Resume rec' : '💳 Pause rec'}</button>
-          <button disabled={!!busy || i.needs_help} onClick={raiseHand} style={S.ctl}>✋ {i.needs_help ? 'Help asked' : 'Need help'}</button>
-          {i.direction === 'out' && <button disabled={!!busy || i.pending?.vm_dropped} onClick={() => act('vm_drop', {}, 'vm')} style={S.ctl} title="Plays the campaign’s voicemail message to the machine and frees you for the next call">📼 Leave voicemail</button>}
-          {i.direction === 'in' && <button disabled={!!busy} onClick={reportSpam} style={S.ctl} title="Block this number and end the call">🚫 Spam</button>}
+          <button onClick={() => voice.toggleMute()} style={{ ...S.ctl, ...(voice.muted ? { background: '#fef3c7', color: '#92400e', borderColor: '#f59e0b' } : {}) }}>{voice.muted ? 'Unmute' : 'Mute'}</button>
+          <button disabled={!!busy || !customer} onClick={() => act(i.status === 'held' ? 'unhold' : 'hold', {}, 'hold')} style={S.ctl}>{i.status === 'held' ? 'Resume' : 'Hold'}</button>
+          <button disabled={!!busy} onClick={() => setXfer(x => !x)} style={S.ctl}>Transfer</button>
+          <button disabled={!!busy || !i.recording_sid} onClick={() => act(i.recording_paused ? 'resume_recording' : 'pause_recording', {}, 'rec')} style={S.ctl} title="Pause while the customer reads card details">{i.recording_paused ? 'Resume rec' : 'Pause rec'}</button>
+          <button disabled={!!busy || i.needs_help} onClick={raiseHand} style={S.ctl}>{i.needs_help ? 'Help asked' : 'Need help'}</button>
+          {i.direction === 'out' && <button disabled={!!busy || i.pending?.vm_dropped} onClick={() => act('vm_drop', {}, 'vm')} style={S.ctl} title="Plays the campaign’s voicemail message to the machine and frees you for the next call">Voicemail</button>}
+          {i.direction === 'in' && <button disabled={!!busy} onClick={reportSpam} style={S.ctl} title="Block this number and end the call">Spam</button>}
           <button disabled={!!busy} onClick={() => { if (window.confirm('End this call for everyone?')) act('end', {}, 'end') }} style={{ ...S.ctl, background: '#dc2626', color: '#fff', borderColor: '#dc2626' }}>End</button>
         </div>
       )}
@@ -252,27 +254,10 @@ export default function CxCallPanel() {
               <div style={{ ...S.cap, display: 'flex', justifyContent: 'space-between' }}><span>Next</span>{streaming && <span style={{ textTransform: 'none', letterSpacing: 0 }}>● live</span>}</div>
               <div>{streaming?.next || assist?.next}</div>
               {(streaming?.say || assist?.say) && <div style={{ fontWeight: 500, fontSize: 13.5, marginTop: 6, color: 'light-dark(#0f172a, #e8eef0)' }}>“{streaming?.say || assist?.say}”</div>}
+              {assist?.play?.line && <div style={{ fontWeight: 500, fontSize: 12.5, marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(20,48,42,0.12)', color: 'light-dark(#334155, #c9d4d8)' }}><b style={{ fontWeight: 700 }}>Top CSRs say:</b> “{assist.play.line}”</div>}
             </div>
           ) : (
             <div style={S.empty}>{i.transcribing ? 'Suggestions appear as soon as the caller starts talking.' : 'Turn on live transcript to get suggestions while you talk.'}</div>
-          )}
-          {assist?.play?.line && (
-            <div style={S.say}>
-              <div style={S.cap}>Top CSR line · {assist.play.situation}</div>
-              “{assist.play.line}”
-              {assist.play.why && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>{assist.play.why}</div>}
-            </div>
-          )}
-          <form onSubmit={ask} style={{ display: 'flex', gap: 6 }}>
-            <input value={askQ} onChange={e => setAskQ(e.target.value)} placeholder="Ask anything… (e.g. do we fix openers?)" style={{ ...S.input, flex: 1 }} />
-            <button type="submit" disabled={asking || !askQ.trim()} style={S.small}>{asking ? '…' : 'Ask'}</button>
-          </form>
-          {askA && (
-            <div style={S.say}>
-              <div style={{ ...S.cap, display: 'flex', justifyContent: 'space-between' }}><span>{askA.q}</span><button onClick={() => setAskA(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }} aria-label="Close">×</button></div>
-              {askA.answer}
-              {askA.say && <div style={{ marginTop: 4, fontWeight: 600 }}>“{askA.say}”</div>}
-            </div>
           )}
         </div>
       )}
@@ -366,6 +351,21 @@ export default function CxCallPanel() {
         )}
       </div>
       {mine?.kind === 'transfer' && liveNow && <div style={S.note}>This call was transferred to you.</div>}
+      {liveNow && (
+        <div style={{ position: 'sticky', bottom: 0, padding: '10px 14px', background: 'light-dark(#fff, #161d21)', borderTop: '1px solid light-dark(#e2e8f0, #2a3439)', display: 'grid', gap: 8 }}>
+          <form onSubmit={ask} style={{ display: 'flex', gap: 6 }}>
+            <input value={askQ} onChange={e => setAskQ(e.target.value)} placeholder="Ask anything… (e.g. do we fix openers?)" style={{ ...S.input, flex: 1 }} />
+            <button type="submit" disabled={asking || !askQ.trim()} style={S.small}>{asking ? '…' : 'Ask'}</button>
+          </form>
+          {askA && (
+            <div style={S.say}>
+              <div style={{ ...S.cap, display: 'flex', justifyContent: 'space-between' }}><span>{askA.q}</span><button onClick={() => setAskA(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }} aria-label="Close">×</button></div>
+              {askA.answer}
+              {askA.say && <div style={{ marginTop: 4, fontWeight: 600 }}>“{askA.say}”</div>}
+            </div>
+          )}
+        </div>
+      )}
     </aside>
   )
 }
@@ -431,8 +431,8 @@ const S = {
   badges: { display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 14px 0' },
   badge: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: 'light-dark(#E6F0EA, #222c31)', color: GT },
   badgeBtn: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: 'light-dark(#fff, #161d21)', color: GT, border: `1px dashed ${GT}`, cursor: 'pointer' },
-  controls: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, padding: '10px 14px' },
-  ctl: { padding: '8px 2px', fontSize: 11.5, fontWeight: 700, borderRadius: 10, border: '1px solid rgba(100,116,139,0.35)', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0f172a, #e8eef0)', cursor: 'pointer' },
+  controls: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, padding: '8px 14px' },
+  ctl: { padding: '7px 2px', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700, borderRadius: 10, border: '1px solid rgba(100,116,139,0.35)', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0f172a, #e8eef0)', cursor: 'pointer' },
   pending: { margin: '0 14px 8px', padding: 10, borderRadius: 10, background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', fontSize: 13, display: 'grid', gap: 6 },
   xfer: { margin: '0 14px 8px', padding: 10, borderRadius: 10, background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)' },
   alert: { margin: '0 14px 8px', padding: '8px 10px', borderRadius: 10, background: 'light-dark(#fff7ed, #392813)', color: 'light-dark(#9a3412, #e56f48)', fontSize: 13, fontWeight: 600, border: '1px solid light-dark(#fed7aa, #64492b)' },
