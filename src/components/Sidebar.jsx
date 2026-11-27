@@ -223,8 +223,6 @@ const NAV_ONE = [
     { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring', tag: 'cc' },
     { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings', tag: 'cc' },
     { type: 'section', key: 'my-tools', label: 'My tools', ic: '🧰', tag: 'cc', children: [
-      { to: '/notes', label: 'My Notes', perm: null },
-      { to: '/calendar', label: 'Calendar', perm: null },
       { to: '/tokens', label: 'Tokens', perm: 'tokens' },
       { to: '/get-to-know-you', label: 'Get to Know You', perm: null },
       { to: '/help', label: 'Help Center', perm: null },

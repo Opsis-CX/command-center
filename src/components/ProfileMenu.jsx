@@ -10,7 +10,7 @@ import { formatRole, useOneMenu } from './Sidebar'
 import ChangePassword from './ChangePassword'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { useLocation } from 'react-router-dom'
-import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon } from './HeaderIcons'
+import { EyeIcon, MonitorIcon, UserIcon, GearIcon, HelpIcon, LogoutIcon, CaretIcon, ToolsIcon } from './HeaderIcons'
 
 // ============================================================
 // PROFILE MENU (top bar, upper right, 2026-11-02)
@@ -178,6 +178,13 @@ export default function ProfileMenu() {
           {(canViewAs || canPortals) && <div className="hd-sep" />}
 
           <button type="button" role="menuitem" className="hd-mi" onClick={() => go('/profile')}><UserIcon /> <span className="hd-mi-label">My Profile</span></button>
+          <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(x => x === 'tools' ? null : 'tools')} aria-expanded={sub === 'tools'}><ToolsIcon /> <span className="hd-mi-label">My Tools</span> <CaretIcon className={'hd-mi-caret' + (sub === 'tools' ? ' on' : '')} /></button>
+          {sub === 'tools' && (
+            <div className="hd-sub" role="group" aria-label="My Tools">
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/notes')}>My Notes</button>
+              <button type="button" role="menuitem" className="hd-mi hd-mi-sub" onClick={() => go('/calendar')}>Calendar</button>
+            </div>
+          )}
           <button type="button" role="menuitem" className="hd-mi" onClick={() => setSub(x => x === 'settings' ? null : 'settings')} aria-expanded={sub === 'settings'}><GearIcon /> <span className="hd-mi-label">Settings</span> <CaretIcon className={'hd-mi-caret' + (sub === 'settings' ? ' on' : '')} /></button>
           {sub === 'settings' && (
             <div className="hd-sub" role="group" aria-label="Settings">
