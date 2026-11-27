@@ -210,7 +210,6 @@ const NAV_ONE = [
   { group: 'Team', items: [
     { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat', tag: 'cc' },
     { type: 'link', to: '/knowledge', label: 'Knowledge base', ic: '📚', perm: null, tag: 'b' },
-    { type: 'link', to: '/w/kb', label: 'Client knowledge base', ic: '📚', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/projects', label: 'Projects', ic: '🗂️', perm: 'project_management', tag: 'cc' },
     { type: 'link', to: '/w/tasks', label: 'Client follow-up tasks', ic: '✅', perm: '__portal', tag: 'p' },
     { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring', tag: 'cc' },

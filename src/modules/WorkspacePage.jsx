@@ -15,11 +15,11 @@ export default function WorkspacePage() {
   const { view } = useParams()
   const navigate = useNavigate()
   const { appRole } = useAuth()
-  const { id, list, current, set } = useWorkspace()
+  const { list, current, set, clientId } = useWorkspace()
 
   if (MERGED[view]) return <Navigate to={MERGED[view]} replace />
   if (list === null) return <p className="page-sub">Loading…</p>
-  if (!current) {
+  if (!clientId) {
     return (
       <div className="card" style={{ maxWidth: 560 }}>
         <h3 style={{ margin: '0 0 6px' }}>Pick a client workspace</h3>
@@ -43,7 +43,7 @@ export default function WorkspacePage() {
   }
   return (
     <div className="ws-page">
-      <OpsisQAPortal key={id} staff embedded clientId={id} logo={current.logo_url || undefined}
+      <OpsisQAPortal key={clientId} staff embedded clientId={clientId} logo={current?.logo_url || undefined}
         view={view || 'overview'}
         onView={(v) => { if (v && v !== view) navigate('/w/' + v + window.location.hash, { replace: true }) }}
         hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} csrMode="staff" />

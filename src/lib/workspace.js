@@ -5,9 +5,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
+// Opsis CX is a workspace too (Brittney 11/27): our own portal tools (QA settings, KB, call flow…) use this client row.
+export const OPSIS_CX = '9726e6eb-1364-4dba-8ddb-10c07a408ecb'
 const KEY = 'cc_workspace'
 const EVT = 'cc-workspace'
 let _list = null
+let _all = []
 let _loading = null
 
 export function getWorkspace() {
@@ -23,7 +26,8 @@ export function loadWorkspaces() {
     _loading = supabase.rpc('my_portals').then(({ data, error }) => {
       _loading = null
       if (error) return []
-      _list = data || []
+      _all = data || []
+      _list = _all.filter(p => p.client_id !== OPSIS_CX)   // Opsis CX is listed on its own, never as a client
       return _list
     })
   }
@@ -41,5 +45,8 @@ export function useWorkspace() {
     return () => { on = false; window.removeEventListener(EVT, h) }
   }, [])
   const current = (list || []).find(p => p.client_id === id) || null
-  return { id: current ? id : '', list, current, set: setWorkspace }
+  const cid = current ? id : ''
+  // clientId: whose portal tools to open — the picked client, or Opsis CX's own (when this person can open it)
+  const opsisOk = _all.some(p => p.client_id === OPSIS_CX)
+  return { id: cid, list, current, set: setWorkspace, clientId: cid || (opsisOk ? OPSIS_CX : ''), name: current ? current.name : 'Opsis CX', opsisOk }
 }

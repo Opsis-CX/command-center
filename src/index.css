@@ -1321,3 +1321,4 @@ body{
 .adm-item.on{background:var(--canvas);font-weight:700;box-shadow:inset 3px 0 0 var(--accent)}
 .adm-page{min-width:0}
 @media (max-width:900px){.adm{grid-template-columns:1fr}.adm-nav{position:static;max-height:none}}
+.adm-ws{text-transform:none;letter-spacing:0;font-weight:600;color:var(--accent)}

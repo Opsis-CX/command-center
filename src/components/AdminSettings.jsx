@@ -14,34 +14,33 @@ import { NEW_PAGE_PERMS } from './Sidebar'
 import { useWorkspace } from '../lib/workspace'
 
 // ws: true = a client workspace's setting (needs a client picked in Workspace)
+// ws: true = saved per workspace (Opsis CX or the client picked in Workspace) — the portal's "Your setup" tools,
+// which Opsis uses for itself too (Brittney 11/27).
 export const ADMIN_NAV = [
+  { group: 'Your setup', items: [
+    { to: '/w/qasettings', label: 'QA settings', perm: '__portal', ws: true },
+    { to: '/w/kb', label: 'Knowledge base (what the AI knows)', perm: '__portal', ws: true },
+    { to: '/w/connect', label: 'Connect your calls', perm: '__portal', ws: true },
+    { to: '/w/phonesetup', label: 'Phone setup', perm: '__portal', ws: true },
+    { to: '/w/callflow', label: 'Call flow', perm: '__portal', ws: true },
+    { to: '/w/team', label: 'Team & access', perm: '__portal', ws: true },
+    { to: '/w/brandset', label: 'Portal settings', perm: '__portal', ws: true },
+  ] },
   { group: 'Company', items: [
     { to: '/branding', label: 'Branding', perm: '__admin' },
     { to: '/dashboard-settings', label: 'Dashboard', perm: '__admin' },
     { to: '/alerts', label: 'Alerts', perm: '__admin' },
+    { to: '/integrations', label: 'Integrations', perm: '__admin' },
+    { to: '/chat-support', label: 'Chat support lines', perm: '__admin' },
   ] },
   { group: 'People & access', items: [
     { to: '/roles', label: 'Access & Permissions', perm: '__admin' },
     { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
     { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
   ] },
-  { group: 'Connections', items: [
-    { to: '/integrations', label: 'Integrations', perm: '__admin' },
-    { to: '/w/connect', label: 'Connect your calls', perm: '__portal', ws: true },
-  ] },
-  { group: 'Phone & quality', items: [
-    { to: '/w/phonesetup', label: 'Phone setup', perm: '__portal', ws: true },
-    { to: '/w/callflow', label: 'Call flow', perm: '__portal', ws: true },
-    { to: '/w/qasettings', label: 'QA settings', perm: '__portal', ws: true },
-    { to: '/chat-support', label: 'Chat support lines', perm: '__admin' },
-  ] },
   { group: 'Schedule', items: [
     { to: '/schedule-settings', label: 'Schedule settings', perm: '__admin' },
     { to: '/schedule-rules', label: 'Schedule rules', perm: '__admin' },
-  ] },
-  { group: 'Client portal', items: [
-    { to: '/w/team', label: 'Client team & access', perm: '__portal', ws: true },
-    { to: '/w/brandset', label: 'Client portal settings', perm: '__portal', ws: true },
   ] },
   { group: 'Opsis admin', items: [
     { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
@@ -80,7 +79,7 @@ export function AdminHome() {
 // The settings menu down the left of every setup page.
 export function AdminFrame({ path, children }) {
   const nav = useAdminNav()
-  const { current } = useWorkspace()
+  const { name } = useWorkspace()
   if (!isAdminPath(path) || !nav.length) return children
   return (
     <div className="adm">
@@ -88,10 +87,10 @@ export function AdminFrame({ path, children }) {
         <div className="adm-title">Admin settings</div>
         {nav.map(g => (
           <div key={g.group} className="adm-group">
-            <div className="adm-cap">{g.group}</div>
+            <div className="adm-cap">{g.group}{g.group === 'Your setup' ? <span className="adm-ws"> · {name}</span> : null}</div>
             {g.items.map(i => (
               <NavLink key={i.to} to={i.to} className={({ isActive }) => 'adm-item' + (isActive ? ' on' : '')}>
-                {i.label}{i.ws && <small>{current ? current.name : 'pick a client'}</small>}
+                {i.label}
               </NavLink>
             ))}
           </div>
