@@ -28,8 +28,12 @@ export const SEASONS = [
 ]
 
 let _off = false
+// Early preview for ONE person (Brittney, 2026-11-27): a seasonal_prefs row (key 'preview_christmas',
+// enabled) makes Christmas show for that login only, before Dec 1. Nobody else is affected; delete the row to turn it off.
+let _forced = null
 // Dates are checked in America/New_York, so Halloween ends at midnight Nov 1 Eastern for everyone.
 export function activeSeason(d = new Date()) {
+  if (_forced) return SEASONS.find(s => s.key === _forced) || null
   const [mo, da] = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric' }).split('/').map(Number)
   const md = mo * 100 + da
   return SEASONS.find(s => md >= s.from[0] * 100 + s.from[1] && md <= s.to[0] * 100 + s.to[1]) || null
@@ -1646,9 +1650,24 @@ export default function Seasonal() {
   const [canPreview, setCanPreview] = useState(false)
   const [garlandRight, setGarlandRight] = useState(null)
   const [garlandAway, setGarlandAway] = useState(false)
+  const [, setForceTick] = useState(0)
   const season = activeSeason()
   const idRef = useRef(0)
   const still = reduceMotion()
+
+  // Early Christmas preview for the one login that has the preview_christmas pref (see _forced above).
+  useEffect(() => {
+    if (!user?.id) return
+    let alive = true
+    supabase.from('seasonal_prefs').select('enabled').eq('profile_id', user.id).eq('key', 'preview_christmas').maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return
+        const f = data?.enabled ? 'christmas' : null
+        if (f !== _forced) { _forced = f; setForceTick(t => t + 1); window.dispatchEvent(new Event('cc:seasonal-state')) }
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [user?.id])
 
   useEffect(() => {
     if (!user?.id || !season) return
