@@ -54,6 +54,8 @@ function oqSideToggle(ROOT) {
   showBtn.addEventListener('click', function () { set(false, true); });
 }
 
+import { PORTAL_MANUAL } from './portalManual';
+
 export function mountOpsisQA(ROOT, cfg) {
   var st = document.getElementById('oqa-style');
   if (!st) { st = document.createElement('style'); st.id = 'oqa-style'; st.textContent = CSS; document.head.appendChild(st); }
@@ -177,7 +179,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     if (k === 'brandset') k = 'settings';
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', reviews: 'M5 3h10l4 4v14H5zM14 3v5h5M8 17v-3M12 17v-6M16 17v-4', coach: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21v-1a6 6 0 0 1 9-5.2M16 15l2 2 4-4', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', field: 'M3 7h18v11H3zM3 11h18M8 7V4h8v3M7 18v2M17 18v2', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01', reviews: 'M5 3h10l4 4v14H5zM14 3v5h5M8 17v-3M12 17v-6M16 17v-4', coach: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21v-1a6 6 0 0 1 9-5.2M16 15l2 2 4-4', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', field: 'M3 7h18v11H3zM3 11h18M8 7V4h8v3M7 18v2M17 18v2', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', supervisor: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7zM9 12l2 2 4-4', tasks: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       connect: 'M12 22v-5M9 8V2M15 8V2M18 8v4a6 6 0 0 1-12 0V8z', kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
@@ -202,6 +204,8 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat(CFG.mountExt && CFG.supervisor ? [['supervisor', 'Supervisor'], ['wallboard', 'Wallboard'], ['myphone', 'Phone'], ['field', 'Field Service']] : [])
     .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.callSources && (IS_ADMIN || CFG.staff) ? [['connect', 'Connect your calls']] : []).concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
+  // Help (2026-11-15): the portal user manual, searchable, for self-serve. GarageCo portal only (not CSR logins, not the Opsis CX portal).
+  if (!CFG.csrSelf && !OPSIS) NAV.push(['HELP', [['help', 'User manual']]]);
   // Tile navigation (Becky 11/17): these pages also open from Overview / brand tiles.
   // They stay in the sidebar too (Becky 11/17 pm: removing them caused confusion).
   var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money', 'leadtime'];
@@ -285,7 +289,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<label for="askq" class="sr">Ask anything about your calls</label><input id="askq" autocomplete="off" placeholder="Ask anything — “' + esc(askEx()) + '”" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:14px">' +
       '<button class="sel btnd" type="submit" style="min-height:36px;padding:6px 14px">Ask</button></form>' +
       '<div style="flex:1 1 0"></div>' +
-      (/^hub/.test(S.view) ? '' : '<button class="sel" data-pop="export" aria-haspopup="true" title="Download what this page shows">\u2913 Export</button>') +
+      (/^hub|^help$/.test(S.view) ? '' : '<button class="sel" data-pop="export" aria-haspopup="true" title="Download what this page shows">\u2913 Export</button>') +
       (LOCK && MYBR.length > 1 ? '<label class="sr" for="mybr">Brand</label><select id="mybr" class="sel" data-mybr="1" title="Switch between your brands" style="cursor:pointer">' + MYBR.map(function (b) { return '<option value="' + esc(b) + '"' + (b === LOCK ? ' selected' : '') + '>' + esc(short(b)) + '</option>'; }).join('') + '</select>'
         : LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
       (/^hub/.test(S.view) ? (SELF ? '<span class="sel" style="cursor:default" title="The Coaching Hub runs week by week, Monday to Sunday">' + esc((HUB.roster && HUB.roster.week_label) || 'This week') + '</span>' : '<label class="sr" for="hubwk">Week</label><select id="hubwk" class="sel" data-hubweek="1" title="The Coaching Hub runs week by week, Monday to Sunday. Pick a past week to look back." style="cursor:pointer">' + hubWeeks().map(function (w) { return '<option value="' + w[0] + '"' + (HUB.week === w[0] ? ' selected' : '') + '>' + esc(w[1]) + '</option>'; }).join('') + '</select>') : '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>') +
@@ -5265,6 +5269,44 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function (e) { el.innerHTML = '<h2 class="ttl">When calls come in</h2><p class="mut">' + esc(e.message) + '</p>'; });
   }
 
+  // ---------- Help: the portal user manual (2026-11-15) ----------
+  // Content lives in ./portalManual.js (generated from the manual doc). Search filters sections as you type.
+  var HELPQ = '';
+  function vHelp() {
+    var toc = PORTAL_MANUAL.map(function (m) { return '<button class="chip" data-helpto="' + m.id + '">' + esc(m.title) + '</button>'; }).join('');
+    setMain(crumb([['User manual']]) +
+      '<style>#oqhelp h3{font-size:16px;margin:22px 0 6px}#oqhelp p,#oqhelp li{font-size:14px;line-height:1.6}#oqhelp ul,#oqhelp ol{padding-left:22px;margin:6px 0 10px}#oqhelp table{border-collapse:collapse;width:100%;margin:10px 0 14px;font-size:13.5px}#oqhelp th,#oqhelp td{border:1px solid #E8E4DC;padding:8px 10px;text-align:left;vertical-align:top}#oqhelp th{background:#F7F5F0;font-weight:600}#oqhelp .hsec{scroll-margin-top:16px}#oqhelp mark{background:#FFF1B8;border-radius:3px}</style>' +
+      '<div class="oq-card"><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">User manual</h1><p class="sub">How to use every page of the portal. Search, or jump to a section.</p>' +
+      '<label class="sr" for="helpq">Search the manual</label><input id="helpq" class="oq-field" autocomplete="off" placeholder="Search — e.g. change a score, card capture, invite" value="' + esc(HELPQ) + '" style="width:100%;max-width:520px;margin-top:10px">' +
+      '<div id="helpcount" class="mut" style="font-size:12.5px;margin-top:6px"></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + toc + '</div></div>' +
+      '<div id="oqhelp">' + PORTAL_MANUAL.map(function (m) { return '<div class="oq-card hsec" id="help-' + m.id + '" data-helpsec="' + m.id + '"><h2 class="ttl" style="font-size:19px">' + esc(m.title) + '</h2><div class="hbody">' + m.html + '</div></div>'; }).join('') + '</div>' +
+      '<div class="oq-card mut" style="font-size:13px">Still stuck? Contact the Opsis CX Support team.</div>');
+    var q = $('helpq');
+    if (q) { q.oninput = function () { HELPQ = q.value; helpFilter(); }; }
+    ROOT.querySelectorAll('[data-helpto]').forEach(function (b) { b.onclick = function () { HELPQ = ''; if (q) q.value = ''; helpFilter(); var el = $('help-' + b.getAttribute('data-helpto')); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
+    helpFilter();
+  }
+  function helpFilter() {
+    var words = HELPQ.toLowerCase().split(/\s+/).filter(function (w) { return w.length > 1; }), shown = 0;
+    PORTAL_MANUAL.forEach(function (m) {
+      var el = $('help-' + m.id); if (!el) return;
+      var ok = !words.length || words.every(function (w) { return m.text.indexOf(w) >= 0; });
+      el.style.display = ok ? '' : 'none'; if (ok) shown++;
+      var body = el.querySelector('.hbody'); body.innerHTML = m.html;
+      if (ok && words.length) helpMark(body, words);
+    });
+    var c = $('helpcount'); if (c) c.textContent = words.length ? (shown ? shown + ' section' + (shown === 1 ? '' : 's') + ' match' + (shown === 1 ? 'es' : '') + ' “' + HELPQ.trim() + '”' : 'Nothing matches “' + HELPQ.trim() + '”. Try fewer words.') : '';
+  }
+  function helpMark(root, words) {
+    var re = new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')', 'gi');
+    var walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [], n;
+    while ((n = walk.nextNode())) nodes.push(n);
+    nodes.forEach(function (t) {
+      if (!re.test(t.nodeValue)) return; re.lastIndex = 0;
+      var span = document.createElement('span'); span.innerHTML = esc(t.nodeValue).replace(re, '<mark>$1</mark>'); t.parentNode.replaceChild(span, t);
+    });
+  }
+
   function crumb(parts) {
     if (S.tileFrom && TILE_VIEWS.indexOf(S.view) >= 0 && parts.length && parts[0][1] !== S.tileFrom[0]) parts = [[S.tileFrom[1], S.tileFrom[0]]].concat(parts);
     return '<div class="oq-crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
@@ -6271,7 +6313,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view) && !(S.view === 'practice' && PR.allowed)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, callbacks: vCallbacks, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, field: function () { vExt('field'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, callbacks: vCallbacks, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, field: function () { vExt('field'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs, help: vHelp }[S.view] || vOverview;
     var gk = GATE[S.view];
     if (gk && CFG.features && !(FEAT && FEAT[gk])) {
       if (!FEAT) { setMain('<div class="oq-card">' + skel(30, 4) + '</div>'); featLoad().then(function () { if (tok === T) render(); }); return; }
