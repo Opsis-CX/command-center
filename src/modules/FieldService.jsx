@@ -1,7 +1,7 @@
 // Field Service (FSM) v1 — GarageCo portal, Becky 11/27.
 // Book (route-aware best times) · Dispatch board (drag to move) · Funnel (repair → new door) · Team links.
 // Data: fsm_* RPCs (qa_client_access + brand lock). Techs/reps use a secret link: /tech/:token (TechDay.jsx).
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const TZ = 'America/Chicago'
@@ -30,33 +30,44 @@ export default function FieldService({ clientId }) {
   const [brand, setBrand] = useState('')
   const [tab, setTab] = useState('book')
   const [err, setErr] = useState('')
+  const [canSetup, setCanSetup] = useState(false)
+  const loadBrands = (keep) => rpc('fsm_brands', { p_client: clientId }).then((b) => {
+    setBrands(b || [])
+    if (b && b.length && !(keep && b.find((x) => x.brand === keep))) setBrand(b[0].brand)
+    else if (keep) setBrand(keep)
+  }).catch((e) => setErr(e.message))
   useEffect(() => {
-    rpc('fsm_brands', { p_client: clientId }).then((b) => { setBrands(b || []); if (b && b.length) setBrand(b[0].brand) }).catch((e) => setErr(e.message))
-  }, [clientId])
+    loadBrands()
+    // account admins (and Opsis staff) get the Setup tab (11/27)
+    rpc('fsm_admin_get', { p_client: clientId, p_brand: null }).then(() => setCanSetup(true)).catch(() => setCanSetup(false))
+  }, [clientId]) // eslint-disable-line react-hooks/exhaustive-deps
   const cfg = useMemo(() => (brands || []).find((b) => b.brand === brand), [brands, brand])
 
   if (err) return <div style={C.card}>{err}</div>
   if (!brands) return <div style={C.soft}>Loading…</div>
-  if (!brands.length) return <div style={C.card}><b>Field service isn't set up for your brands yet.</b><div style={C.soft}>Opsis CX turns it on per brand (techs, sales reps, job types and booking windows).</div></div>
+  if (!brands.length && !canSetup) return <div style={C.card}><b>Field service isn't set up for your brands yet.</b><div style={C.soft}>Your account admin can turn it on under Field Service → Setup.</div></div>
+  const tabs = (brands.length ? [['book', 'Book a visit'], ['board', 'Dispatch board'], ['funnel', 'Repair → new door'], ['team', 'Team links']] : []).concat(canSetup ? [['setup', 'Setup']] : [])
+  const cur = brands.length ? tab : 'setup'
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {[['book', 'Book a visit'], ['board', 'Dispatch board'], ['funnel', 'Repair → new door'], ['team', 'Team links']].map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ ...C.ghost, ...(tab === k ? { background: 'var(--accent,#2F7D5B)', color: '#fff', borderColor: 'transparent' } : {}) }}>{l}</button>
+        {tabs.map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ ...C.ghost, ...(cur === k ? { background: 'var(--accent,#2F7D5B)', color: '#fff', borderColor: 'transparent' } : {}) }}>{l}</button>
         ))}
         <div style={{ flex: 1 }} />
-        {brands.length > 1 && (
+        {cur !== 'setup' && brands.length > 1 && (
           <select value={brand} onChange={(e) => setBrand(e.target.value)} style={{ ...C.input, width: 'auto' }}>
             {brands.map((b) => <option key={b.brand}>{b.brand}</option>)}
           </select>
         )}
-        {brands.length === 1 && <b>{brand}</b>}
+        {cur !== 'setup' && brands.length === 1 && <b>{brand}</b>}
       </div>
-      {cfg && tab === 'book' && <Book clientId={clientId} cfg={cfg} onBooked={() => {}} />}
-      {cfg && tab === 'board' && <Board clientId={clientId} cfg={cfg} />}
-      {cfg && tab === 'funnel' && <Funnel clientId={clientId} cfg={cfg} />}
-      {cfg && tab === 'team' && <Team clientId={clientId} cfg={cfg} />}
+      {cfg && cur === 'book' && <Book clientId={clientId} cfg={cfg} onBooked={() => {}} />}
+      {cfg && cur === 'board' && <Board clientId={clientId} cfg={cfg} />}
+      {cfg && cur === 'funnel' && <Funnel clientId={clientId} cfg={cfg} />}
+      {cfg && cur === 'team' && <Team clientId={clientId} cfg={cfg} />}
+      {cur === 'setup' && <Setup clientId={clientId} initial={brand} onChanged={(b) => loadBrands(b)} />}
     </div>
   )
 }
@@ -331,6 +342,159 @@ function Team({ clientId, cfg }) {
           <a style={{ ...C.ghost, textDecoration: 'none' }} href={link(r.link_token)} target="_blank" rel="noreferrer">Open</a>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ---------------- Setup (account admins) ----------------
+const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']]
+const COLORS = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0891b2', '#ca8a04', '#475569']
+function Setup({ clientId, initial, onChanged }) {
+  const [list, setList] = useState(null)
+  const [brand, setBrand] = useState(initial || '')
+  const [d, setD] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = (b) => rpc('fsm_admin_get', { p_client: clientId, p_brand: b || null }).then((r) => { setList(r.brands); setD(r) }).catch((e) => setMsg(e.message))
+  useEffect(() => { load(brand) }, [brand]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!brand && list && list.length) setBrand((list.find((x) => x.on) || list[0]).brand) }, [list]) // eslint-disable-line react-hooks/exhaustive-deps
+  const run = async (fn, ok) => { setBusy(true); setMsg(''); try { await fn(); await load(brand); if (ok) setMsg(ok); onChanged(brand) } catch (e) { setMsg(e.message) } finally { setBusy(false) } }
+
+  if (!list) return <div style={C.soft}>{msg || 'Loading…'}</div>
+  const on = d?.settings
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ ...C.card, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <b>Brand</b>
+        <select value={brand} onChange={(e) => setBrand(e.target.value)} style={{ ...C.input, width: 'auto' }}>
+          {list.map((b) => <option key={b.brand} value={b.brand}>{b.brand}{b.on ? '' : ' (not set up)'}</option>)}
+        </select>
+        <span style={C.soft}>{on ? 'Field Service is on for this brand.' : 'Field Service is off for this brand.'}</span>
+        <div style={{ flex: 1 }} />
+        {msg && <span style={{ fontSize: 13, color: /✓|saved|on for/i.test(msg) ? '#2F7D5B' : '#A8441A' }}>{msg}</span>}
+      </div>
+      {!on ? (
+        <div style={C.card}>
+          <b>Turn on Field Service for {brand}</b>
+          <div style={{ ...C.soft, margin: '6px 0 12px' }}>Starts with two booking windows (9am–12pm, 12pm–6pm), first bookable day one business day out, 30 minutes of travel between visits, and four job types you can change. Then add the brand's techs and sales reps below.</div>
+          <button style={C.btn} disabled={busy || !brand} onClick={() => run(() => rpc('fsm_admin_save_settings', { p_client: clientId, p_brand: brand, p_cadence: 1, p_windows: [{ label: '9am – 12pm', start: '09:00', end: '12:00' }, { label: '12pm – 6pm', start: '12:00', end: '18:00' }], p_travel: 30, p_sms_mode: 'preview', p_tz: null }), 'Field Service is on for ' + brand + ' ✓')}>Turn it on</button>
+        </div>
+      ) : (<>
+        <Rules key={'r' + brand} s={on} busy={busy} save={(v) => run(() => rpc('fsm_admin_save_settings', { p_client: clientId, p_brand: brand, ...v }), 'Booking rules saved ✓')} />
+        <Jobs key={'j' + brand} rows={d.job_types} busy={busy}
+          save={(j) => run(() => rpc('fsm_admin_save_job', { p_client: clientId, p_brand: brand, p_id: j.id || null, p_label: j.label, p_kind: j.kind, p_minutes: Number(j.minutes), p_sort: null }), 'Job type saved ✓')}
+          del={(j) => run(() => rpc('fsm_admin_delete_job', { p_client: clientId, p_brand: brand, p_id: j.id }), 'Job type removed ✓')} />
+        <People key={'p' + brand} rows={d.resources} busy={busy}
+          save={(r) => run(() => rpc('fsm_admin_save_resource', { p_client: clientId, p_brand: brand, p_id: r.id || null, p_name: r.name, p_kind: r.kind, p_phone: r.phone || null, p_home_zip: r.home_zip,
+            p_zones: String(r.zonesText ?? (r.zones || []).join(', ')).split(/[\s,]+/).filter(Boolean), p_work_days: r.work_days, p_color: r.color, p_active: r.active }), (r.name || 'Person') + ' saved ✓')}
+          newLink={(r) => run(() => rpc('fsm_admin_new_link', { p_client: clientId, p_brand: brand, p_id: r.id }), 'New phone link made for ' + r.name + ' ✓ (the old one stops working)')}
+          clearDemo={() => { if (window.confirm('Remove the demo techs, reps and their visits for ' + brand + '?')) run(() => rpc('fsm_admin_clear_demo', { p_client: clientId, p_brand: brand }), 'Demo data removed ✓') }} />
+      </>)}
+    </div>
+  )
+}
+
+function Rules({ s, busy, save }) {
+  const [w, setW] = useState(s.windows || [])
+  const [cad, setCad] = useState(s.cadence_days)
+  const [trav, setTrav] = useState(s.travel_min)
+  const [sms, setSms] = useState(s.sms_mode || 'preview')
+  const setWin = (i, k, v) => setW(w.map((x, n) => (n === i ? { ...x, [k]: v } : x)))
+  return (
+    <div style={C.card}>
+      <b>Booking rules</b>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 12, marginTop: 10 }}>
+        <Field l="First bookable day (business days out)"><input type="number" min={0} max={14} style={C.input} value={cad} onChange={(e) => setCad(e.target.value)} /></Field>
+        <Field l="Travel time between visits (minutes)"><input type="number" min={0} max={120} style={C.input} value={trav} onChange={(e) => setTrav(e.target.value)} /></Field>
+        <Field l="Customer texts"><select style={C.input} value={sms} onChange={(e) => setSms(e.target.value)}><option value="off">Off</option><option value="preview">Preview only (not sent)</option><option value="live" disabled>Live (needs Salesmsg)</option></select></Field>
+      </div>
+      <div style={{ ...C.label, marginTop: 12 }}>Booking windows (what the customer is offered)</div>
+      {w.map((x, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+          <input style={{ ...C.input, width: 200 }} value={x.label} placeholder="Name, e.g. 9am – 12pm" onChange={(e) => setWin(i, 'label', e.target.value)} />
+          <input type="time" style={{ ...C.input, width: 130 }} value={x.start} onChange={(e) => setWin(i, 'start', e.target.value)} />
+          <span style={C.soft}>to</span>
+          <input type="time" style={{ ...C.input, width: 130 }} value={x.end} onChange={(e) => setWin(i, 'end', e.target.value)} />
+          <button style={C.ghost} onClick={() => setW(w.filter((_, n) => n !== i))} disabled={w.length <= 1}>Remove</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button style={C.ghost} onClick={() => setW([...w, { label: '', start: '13:00', end: '17:00' }])}>+ Add window</button>
+        <div style={{ flex: 1 }} />
+        <button style={C.btn} disabled={busy} onClick={() => save({ p_cadence: Number(cad), p_windows: w, p_travel: Number(trav), p_sms_mode: sms, p_tz: null })}>Save booking rules</button>
+      </div>
+    </div>
+  )
+}
+
+function Jobs({ rows, busy, save, del }) {
+  const [list, setList] = useState(rows)
+  useEffect(() => setList(rows), [rows])
+  const set = (i, k, v) => setList(list.map((x, n) => (n === i ? { ...x, [k]: v, dirty: true } : x)))
+  return (
+    <div style={C.card}>
+      <b>Job types</b> <span style={C.soft}>— how long each visit takes and who goes (tech or sales rep)</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 150px 120px auto', gap: 8, marginTop: 10, alignItems: 'center' }}>
+        <span style={C.label}>Name</span><span style={C.label}>Who goes</span><span style={C.label}>Minutes</span><span />
+        {list.map((j, i) => (<Fragment key={j.id || 'n' + i}>
+          <input style={C.input} value={j.label} onChange={(e) => set(i, 'label', e.target.value)} placeholder="e.g. Spring replacement" />
+          <select style={C.input} value={j.kind} onChange={(e) => set(i, 'kind', e.target.value)}><option value="tech">Tech</option><option value="sales">Sales rep</option></select>
+          <input type="number" min={15} max={480} step={15} style={C.input} value={j.minutes} onChange={(e) => set(i, 'minutes', e.target.value)} />
+          <span style={{ display: 'flex', gap: 6 }}>
+            <button style={C.btn} disabled={busy || !j.dirty} onClick={() => save(j)}>Save</button>
+            {j.id && <button style={C.ghost} disabled={busy} onClick={() => del(j)}>Remove</button>}
+          </span>
+        </Fragment>))}
+      </div>
+      <button style={{ ...C.ghost, marginTop: 10 }} onClick={() => setList([...list, { label: '', kind: 'tech', minutes: 60, dirty: true }])}>+ Add job type</button>
+    </div>
+  )
+}
+
+function People({ rows, busy, save, newLink, clearDemo }) {
+  const [list, setList] = useState(rows)
+  const [copied, setCopied] = useState('')
+  useEffect(() => setList(rows), [rows])
+  const set = (i, k, v) => setList(list.map((x, n) => (n === i ? { ...x, [k]: v, dirty: true } : x)))
+  const toggleDay = (i, dn) => { const r = list[i]; const has = (r.work_days || []).includes(dn); set(i, 'work_days', has ? r.work_days.filter((x) => x !== dn) : [...(r.work_days || []), dn].sort()) }
+  const link = (t) => `${window.location.origin}/tech/${t}`
+  const hasDemo = list.some((r) => r.demo)
+  return (
+    <div style={C.card}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <b>Techs and sales reps</b><span style={C.soft}>— home base is where their day starts; zones limit which zips they're offered for (blank = any zip)</span>
+        <div style={{ flex: 1 }} />
+        {hasDemo && <button style={C.ghost} disabled={busy} onClick={clearDemo}>Remove demo people</button>}
+      </div>
+      <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+        {list.map((r, i) => (
+          <div key={r.id || 'n' + i} style={{ border: '1px solid var(--line,#E8E4DC)', borderRadius: 10, padding: 12, opacity: r.active === false ? 0.6 : 1, display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '24px 1.2fr 130px 150px 110px', gap: 8, alignItems: 'end' }}>
+              <select aria-label="Color" value={r.color || COLORS[i % COLORS.length]} onChange={(e) => set(i, 'color', e.target.value)} style={{ width: 24, height: 24, padding: 0, border: 0, borderRadius: 12, background: r.color || COLORS[i % COLORS.length], color: 'transparent', cursor: 'pointer' }}>
+                {COLORS.map((c) => <option key={c} value={c} style={{ background: c, color: '#fff' }}>{c}</option>)}
+              </select>
+              <Field l={r.demo ? 'Name (demo)' : 'Name'}><input style={C.input} value={r.name || ''} onChange={(e) => set(i, 'name', e.target.value)} /></Field>
+              <Field l="Role"><select style={C.input} value={r.kind} onChange={(e) => set(i, 'kind', e.target.value)}><option value="tech">Tech</option><option value="sales">Sales rep</option></select></Field>
+              <Field l="Cell phone"><input style={C.input} value={r.phone || ''} onChange={(e) => set(i, 'phone', e.target.value)} /></Field>
+              <Field l="Home base zip"><input style={{ ...C.input, borderColor: r.home_zip && r.home_known === false && !r.dirty ? '#E2A27C' : undefined }} maxLength={5} value={r.home_zip || ''} onChange={(e) => set(i, 'home_zip', e.target.value.replace(/\D/g, ''))} /></Field>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
+              <Field l="Zones (zips, optional)"><input style={{ ...C.input, width: 320 }} placeholder="e.g. 78613, 78641, 78642" value={r.zonesText ?? (r.zones || []).join(', ')} onChange={(e) => set(i, 'zonesText', e.target.value)} /></Field>
+              <div><span style={C.label}>Works</span><div style={{ display: 'flex', gap: 4 }}>{DAYS.map(([dn, l]) => {
+                const onD = (r.work_days || []).includes(dn)
+                return <button key={dn} onClick={() => toggleDay(i, dn)} style={{ ...C.ghost, padding: '6px 8px', ...(onD ? { background: 'var(--accent,#2F7D5B)', color: '#fff', borderColor: 'transparent' } : {}) }}>{l}</button>
+              })}</div></div>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={r.active !== false} onChange={(e) => set(i, 'active', e.target.checked)} /> Active</label>
+              <div style={{ flex: 1 }} />
+              {r.id && <button style={C.ghost} onClick={() => { navigator.clipboard?.writeText(link(r.link_token)); setCopied(r.id); setTimeout(() => setCopied(''), 1500) }}>{copied === r.id ? 'Copied' : 'Copy phone link'}</button>}
+              {r.id && <button style={C.ghost} disabled={busy} onClick={() => newLink(r)} title="Makes a new private link; the old one stops working">New link</button>}
+              <button style={C.btn} disabled={busy || !r.dirty} onClick={() => save(r)}>Save</button>
+            </div>
+            {r.home_zip && r.home_known === false && !r.dirty && <div style={{ fontSize: 12, color: '#A8441A' }}>We don't have a map point for zip {r.home_zip}, so drive time for this person can't be ranked.</div>}
+          </div>
+        ))}
+      </div>
+      <button style={{ ...C.ghost, marginTop: 10 }} onClick={() => setList([...list, { name: '', kind: 'tech', phone: '', home_zip: '', zones: [], work_days: [1, 2, 3, 4, 5], color: COLORS[list.length % COLORS.length], active: true, dirty: true }])}>+ Add tech or sales rep</button>
     </div>
   )
 }
