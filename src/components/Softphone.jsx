@@ -8,7 +8,7 @@
 //  Dialer and Inbound pages. Answering an inbound call opens the guided call
 //  screen on the Dialer page.
 // ============================================================
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useVoice } from '../lib/voice'
 import AgentStatus, { statusLook } from './AgentStatus'
@@ -46,7 +46,9 @@ export default function Softphone() {
   const onWorkspace = location.pathname === '/dialer'
   if (!v.canCallPeople && !v.worksCalls && !active && !v.incoming && v.status !== 'error') return null
   const pressKey = k => (v.busy ? v.sendDigit(k) : setDial(d => (d + k).slice(0, 14)))
-  const answer = async () => { await v.acceptIncoming(); navigate('/dialer'); v.setOpen(false) }
+  // 11/27 (Becky): calls auto-answer (lib/voice.jsx). When one connects, go to the call screen like a click on Answer did.
+  const answeredAt = v.inboundCall?.answeredAt
+  useEffect(() => { if (answeredAt) { navigate('/dialer'); v.setOpen(false) } }, [answeredAt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fabColor = v.incoming ? '#f59e0b' : v.busy ? '#16a34a' : '#0891b2'
 
@@ -118,10 +120,7 @@ export default function Softphone() {
 
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             {v.incoming ? (
-              <>
-                <button onClick={v.declineIncoming} style={{ ...S.btn, flex: 1 }}>Decline</button>
-                <button onClick={answer} style={{ ...S.btn, flex: 2, background: '#16a34a', borderColor: '#16a34a', color: '#fff' }}>Answer</button>
-              </>
+              <div style={{ flex: 1, textAlign: 'center', fontWeight: 700, padding: '10px 0', color: '#16a34a' }}>Connecting you…</div>
             ) : v.busy ? (
               <>
                 <button onClick={v.toggleMute} disabled={v.status !== 'in-call'} style={{ ...S.btn, flex: 1, background: v.muted ? 'rgba(234,179,8,0.25)' : 'transparent' }}>
