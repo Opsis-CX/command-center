@@ -32,7 +32,7 @@ export default function TechDay() {
     if (error) { setToast(error.message); return }
     setNote('')
     if (data?.sales) setToast(`Sent to sales ✓ ${data.sales.resource} will see ${a.customer} on ${new Date(data.sales.day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${fmtTime(data.sales.starts_at)}.`)
-    else if (outcome === 'on_my_way') setToast(`🚐 On the way to ${a.customer}.` + (data?.text ? (data.text.mode === 'live' ? ` Texted ${data.text.to}: “${data.text.body}”` : ` Text preview (not sent yet — texting turns on once the number is registered): “${data.text.body}”`) : ''))
+    else if (outcome === 'on_my_way') setToast(`🚐 On the way to ${a.customer}.` + (data?.text ? (data.text.mode === 'live' ? ` Texted ${data.text.to}: “${data.text.body}”` : ` Text preview (not sent yet — texting turns on once Salesmsg is connected by API): “${data.text.body}”`) : ''))
     else setToast('Saved ✓')
     load()
   }
