@@ -137,7 +137,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
       <div className="csr-wrap" style={S.wrap}>
         <StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} />
         <div style={{ marginTop: 12 }}>
-          <CallScreen script={call.script} ctx={{ first_name: (call.name || '').split(' ')[0] || '', brand: call.brand || '' }}
+          <CallScreen script={call.script} ctx={{ first_name: (call.name || '').split(' ')[0] || '', customer_name: call.name || '', brand: call.brand || '' }}
             context={[{ label: 'Calling', value: `${call.name || 'Customer'} · …${call.last4}` }, { label: 'Brand', value: call.brand }]}
             contact={null} contactNote="You typed this number." callBar={callBar}
             dispositions={call.dispositions || []} canSave={phase === 'dispo'} onSave={saveDispo} saving={saving} error={saveErr}

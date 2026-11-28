@@ -19,6 +19,7 @@
 //  {{menu_option}} {{company}} … and {{any_key}} from the contact's data or qualifiers.
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
+import BestTimes from './BestTimes'
 
 export const MERGE_TAGS = ['first_name', 'last_name', 'customer_name', 'agent_name', 'agent_first', 'brand', 'callback_number', 'reason', 'lead_source', 'menu_option', 'company']
 
@@ -146,6 +147,9 @@ export default function CallScreen({
         : <span style={{ fontWeight: 700, color: '#b91c1c' }}>✗ NOT in the service area</span>)}
     </div>)
   const zipStep = zips.size > 0 ? Math.max(0, stepAlerts.find(x => /zip|service area/i.test(`${x.a.label || ''} ${x.a.text || ''}`))?.at ?? 0) : -1
+  // 11/27 (Becky): best times from Field Service on the booking step (after the info is collected)
+  const bookStep = (() => { const k = steps.findIndex(s => /offer|schedul|appointment|book/.test(`${s.title || ''}`.toLowerCase())); return k >= 0 ? k : Math.max(zipStep, steps.length - 2) })()
+  const bestTimes = !preview && ctx.brand ? <BestTimes brand={ctx.brand} zip={zip} setZip={setZip} name={ctx.customer_name || [ctx.first_name, ctx.last_name].filter(Boolean).join(' ')} phone={ctx.phone || ctx.callback_number || ''} /> : null
   const firstLine = st => { const b = (st.blocks || []).find(x => x.type === 'say') || (st.blocks || [])[0]; return b ? (b.text || (b.items || [])[0] || '') : '' }
 
   return (
@@ -205,6 +209,7 @@ export default function CallScreen({
                   ))}
                   {stepAlerts.filter(x => x.at === si).map((x, i) => <Rule key={i} a={x.a} />)}
                   {si === zipStep && zipBox}
+                  {si === bookStep && bestTimes}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
                     <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0} style={{ ...S.btn, opacity: step === 0 ? 0.4 : 1 }}>← Back</button>
                     {step < steps.length - 1 && <button onClick={() => setStep(s => s + 1)} style={{ ...S.btn, background: '#0e7490', color: '#fff', borderColor: '#0e7490' }}>Next: {steps[step + 1].title} →</button>}
