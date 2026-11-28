@@ -163,10 +163,10 @@ export default function CallScreen({
       </div>
 
       {/* when the live call panel is docked on the right (CX calls), this screen is one column: call bar, script, disposition */}
-      <style>{'@media (max-width: 900px){.cs-grid{grid-template-columns:minmax(0,1fr) !important}} body.cx-docked .cs-root{padding-right:404px} body.cx-docked .cs-grid{grid-template-columns:minmax(0,1fr) !important} body.cx-docked .cs-side{display:none !important} body.cx-docked .csr-wrap{max-width:none !important;margin:0 !important;padding-left:24px !important} body.cx-docked .csr-wrap .cs-callbar{display:none !important}'}</style>
+      <style>{'@media (max-width: 900px){.cs-grid{grid-template-columns:minmax(0,1fr) !important}} body.cx-docked .cs-root{padding-right:404px} body.cx-docked .cs-grid{grid-template-columns:minmax(0,1fr) !important} body.cx-docked .cs-side{display:none !important} body.cx-docked .csr-wrap{max-width:none !important;margin:0 !important;padding-left:24px !important} body.cx-docked .csr-wrap .cs-callbar{display:none !important} body.cx-docked .sp-fab{display:none !important}'}</style>
       <div className="cs-grid" style={S.grid}>
         {/* ================= main column ================= */}
-        <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12, minWidth: 0, overflowWrap: 'anywhere' }}>
           {callBar && <div className="cs-callbar" style={S.card}>{callBar}</div>}
           {/* rules that aren't tied to a step, the booking link, and details to fill in */}
           {stepAlerts.some(x => x.at < 0) && <div style={S.card}>
@@ -229,7 +229,7 @@ export default function CallScreen({
 
           {/* disposition */}
           {!preview && canSave && dispositions.length > 0 && (
-            <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
+            <div ref={el => { if (el && !el.dataset.seen) { el.dataset.seen = '1'; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) } }} style={{ ...S.card, order: -1, scrollMarginTop: 80, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
               <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
               {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
                   so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
