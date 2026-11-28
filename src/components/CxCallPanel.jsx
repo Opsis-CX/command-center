@@ -5,6 +5,9 @@
 //  pause recording for card details, raise hand, end), AGENT ASSIST (next best action,
 //  what to say, call-flow checklist, facts, alerts, booking likelihood, sentiment),
 //  LIVE TRANSCRIPT, caller history (screen pop), and the AI wrap-up after the call.
+//  11/28 (Becky): CALLER DETAILS fill themselves from the live call (cx-transcript v8 -> cx_call_details);
+//  the CSR confirms (✓) or edits each one, then confirms once at the end. Every call's details go to the
+//  Acumatica import file, booked or not. Edits are logged (cx_capture_edits) to see what the AI mishears.
 //  Only appears for calls on lines / campaigns switched to the Advanced engine.
 // ============================================================
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -25,7 +28,8 @@ export default function CxCallPanel() {
   const [lines, setLines] = useState([])           // transcript
   const [cust, setCust] = useState(null)
   const [open, setOpen] = useState(true)
-  const [tab, setTab] = useState('check')
+  const [tab, setTab] = useState('details')
+  const [details, setDetails] = useState(null)     // cx_call_details row { fields, doors, outcome, notes, finalized_at }
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [xfer, setXfer] = useState(false)
@@ -53,7 +57,7 @@ export default function CxCallPanel() {
       if (!alive) return
       setMine(data || null)
       if (data?.interaction_id && data.status === 'connected') {
-        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('check'); setPushed(null); setStreaming(null); setPartial(null); setRisk(null); setRebuttal(null); setAskA(null); setAskQ('') }
+        if (data.interaction_id !== iid) { setIid(data.interaction_id); setLines([]); lastId.current = 0; setLive(null); setCust(null); setEnded(null); setOpen(true); setTab('details'); setDetails(null); setPushed(null); setStreaming(null); setPartial(null); setRisk(null); setRebuttal(null); setAskA(null); setAskQ('') }
       }
     }
     run()
@@ -100,10 +104,12 @@ export default function CxCallPanel() {
         .on('broadcast', { event: 'rebuttal' }, ({ payload }) => { setRebuttal({ ...payload, at: Date.now() }); window.dispatchEvent(new CustomEvent('cx-rebuttal', { detail: payload })) })
         .on('broadcast', { event: 'alert' }, () => load())
         .on('broadcast', { event: 'wrap' }, () => load())
+        .on('broadcast', { event: 'details' }, ({ payload }) => setDetails(d => ({ ...(d || {}), ...payload })))
         .subscribe()
     })()
     return () => { dead = true; if (ch) supabase.removeChannel(ch) }
   }, [iid, load])
+  useEffect(() => { if (!iid) return; supabase.from('cx_call_details').select('fields, doors, outcome, notes, finalized_at').eq('interaction_id', iid).maybeSingle().then(({ data }) => { if (data) setDetails(d => ({ ...data, ...(d || {}) })) }) }, [iid])
   useEffect(() => { if (!iid) return; supabase.rpc('csr_cx_customer', { p_interaction: iid }).then(({ data }) => setCust(data || null)) }, [iid])
   useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t) }, [])
   useEffect(() => { const b = trBox.current; if (b && tab === 'transcript') b.scrollTop = b.scrollHeight }, [lines, tab])
@@ -263,12 +269,14 @@ export default function CxCallPanel() {
       )}
 
       <div style={S.tabs}>
-        {(liveNow ? [['check', `Checklist${(assist?.checklist || []).length ? ` · ${assist.checklist.filter(c => c.done).length} of ${assist.checklist.length}` : ''}`], ['transcript', 'Transcript'], ['facts', 'Facts'], ['customer', 'History']] : [['wrap', 'Wrap-up'], ['transcript', 'Transcript'], ['customer', 'Caller']]).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ ...S.tabBtn, ...((tab === k || (!liveNow && ['assist', 'check', 'facts'].includes(tab) && k === 'wrap')) ? S.tabOn : {}) }}>{l}</button>
+        {(liveNow ? [['details', `Caller${detCount(details) ? ` · ${detCount(details, true)} of ${detCount(details)}` : ''}`], ['check', `Checklist${(assist?.checklist || []).length ? ` · ${assist.checklist.filter(c => c.done).length} of ${assist.checklist.length}` : ''}`], ['transcript', 'Transcript'], ['facts', 'Facts'], ['customer', 'History']] : [['wrap', 'Wrap-up'], ['transcript', 'Transcript'], ['customer', 'History']]).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ ...S.tabBtn, ...((tab === k || (!liveNow && ['assist', 'check', 'facts', 'details'].includes(tab) && k === 'wrap')) ? S.tabOn : {}) }}>{l}</button>
         ))}
       </div>
 
       <div style={S.body}>
+        {(tab === 'details' && liveNow) && <CallerDetails iid={iid} details={details} setDetails={setDetails} onErr={setErr} />}
+
         {(tab === 'check' && liveNow) && (
           (assist?.checklist || []).length > 0 ? (
             <div>
@@ -327,7 +335,8 @@ export default function CxCallPanel() {
           </div>
         )}
 
-        {(!liveNow && ['wrap', 'assist', 'check', 'facts'].includes(tab)) && (
+        {(!liveNow && ['wrap', 'assist', 'check', 'facts', 'details'].includes(tab)) && <CallerDetails iid={iid} details={details} setDetails={setDetails} onErr={setErr} ended wrap={wrap} />}
+        {(!liveNow && ['wrap', 'assist', 'check', 'facts', 'details'].includes(tab)) && (
           wrap ? (
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={S.next}><div style={S.cap}>AI summary</div>{wrap.summary}</div>
@@ -367,6 +376,127 @@ export default function CxCallPanel() {
         </div>
       )}
     </aside>
+  )
+}
+
+// ---------- 11/28: caller details (fill themselves; CSR confirms or edits) ----------
+const DETAIL_ROWS = [['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['address', 'Service address'], ['home_business', 'Home or business'], ['approver', 'Who approves'], ['heard_about', 'Heard about us'], ['issue', 'What’s going on']]
+const OUTCOMES = ['Booked', 'Not booked', 'Transferred', 'No opportunity']
+function detCount(d, confirmedOnly) {
+  if (!d) return 0
+  const f = d.fields || {}
+  const doors = d.doors || []
+  if (confirmedOnly) return DETAIL_ROWS.filter(([k]) => ['confirmed', 'edited'].includes(f[k]?.status)).length + (doors.length && doors.every(x => ['confirmed', 'edited'].includes(x.status)) ? 1 : 0)
+  return DETAIL_ROWS.length + 1
+}
+function CallerDetails({ iid, details, setDetails, onErr, ended, wrap }) {
+  const [edit, setEdit] = useState(null)        // field key being edited, or 'doors'
+  const [val, setVal] = useState('')
+  const [doorsDraft, setDoorsDraft] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [outcome, setOutcome] = useState(null)
+  const [notes, setNotes] = useState(null)
+  const f = details?.fields || {}
+  const doors = details?.doors || []
+  const suggested = details?.outcome || (wrap ? (wrap.booked ? 'Booked' : (/transfer/i.test(wrap.disposition || '') ? 'Transferred' : null)) : null)
+  const pick = outcome || suggested
+  const noteText = notes ?? details?.notes ?? wrap?.notes ?? ''
+  async function save(field, value, doorsList) {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('cx_details_set', { p_interaction: iid, p_field: field, p_value: value, p_doors: doorsList || null })
+    setBusy(false)
+    if (error) { onErr(error.message); return }
+    setDetails(d => ({ ...(d || {}), ...data })); setEdit(null)
+  }
+  async function finish() {
+    if (!pick) { onErr('Pick the outcome first.'); return }
+    setBusy(true)
+    // anything still only "heard" counts as confirmed when the CSR confirms the whole card
+    for (const [k] of DETAIL_ROWS) if (f[k]?.status === 'heard') await supabase.rpc('cx_details_set', { p_interaction: iid, p_field: k, p_value: null, p_doors: null })
+    if (doors.some(x => x.status === 'heard')) await supabase.rpc('cx_details_set', { p_interaction: iid, p_field: null, p_value: null, p_doors: doors.map(x => ({ ...x, status: 'confirmed' })) })
+    const { data, error } = await supabase.rpc('cx_details_finalize', { p_interaction: iid, p_outcome: pick, p_notes: noteText })
+    setBusy(false)
+    if (error) { onErr(error.message); return }
+    setDetails(d => ({ ...(d || {}), ...data }))
+  }
+  const dot = st => st === 'confirmed' || st === 'edited' ? <span style={{ color: '#15803d', fontWeight: 800 }} aria-label="Confirmed">✓</span> : st === 'heard' ? <span style={{ color: '#b45309', fontWeight: 800 }} aria-label="Heard, read it back">●</span> : <span style={{ color: '#94a3b8' }} aria-label="Not heard yet">○</span>
+  const done = !!details?.finalized_at
+  return (
+    <div style={{ display: 'grid', gap: 8, marginBottom: ended ? 14 : 0 }}>
+      {ended && <div style={{ ...S.cap, marginBottom: 0 }}>{done ? 'Caller details · saved for Acumatica' : 'Check the caller details'}</div>}
+      {!ended && <div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>Fills in from the call. Read it back, then tap ✓. Tap Edit to fix anything.</div>}
+      {DETAIL_ROWS.map(([k, label]) => {
+        const r = f[k]
+        return (
+          <div key={k} style={{ display: 'grid', gridTemplateColumns: '18px 92px minmax(0,1fr) auto', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid light-dark(#f1f5f9, #222c31)', background: r?.status === 'heard' ? 'light-dark(#fffbeb, #2a2213)' : 'transparent' }}>
+            {dot(r?.status)}
+            <span style={{ fontSize: 11.5, color: 'light-dark(#64748b, #9fb4bb)' }}>{label}</span>
+            {edit === k ? (
+              <form onSubmit={e => { e.preventDefault(); save(k, val.trim()) }} style={{ display: 'flex', gap: 4, gridColumn: 'span 2' }}>
+                <input autoFocus value={val} onChange={e => setVal(e.target.value)} aria-label={label} style={{ ...S.input, flex: 1 }} />
+                <button type="submit" disabled={busy || !val.trim()} style={S.small}>Save</button>
+                <button type="button" onClick={() => setEdit(null)} style={S.small}>×</button>
+              </form>
+            ) : (
+              <>
+                <span style={{ fontSize: 13, fontWeight: r?.value ? 600 : 400, color: r?.value ? 'inherit' : 'light-dark(#94a3b8, #6b7c83)', overflowWrap: 'anywhere' }}>{r?.value || 'Not heard yet'}</span>
+                <span style={{ display: 'flex', gap: 4 }}>
+                  {r?.status === 'heard' && !done && <button disabled={busy} onClick={() => save(k, null)} style={{ ...S.small, background: '#15803d', color: '#fff', borderColor: '#15803d' }} aria-label={`Confirm ${label}`}>✓</button>}
+                  {!done && <button disabled={busy} onClick={() => { setEdit(k); setVal(r?.value || '') }} style={S.small}>{r?.value ? 'Edit' : 'Add'}</button>}
+                </span>
+              </>
+            )}
+          </div>
+        )
+      })}
+      <div style={{ ...S.cap, marginTop: 6, marginBottom: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Doors{doors.length ? ` · ${doors.length}` : ''}</span>
+        {!done && edit !== 'doors' && <button style={S.small} onClick={() => { setEdit('doors'); setDoorsDraft(doors.length ? doors.map(x => ({ ...x })) : [{ kind: '', size: '', age: '', issue: '' }]) }}>{doors.length ? 'Edit' : 'Add'}</button>}
+      </div>
+      {edit === 'doors' ? (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {doorsDraft.map((d, n) => (
+            <div key={n} style={{ ...S.box, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 4 }}>
+              {[['kind', 'Single, double…'], ['size', 'Size, e.g. 16x7'], ['age', 'Age'], ['issue', 'What’s wrong']].map(([k, ph]) => (
+                <input key={k} value={d[k] || ''} placeholder={ph} aria-label={`Door ${n + 1} ${k}`} onChange={e => setDoorsDraft(a => a.map((x, m) => (m === n ? { ...x, [k]: e.target.value } : x)))} style={S.input} />
+              ))}
+              <button type="button" style={{ ...S.small, gridColumn: 'span 2' }} onClick={() => setDoorsDraft(a => a.filter((_, m) => m !== n))}>Remove door {n + 1}</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" style={S.small} onClick={() => setDoorsDraft(a => [...a, { kind: '', size: '', age: '', issue: '' }])}>+ Door</button>
+            <button type="button" disabled={busy} style={{ ...S.small, marginLeft: 'auto' }} onClick={() => save(null, null, doorsDraft.filter(x => x.kind || x.size || x.age || x.issue).map(x => ({ ...x, status: 'edited' })))}>Save doors</button>
+            <button type="button" style={S.small} onClick={() => setEdit(null)}>×</button>
+          </div>
+        </div>
+      ) : doors.length ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 6 }}>
+          {doors.map((d, n) => (
+            <div key={n} style={{ ...S.box, fontSize: 12.5, background: d.status === 'heard' ? 'light-dark(#fffbeb, #2a2213)' : undefined }}>
+              <div style={{ fontWeight: 700 }}>Door {n + 1}{d.kind ? ` · ${d.kind}` : ''}</div>
+              <div>{[d.size, d.age].filter(Boolean).join(' · ') || <span style={{ opacity: 0.6 }}>Size and age not heard</span>}</div>
+              {d.issue && <div>{d.issue}</div>}
+            </div>
+          ))}
+        </div>
+      ) : <div style={S.empty}>No doors heard yet.</div>}
+      {doors.some(d => d.status === 'heard') && !done && <button disabled={busy} style={{ ...S.small, justifySelf: 'start' }} onClick={() => save(null, null, doors.map(x => ({ ...x, status: 'confirmed' })))}>✓ Doors are right</button>}
+
+      {ended && !done && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
+          <div style={{ ...S.cap, marginBottom: 0 }}>Outcome</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {OUTCOMES.map(o => <button key={o} onClick={() => setOutcome(o)} style={{ ...S.small, ...(pick === o ? { background: 'light-dark(#E6F0EA, #1d3a2e)', borderColor: GT, color: GT } : {}) }}>{o}</button>)}
+          </div>
+          {suggested && !outcome && <div style={{ fontSize: 11.5, opacity: 0.75 }}>Suggested from the call. Change it if that’s wrong.</div>}
+          <div style={{ ...S.cap, marginBottom: 0 }}>Notes</div>
+          <textarea value={noteText} onChange={e => setNotes(e.target.value)} rows={3} aria-label="Call notes" style={{ ...S.input, resize: 'vertical', fontFamily: 'inherit' }} />
+          <button disabled={busy || !pick} onClick={finish} style={{ padding: '10px 12px', fontSize: 13.5, fontWeight: 800, borderRadius: 10, border: 'none', background: G, color: '#fff', cursor: 'pointer' }}>{busy ? 'Saving…' : 'Looks right, save for Acumatica'}</button>
+          <div style={{ fontSize: 11.5, opacity: 0.7 }}>Every call goes in the Acumatica file, booked or not.</div>
+        </div>
+      )}
+      {ended && done && <div style={{ fontSize: 12.5, color: '#15803d', fontWeight: 700 }}>✓ Saved · outcome {details.outcome}</div>}
+    </div>
   )
 }
 
