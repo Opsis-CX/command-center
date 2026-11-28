@@ -34,6 +34,10 @@ export default function Softphone() {
   const [showKeys, setShowKeys] = useState(false)
   const [pos, setPos] = useState(loadPos)
   const drag = useRef(null)
+  // 11/27 (Becky): calls auto-answer (lib/voice.jsx). When one connects, go to the call screen like a click on Answer did.
+  // (Hooks stay above the early returns below — React error #310 otherwise.)
+  const answeredAt = v?.inboundCall?.answeredAt
+  useEffect(() => { if (answeredAt) { navigate('/dialer'); v?.setOpen(false) } }, [answeredAt]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!v) return null
   const onDown = (e) => { if (e.button !== undefined && e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, r: pos.right, b: pos.bottom, moved: false }; try { e.currentTarget.setPointerCapture(e.pointerId) } catch (x) { } }
   const onMove = (e) => { const d = drag.current; if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; if (!d.moved && Math.abs(dx) + Math.abs(dy) < 6) return; d.moved = true; setPos(clampPos({ right: d.r - dx, bottom: d.b - dy })) }
@@ -46,9 +50,6 @@ export default function Softphone() {
   const onWorkspace = location.pathname === '/dialer'
   if (!v.canCallPeople && !v.worksCalls && !active && !v.incoming && v.status !== 'error') return null
   const pressKey = k => (v.busy ? v.sendDigit(k) : setDial(d => (d + k).slice(0, 14)))
-  // 11/27 (Becky): calls auto-answer (lib/voice.jsx). When one connects, go to the call screen like a click on Answer did.
-  const answeredAt = v.inboundCall?.answeredAt
-  useEffect(() => { if (answeredAt) { navigate('/dialer'); v.setOpen(false) } }, [answeredAt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fabColor = v.incoming ? '#f59e0b' : v.busy ? '#16a34a' : '#0891b2'
 
