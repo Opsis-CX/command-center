@@ -1,8 +1,8 @@
 // ============================================================
 //  Test a web lead (/test-lead) — team members submit themselves as a
 //  web lead for "Opsis Overhead Doors" — a made-up garage door brand, so no
-//  real client name is used. The lead drops straight into the
-//  "TEST — Opsis Overhead Doors S2L (team leads)" dial campaign, the agents get a
+//  real client name is used. The lead drops straight into the GarageCo
+//  "Cheney Door Salina — Web leads (test)" campaign (CSR phone; RT-15, 11/24), the agents get a
 //  notification, and this page shows the speed-to-lead stopwatch:
 //  lead received → first dial → first conversation → disposition.
 //
@@ -115,13 +115,13 @@ export default function TestLead() {
             <label style={S.lbl}>Mobile number<input style={S.input} type="tel" inputMode="tel" placeholder="(512) 555-0142" value={form.phone} onChange={e => set({ phone: e.target.value })} required /></label>
             <div style={{ display: 'flex', gap: 10 }}>
               <label style={{ ...S.lbl, flex: 1 }}>State
-                <select style={S.input} value={form.state} onChange={e => set({ state: e.target.value })}>{STATES.map(s => <option key={s}>{s}</option>)}</select>
+                <select style={S.input} value={form.state} onChange={e => set({ state: e.target.value })}>{STATES.map(s => <option key={s} style={S.opt}>{s}</option>)}</select>
               </label>
               <label style={{ ...S.lbl, flex: 1 }}>Zip<input style={S.input} inputMode="numeric" maxLength={5} value={form.zip} onChange={e => set({ zip: e.target.value.replace(/\D/g, '') })} placeholder="78613" /></label>
             </div>
             <div style={{ fontSize: 12, opacity: 0.65, marginTop: -4 }}>State sets your local time, so we only call during calling hours where you are.</div>
             <label style={S.lbl}>What do you need?
-              <select style={S.input} value={form.service} onChange={e => set({ service: e.target.value })}>{SERVICES.map(s => <option key={s}>{s}</option>)}</select>
+              <select style={S.input} value={form.service} onChange={e => set({ service: e.target.value })}>{SERVICES.map(s => <option key={s} style={S.opt}>{s}</option>)}</select>
             </label>
             <label style={S.lbl}>Tell us a little more <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional — make it realistic)</span>
               <textarea style={{ ...S.input, minHeight: 70, fontFamily: 'inherit' }} value={form.details} onChange={e => set({ details: e.target.value })}
@@ -158,7 +158,7 @@ export default function TestLead() {
                 <Stat label="Booked" value={stats.booked} />
               </div>
               <div style={{ fontSize: 12.5, opacity: 0.7, marginTop: 8 }}>
-                Work these from the <Link to="/dialer" style={S.link}>Agent workspace</Link> (campaign "TEST — Opsis Overhead Doors S2L (team leads)"). Full detail in <Link to="/reporting/calls" style={S.link}>Call reports</Link>.
+                The AI calls first. If it doesn't reach the lead, the lead goes to the CSR phone in the GarageCo portal (campaign "Cheney Door Salina — Web leads (test)") and is fed automatically to a Ready CSR. Full detail in <Link to="/reporting/calls" style={S.link}>Call reports</Link>.
               </div>
             </div>
           )}
@@ -183,7 +183,7 @@ export default function TestLead() {
                           <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
                           <td style={S.td}>{r.contact_name}{r.last4 ? <span style={{ opacity: 0.6 }}> ·{r.last4}</span> : null}
                             <div style={{ fontSize: 11.5, opacity: 0.6 }}>{r.service}{isMgr && r.submitted_by ? ` · by ${r.submitted_by}` : ''}</div></td>
-                          <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums', color: r.seconds_to_first_dial != null && r.seconds_to_first_dial > 300 ? '#dc2626' : undefined }}>
+                          <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums', color: r.seconds_to_first_dial != null && r.seconds_to_first_dial > 300 ? 'light-dark(#dc2626, #e76c6c)' : undefined }}>
                             {waiting ? <span style={{ opacity: 0.7 }}>{fmtDur(Math.round((now - new Date(r.created_at).getTime()) / 1000))}…</span> : fmtDur(r.seconds_to_first_dial)}
                           </td>
                           <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>{fmtDur(r.seconds_to_contact)}</td>
@@ -226,7 +226,9 @@ const S = {
   brandBar: { background: '#7a1f1f', color: '#fff', padding: '14px 16px' },
   sectionTitle: { fontWeight: 700, marginBottom: 8 },
   lbl: { display: 'block', fontSize: 13, fontWeight: 600, margin: '10px 0' },
-  input: { display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '9px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14 },
+  input: { display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '9px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'light-dark(#ffffff, #10181b)', color: 'light-dark(#0f172a, #e6eef0)', colorScheme: 'light dark', fontSize: 14 },
+  // go-live (dark mode): dropdown options get their own colors so they're readable in the open list
+  opt: { background: 'light-dark(#ffffff, #10181b)', color: 'light-dark(#0f172a, #e6eef0)' },
   check: { display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, margin: '12px 0', cursor: 'pointer', lineHeight: 1.45 },
   primary: { width: '100%', padding: '11px 14px', borderRadius: 10, border: 'none', background: '#7a1f1f', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' },
   error: { padding: '8px 10px', borderRadius: 8, background: 'rgba(220,38,38,0.1)', color: '#b91c1c', fontSize: 13, marginBottom: 6 },

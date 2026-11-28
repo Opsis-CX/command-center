@@ -120,16 +120,29 @@ export default function LiveStatus() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       setUserId(user?.id || null)
-      const [profRes, blkRes, clmRes, runRes, taskRes, projRes, brkRes] = await Promise.all([
+      // Only what this page shows: today's intervals (±1 day so no timezone edge drops one), the claims on
+      // them, and the tasks behind running timers. It used to read EVERY interval, claim and task ever made
+      // every 20 seconds.
+      const d0 = new Date(); const dMin = new Date(d0); dMin.setDate(d0.getDate() - 1); const dMax = new Date(d0); dMax.setDate(d0.getDate() + 1)
+      const [profRes, blkRes, runRes, projRes, brkRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name, avatar_url'),
-        fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role, schedule_id').order('id')),
-        fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').order('id')),
+        fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role, schedule_id')
+          .gte('block_date', isoDate(dMin)).lte('block_date', isoDate(dMax)).order('id')),
         // a running timer = started but not ended
         supabase.from('time_entries').select('id, user_id, task_id, started_at').is('ended_at', null),
-        fetchAllRows(() => supabase.from('tasks').select('id, name, project_id').order('id')),
         supabase.from('projects').select('id, name'),
         // open unpaid breaks (ended_at null)
         supabase.from('shift_breaks').select('id, claim_id, profile_id, started_at').is('ended_at', null),
+      ])
+      const blockIds = (blkRes.data || []).map(b => b.id)
+      const taskIds = [...new Set((runRes.data || []).map(r => r.task_id).filter(Boolean))]
+      const [clmRes, taskRes] = await Promise.all([
+        blockIds.length
+          ? fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').in('shift_block_id', blockIds).order('id'))
+          : Promise.resolve({ data: [] }),
+        taskIds.length
+          ? supabase.from('tasks').select('id, name, project_id').in('id', taskIds)
+          : Promise.resolve({ data: [] }),
       ])
       setProfiles(profRes.data || [])
       setBlocks(blkRes.data || [])

@@ -6,7 +6,7 @@
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import CxEngineSetup from '../components/CxEngineSetup'
+import CxEngineSetup, { StormSwitch } from '../components/CxEngineSetup'
 
 // Speed-to-lead "middle ground" cadence (Becky's doc, Sept 2026): 8 dials over 5 dialing days, 5 in the first two days.
 const WHEN = [['asap', 'Right away (within 15 seconds)'], ['after_hours', 'Hours after the last dial'], ['morning', 'Morning (8–11 am)'], ['late_morning', 'Late morning (10 am–12 pm)'],
@@ -75,19 +75,21 @@ export default function PhoneSetup({ clientId = null }) {
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ ...S.card, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={S.h1}>Phone setup <span style={{ fontWeight: 600, color: '#5F6763', fontSize: 14 }}>· {scope}</span></div>
+          <div style={S.h1}>Phone setup <span style={{ fontWeight: 600, color: 'light-dark(#5F6763, #b3c1c7)', fontSize: 14 }}>· {scope}</span></div>
           <div style={S.mut}>{can ? 'Build the lines your customers call and the lists your CSRs call out to.' : 'View only. Ask an admin or your RM to make changes.'}</div>
         </div>
         <div style={S.seg}>
-          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).concat([['cx', 'Advanced engine']]).map(([k, l]) => (
+          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat([['access', 'CSR access']]).concat(!d.scope.brand && can ? [['central', 'Central team']] : []).concat([['cx', 'Advanced engine']]).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ ...S.segBtn, ...(tab === k ? S.segOn : {}) }}>{l}</button>
           ))}
         </div>
       </div>
       {msg && <div style={S.ok}>{msg}</div>}
 
-      {tab === 'cx' ? <CxEngineSetup args={args} people={d.people || []} can={can} /> : tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
+      {tab === 'access' ? <CsrAccess d={d} args={args} /> : tab === 'cx' ? <CxEngineSetup args={args} people={d.people || []} can={can} /> : tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
         <>
+          {/* Storm / emergency closure — moved here from the Wallboard (Becky 11/20: the wallboard is informational only) */}
+          <StormSwitch clientId={clientId} />
           {can && <div><button style={S.primary} onClick={() => setEdit({ kind: 'line', row: null })}>+ New inbound line</button></div>}
           {d.lines.length === 0 && <div style={S.card}><p style={S.mut}>No inbound lines yet.</p></div>}
           <div style={S.grid}>
@@ -95,10 +97,10 @@ export default function PhoneSetup({ clientId = null }) {
               <div key={l.id} style={S.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <div style={{ fontWeight: 800, fontSize: 15 }}>{l.name}</div>
-                  <span style={{ ...S.pill, color: l.active ? '#15803d' : '#475569', background: l.active ? '#dcfce7' : '#f1f5f9' }}>{l.active ? 'On' : 'Off'}</span>
+                  <span style={{ ...S.pill, color: l.active ? 'light-dark(#15803d, #20c55e)' : 'light-dark(#475569, #b3c1c7)', background: l.active ? 'light-dark(#dcfce7, #133920)' : 'light-dark(#f1f5f9, #1b2327)' }}>{l.active ? 'On' : 'Off'}</span>
                 </div>
                 <div style={S.mut}>{[l.brand, l.location].filter(Boolean).join(' · ')}</div>
-                <div style={{ marginTop: 8, fontSize: 13 }}>{l.number ? <>Rings on <b>{fmtPhone(l.number)}</b></> : <span style={{ color: '#b45309' }}>No number connected yet — Opsis connects it</span>}</div>
+                <div style={{ marginTop: 8, fontSize: 13 }}>{l.number ? <>Rings on <b>{fmtPhone(l.number)}</b></> : <span style={{ color: 'light-dark(#b45309, #e07524)' }}>No number connected yet — Opsis connects it</span>}</div>
                 <div style={S.statRow}>
                   <Stat v={(l.menu || []).length || '—'} l="Menu options" /><Stat v={new Set((l.members || []).map(m => m.profile_id)).size} l="People answering" />
                   <Stat v={l.today?.calls || 0} l="Calls 24h" /><Stat v={l.today?.missed || 0} l="Missed 24h" warn={l.today?.missed > 0} />
@@ -129,8 +131,8 @@ export default function PhoneSetup({ clientId = null }) {
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                     <button style={S.btn} onClick={() => setEdit({ kind: 'camp', row: c })}>{can ? 'Edit' : 'View'}</button>
-                    {can && c.status !== 'active' && <button style={{ ...S.btn, color: '#15803d', borderColor: '#86efac' }} disabled={saving} onClick={() => save('camp', { id: c.id, name: c.name, brand: c.brand, location: c.location, status: 'active' })}>Go live</button>}
-                    {can && c.status === 'active' && <button style={{ ...S.btn, color: '#b45309' }} disabled={saving} onClick={() => save('camp', { id: c.id, name: c.name, brand: c.brand, location: c.location, status: 'paused' })}>Pause</button>}
+                    {can && c.status !== 'active' && <button style={{ ...S.btn, color: 'light-dark(#15803d, #20c55e)', borderColor: '#86efac' }} disabled={saving} onClick={() => save('camp', { id: c.id, name: c.name, brand: c.brand, location: c.location, status: 'active' })}>Go live</button>}
+                    {can && c.status === 'active' && <button style={{ ...S.btn, color: 'light-dark(#b45309, #e07524)' }} disabled={saving} onClick={() => save('camp', { id: c.id, name: c.name, brand: c.brand, location: c.location, status: 'paused' })}>Pause</button>}
                   </div>
                 </div>
               )
@@ -142,7 +144,7 @@ export default function PhoneSetup({ clientId = null }) {
   )
 }
 
-function Stat({ v, l, warn }) { return <div><div style={{ fontSize: 18, fontWeight: 800, color: warn ? '#b91c1c' : '#1C2421' }}>{v}</div><div style={{ fontSize: 11, color: '#5F6763' }}>{l}</div></div> }
+function Stat({ v, l, warn }) { return <div><div style={{ fontSize: 18, fontWeight: 800, color: warn ? '#b91c1c' : '#1C2421' }}>{v}</div><div style={{ fontSize: 11, color: 'light-dark(#5F6763, #b3c1c7)' }}>{l}</div></div> }
 
 // ---------- shared bits ----------
 // Dial-by-dial plan (2026-11-10, Becky): each dial gets a day, a time window and a voicemail rule.
@@ -155,11 +157,11 @@ function Cadence({ value, onChange, disabled }) {
     <div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ textAlign: 'left', color: '#5F6763', fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          <thead><tr style={{ textAlign: 'left', color: 'light-dark(#5F6763, #b3c1c7)', fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
             <th style={{ padding: '6px 8px' }}>Dial</th><th style={{ padding: '6px 8px' }}>Day</th><th style={{ padding: '6px 8px' }}>Timing</th><th style={{ padding: '6px 8px' }}>Voicemail</th><th />
           </tr></thead>
           <tbody>{rows.map((r, i) => (
-            <tr key={i} style={{ borderTop: '1px solid #EEEAE2', background: Number(r.day) <= 2 ? '#F4F8F5' : 'transparent' }}>
+            <tr key={i} style={{ borderTop: '1px solid light-dark(#EEEAE2, #2a3439)', background: Number(r.day) <= 2 ? '#F4F8F5' : 'transparent' }}>
               <td style={{ padding: '6px 8px', fontWeight: 800 }}>{i + 1}</td>
               <td style={{ padding: '6px 8px' }}><select disabled={disabled} value={r.day || 1} onChange={e => upd(i, 'day', Number(e.target.value))} style={S.inSm}>
                 {Array.from({ length: 14 }, (_, k) => k + 1).map(n => <option key={n} value={n}>Day {n}</option>)}</select></td>
@@ -233,10 +235,10 @@ function People({ people, selected, onChange, disabled, filter, brand, location,
               {g.map(p => {
                 const on = selected.includes(p.id)
                 return (
-                  <label key={p.id} style={{ ...S.chip, background: on ? '#E6F0EA' : '#fff', borderColor: on ? '#2F7D5B' : '#E1DCD2' }}>
+                  <label key={p.id} style={{ ...S.chip, background: on ? 'light-dark(#E6F0EA, #222c31)' : 'light-dark(#fff, #161d21)', borderColor: on ? '#2F7D5B' : 'light-dark(#E1DCD2, #2a3439)' }}>
                     <input type="checkbox" disabled={disabled} checked={on} onChange={() => onChange(on ? selected.filter(x => x !== p.id) : [...selected, p.id])} />
                     {p.name}{p.brand && p.brand !== brand ? <span style={{ color: '#8a918d' }}> · {p.brand}</span> : ''}{p.location ? <span style={{ color: '#8a918d' }}> · {p.location}</span> : ''}
-                    {central(p) && <span style={{ ...S.pill, padding: '1px 7px', fontSize: 10.5, background: '#E0E7FF', color: '#3730A3' }}>Central</span>}
+                    {central(p) && <span style={{ ...S.pill, padding: '1px 7px', fontSize: 10.5, background: 'light-dark(#E0E7FF, #131c39)', color: 'light-dark(#3730A3, #8a85db)' }}>Central</span>}
                   </label>
                 )
               })}
@@ -245,7 +247,7 @@ function People({ people, selected, onChange, disabled, filter, brand, location,
         )
       })}
       {list.length === 0 && <span style={S.mut}>{brand ? `No ${brand}${loc ? ' ' + location : ''} people yet.` : 'Pick a brand first.'}</span>}
-      {allowAll && !disabled && <label style={{ fontSize: 12.5, color: '#5F6763', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      {allowAll && !disabled && <label style={{ fontSize: 12.5, color: 'light-dark(#5F6763, #b3c1c7)', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
         <input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} /> Show every CSR (all brands)</label>}
     </div>
   )
@@ -259,7 +261,7 @@ function FormBar({ title, onCancel, onSave, saving, can, msg }) {
     <div style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 5 }}>
       <div style={S.h1}>{title}</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {msg && <span style={{ fontSize: 13, color: /Saved/.test(msg) ? '#15803d' : '#b91c1c' }}>{msg}</span>}
+        {msg && <span style={{ fontSize: 13, color: /Saved/.test(msg) ? 'light-dark(#15803d, #20c55e)' : 'light-dark(#b91c1c, #e86464)' }}>{msg}</span>}
         <button style={S.btn} onClick={onCancel}>{can ? 'Cancel' : 'Back'}</button>
         {can && <button style={S.primary} disabled={saving} onClick={onSave}>{saving ? 'Saving…' : 'Save'}</button>}
       </div>
@@ -348,7 +350,7 @@ function LineForm({ d, row, can, saving, msg, args, onData, onCancel, onSave }) 
         <Hours value={f.hours} onChange={v => set('hours', v)} disabled={dis} />
       </Section>
       <Section title="Dispositions" hint="What CSRs pick after an incoming call on this line. Add, remove, rename or reorder them.">
-        <DispoEditor value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
+        <DispoEditor salesLabel={d.sales_label} value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
       </Section>
       <Section title="When nobody answers">
         <div style={S.form}>
@@ -416,7 +418,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
       <Section title="How it dials" hint="Never predictive — one call per CSR at a time.">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           {MODES.map(([k, l, h]) => (
-            <label key={k} style={{ ...S.choice, borderColor: f._mode === k ? '#2F7D5B' : '#E1DCD2', background: f._mode === k ? '#E6F0EA' : '#fff' }}>
+            <label key={k} style={{ ...S.choice, borderColor: f._mode === k ? '#2F7D5B' : 'light-dark(#E1DCD2, #2a3439)', background: f._mode === k ? 'light-dark(#E6F0EA, #222c31)' : 'light-dark(#fff, #161d21)' }}>
               <input type="radio" disabled={dis} checked={f._mode === k} onChange={() => set('_mode', k)} /> <b>{l}</b><div style={S.mut}>{h}</div>
             </label>
           ))}
@@ -428,7 +430,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
           <Field label="How redials are timed">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginTop: 4 }}>
               {[['cadence', 'Dial-by-dial plan', 'Set the day, time window and voicemail for every dial'], ['smart', 'Smart timing', 'Picks the hours people answer most'], ['fixed', 'Simple wait times', 'Waits a set number of minutes between tries']].map(([k, l, h]) => (
-                <label key={k} style={{ ...S.choice, borderColor: (f.scheduling_mode || 'smart') === k ? '#2F7D5B' : '#E1DCD2', background: (f.scheduling_mode || 'smart') === k ? '#E6F0EA' : '#fff' }}>
+                <label key={k} style={{ ...S.choice, borderColor: (f.scheduling_mode || 'smart') === k ? '#2F7D5B' : 'light-dark(#E1DCD2, #2a3439)', background: (f.scheduling_mode || 'smart') === k ? 'light-dark(#E6F0EA, #222c31)' : 'light-dark(#fff, #161d21)' }}>
                   <input type="radio" disabled={dis} checked={(f.scheduling_mode || 'smart') === k} onChange={() => setF(x => ({ ...x, scheduling_mode: k, scheduling: k === 'cadence' ? { ...(x.scheduling || {}), cadence: cad } : x.scheduling }))} /> <b>{l}</b><div style={S.mut}>{h}</div>
                 </label>))}
             </div>
@@ -463,7 +465,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
       </Section>
       <Section title="CSRs on this campaign"><People people={d.people} allowAll={!d.scope.brand} brand={d.scope.brand || f.brand} location={d.scope.location || f.location} selected={f.agents || []} onChange={v => set('agents', v)} disabled={dis} /></Section>
       <Section title="Dispositions" hint="What CSRs pick at the end of each call. Add, remove, rename or reorder them. The group decides Rob's intent and booking rates.">
-        <DispoEditor value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
+        <DispoEditor salesLabel={d.sales_label} value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
       </Section>
       {row && f._mode !== 'manual' && (
         <Section title="Contacts to call" hint={`${row.stats?.pending || 0} waiting · ${row.stats?.done || 0} finished`}>
@@ -477,7 +479,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
             </div>
           </>)}
           {row.intake && (
-            <div style={{ marginTop: 14, padding: 12, background: '#FAF8F4', borderRadius: 10, border: '1px solid #EEEAE2' }}>
+            <div style={{ marginTop: 14, padding: 12, background: 'light-dark(#FAF8F4, #1b2327)', borderRadius: 10, border: '1px solid light-dark(#EEEAE2, #2a3439)' }}>
               <div style={{ fontWeight: 700 }}>Send contacts automatically (HubSpot or any system)</div>
               <div style={S.mut}>POST JSON to this address with the header <code>X-Opsis-Key</code>. HubSpot decides when to call by sending <code>call_after</code>.</div>
               <Copy label="Address" value={row.intake.url} /><Copy label="Key" value={row.intake.key} secret />
@@ -492,8 +494,8 @@ function Copy({ label, value, secret }) {
   const [show, setShow] = useState(!secret)
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-      <span style={{ width: 60, fontSize: 12.5, color: '#5F6763' }}>{label}</span>
-      <code style={{ fontSize: 12, background: '#fff', border: '1px solid #E1DCD2', borderRadius: 6, padding: '4px 8px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{show ? value : '••••••••••••'}</code>
+      <span style={{ width: 60, fontSize: 12.5, color: 'light-dark(#5F6763, #b3c1c7)' }}>{label}</span>
+      <code style={{ fontSize: 12, background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 6, padding: '4px 8px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{show ? value : '••••••••••••'}</code>
       {secret && <button style={S.link} onClick={() => setShow(s => !s)}>{show ? 'Hide' : 'Show'}</button>}
       <button style={S.link} onClick={() => { try { navigator.clipboard.writeText(value) } catch { /* ignore */ } }}>Copy</button>
     </div>
@@ -514,7 +516,9 @@ function dispoCode(x) {
   if (cur.startsWith(pre) && !(pre === 's_' && cur.startsWith('s_booked'))) return cur
   return pre + base
 }
-function DispoEditor({ value, standard, onChange, disabled }) {
+function DispoEditor({ value, standard, onChange, disabled, salesLabel }) {
+  // Company's own heading for the sales group (GarageCo: "Wanted service or a new door"; others from setup).
+  const GROUPS = DGROUPS.map(([k, l, c]) => [k, k === 'sales' && salesLabel ? salesLabel : l, c])
   const list = Array.isArray(value) ? value : []
   const upd = (i, patch) => {
     const n = list.map((x, j) => {
@@ -537,7 +541,7 @@ function DispoEditor({ value, standard, onChange, disabled }) {
   const dupes = new Set(list.map(x => x.code).filter((c, i, a) => a.indexOf(c) !== i))
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      {DGROUPS.map(([g, gl, color]) => {
+      {GROUPS.map(([g, gl, color]) => {
         const rows = list.map((x, i) => [x, i]).filter(([x]) => (x.group || 'none') === g)
         return (
           <div key={g}>
@@ -545,21 +549,21 @@ function DispoEditor({ value, standard, onChange, disabled }) {
             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
               {rows.length === 0 && <span style={S.mut}>None</span>}
               {rows.map(([x, i]) => (
-                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', border: '1px solid #EEEAE2', borderRadius: 10, background: x.is_success ? '#F0FBF4' : '#fff' }}>
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', border: '1px solid light-dark(#EEEAE2, #2a3439)', borderRadius: 10, background: x.is_success ? '#F0FBF4' : '#fff' }}>
                   <input disabled={disabled} value={x.label} onChange={e => upd(i, { label: e.target.value })} style={{ ...S.input, width: 220, marginTop: 0 }} />
                   <select disabled={disabled} value={x.group || 'none'} onChange={e => upd(i, { group: e.target.value })} style={{ ...S.inSm }}>
-                    {DGROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    {GROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                   <select disabled={disabled} value={x.outcome || 'final'} onChange={e => upd(i, { outcome: e.target.value })} style={{ ...S.inSm }}>
                     {OUTCOMES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                   {g === 'sales' && <label style={{ fontSize: 12.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" disabled={disabled} checked={!!x.is_success} onChange={e => upd(i, { is_success: e.target.checked })} /> Counts as booked</label>}
                   <label style={{ fontSize: 12.5, display: 'inline-flex', gap: 4, alignItems: 'center' }} title="Used to stop 'no answer' style results on long calls"><input type="checkbox" disabled={disabled} checked={!!x.is_contact} onChange={e => upd(i, { is_contact: e.target.checked })} /> Talked to the customer</label>
-                  {dupes.has(x.code) && <span style={{ fontSize: 12, color: '#b91c1c' }}>Same name as another one</span>}
+                  {dupes.has(x.code) && <span style={{ fontSize: 12, color: 'light-dark(#b91c1c, #e86464)' }}>Same name as another one</span>}
                   {!disabled && <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
                     <button style={S.link} onClick={() => move(i, -1)} title="Move up">↑</button>
                     <button style={S.link} onClick={() => move(i, 1)} title="Move down">↓</button>
-                    <button style={{ ...S.link, color: '#b91c1c' }} onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</button>
+                    <button style={{ ...S.link, color: 'light-dark(#b91c1c, #e86464)' }} onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</button>
                   </span>}
                 </div>
               ))}
@@ -587,16 +591,16 @@ function CentralTeam({ args, onChange }) {
   const rows = a.csrs.filter(c => !q || `${c.name} ${c.brand || ''} ${c.location || ''}`.toLowerCase().includes(q.toLowerCase()))
   return (
     <Section title="Central team" hint="Approve CSRs to answer for brands other than their own. Approved CSRs show up (tagged Central) when you pick who answers a line or works a campaign for that brand.">
-      {err && <div style={{ ...S.mut, color: '#b91c1c', marginBottom: 8 }}>{err}</div>}
+      {err && <div style={{ ...S.mut, color: 'light-dark(#b91c1c, #e86464)', marginBottom: 8 }}>{err}</div>}
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search CSRs" style={{ ...S.input, maxWidth: 320, marginBottom: 10 }} />
       <div style={{ display: 'grid', gap: 8 }}>
         {rows.map(c => (
-          <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid #EEEAE2', borderRadius: 10 }}>
+          <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid light-dark(#EEEAE2, #2a3439)', borderRadius: 10 }}>
             <div style={{ width: 230, minWidth: 0 }}><b>{c.name}</b><div style={S.mut}>{[c.brand || 'No home brand', c.location].filter(Boolean).join(' · ')}</div></div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1 }}>
               {a.brands.filter(b => b !== c.brand).map(b => {
                 const on = (c.approved || []).includes(b)
-                return <label key={b} style={{ ...S.chip, background: on ? '#E0E7FF' : '#fff', borderColor: on ? '#6366F1' : '#E1DCD2' }}>
+                return <label key={b} style={{ ...S.chip, background: on ? 'light-dark(#E0E7FF, #131c39)' : 'light-dark(#fff, #161d21)', borderColor: on ? '#6366F1' : 'light-dark(#E1DCD2, #2a3439)' }}>
                   <input type="checkbox" checked={on} onChange={() => toggle(c.id, b, !on)} /> {b}</label>
               })}
             </div>
@@ -611,6 +615,62 @@ function CentralTeam({ args, onChange }) {
 // ---------- Blending (2026-11-10, Becky) ----------
 // Inbound always comes first. Outbound fills the gaps in this order; outbound pauses while a
 // customer is waiting on the location's line. GMs/RMs can set CSRs to inbound only.
+// CSR access (Becky 11/25): every CSR login gets their scorecard; the phone is on or off per CSR.
+// Off = scorecard only: no Phone tab, can't log in to take calls, and they stop ringing right away.
+function CsrAccess({ d, args }) {
+  const [off, setOff] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('pc_phone_access_get', args({}))
+    if (error) setMsg(error.message); else setOff(new Set(data?.off || []))
+  }, [args])
+  useEffect(() => { load() }, [load])
+  async function setPhone(p, on) {
+    if (!on && !window.confirm(`Turn the phone off for ${p.name}? They'll keep their scorecard, but they won't be able to take or make calls.`)) return
+    setBusy(p.id); setMsg('')
+    const { error } = await supabase.rpc('pc_phone_access_set', args({ p_profile: p.id, p_on: on }))
+    setBusy(null)
+    if (error) setMsg(error.message); else load()
+  }
+  const csrs = (d.people || []).filter(p => p.role === 'CSR' && (!q || `${p.name} ${p.brand || ''} ${p.location || ''}`.toLowerCase().includes(q.toLowerCase())))
+    .sort((a, b) => `${a.brand || ''}${a.location || ''}${a.name}`.localeCompare(`${b.brand || ''}${b.location || ''}${b.name}`))
+  const nOff = off ? (d.people || []).filter(p => p.role === 'CSR' && off.has(p.id)).length : 0
+  return (
+    <Section title="Who gets the phone" hint="Every CSR has their scorecard. Turn the phone on only for CSRs who take or make calls in this portal. Turning it off stops their phone ringing right away.">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search CSRs" style={{ ...S.input, width: 220, marginTop: 0 }} aria-label="Search CSRs" />
+        {off && <span style={S.mut}>{csrs.length} CSRs · {nOff} scorecard only</span>}
+        {msg && <span style={{ fontSize: 13, color: 'light-dark(#b91c1c, #e86464)' }}>{msg}</span>}
+      </div>
+      {!off ? <p style={S.mut}>Loading…</p> : csrs.length === 0 ? <p style={S.mut}>No CSRs here yet.</p> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
+            <thead><tr>{['CSR', 'Brand · location', 'Scorecard', 'Phone'].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid light-dark(#E8E4DC, #2a3439)', fontSize: 12, color: 'light-dark(#5F6763, #b3c1c7)' }}>{h}</th>)}</tr></thead>
+            <tbody>{csrs.map(p => {
+              const on = !off.has(p.id)
+              return (
+                <tr key={p.id}>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)', fontWeight: 600 }}>{p.name}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)' }}>{[p.brand, p.location].filter(Boolean).join(' · ') || '—'}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)', color: 'light-dark(#15803d, #20c55e)' }}>On</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid light-dark(#F1EEE8, #222b30)' }}>
+                    <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={on} disabled={busy === p.id} onChange={() => setPhone(p, !on)} aria-label={`Phone for ${p.name}`} />
+                      <span style={{ fontWeight: 600, color: on ? 'light-dark(#15803d, #20c55e)' : 'light-dark(#5F6763, #b3c1c7)' }}>{on ? 'On' : 'Off (scorecard only)'}</span>
+                    </label>
+                  </td>
+                </tr>
+              )
+            })}</tbody>
+          </table>
+        </div>
+      )}
+    </Section>
+  )
+}
+
 function Blending({ d, args }) {
   const [brand, setBrand] = useState(d.scope.brand || d.brands[0] || '')
   const [loc, setLoc] = useState(d.scope.location || '')
@@ -651,7 +711,7 @@ function Blending({ d, args }) {
             <select value={loc} onChange={e => setLoc(e.target.value)} style={S.input}><option value="">All locations (brand default)</option>{locs.map(x => <option key={x}>{x}</option>)}</select>}</Field>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {msg && <span style={{ fontSize: 13, color: /Saved/.test(msg) ? '#15803d' : '#b91c1c' }}>{msg}</span>}
+          {msg && <span style={{ fontSize: 13, color: /Saved/.test(msg) ? 'light-dark(#15803d, #20c55e)' : 'light-dark(#b91c1c, #e86464)' }}>{msg}</span>}
           {can && <button style={S.primary} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>}
         </div>
       </div>
@@ -675,7 +735,7 @@ function Blending({ d, args }) {
         {order.map((k, i) => {
           const cs = campsOf(k)
           return (
-            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #EEEAE2', borderRadius: 12, marginBottom: 8, background: i === 0 ? '#FAF8F4' : '#fff' }}>
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid light-dark(#EEEAE2, #2a3439)', borderRadius: 12, marginBottom: 8, background: i === 0 ? '#FAF8F4' : '#fff' }}>
               <span style={{ width: 26, height: 26, borderRadius: 999, background: '#14302A', color: '#fff', fontWeight: 800, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{i + 1}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800 }}>{kindLabel(k)}</div>
@@ -702,7 +762,7 @@ function Blending({ d, args }) {
             {csrs.map(p => {
               const on = io.has(p.id)
               return (
-                <label key={p.id} style={{ ...S.chip, background: on ? '#FFF8E8' : '#fff', borderColor: on ? '#E0B85C' : '#E1DCD2' }}>
+                <label key={p.id} style={{ ...S.chip, background: on ? 'light-dark(#FFF8E8, #392e13)' : 'light-dark(#fff, #161d21)', borderColor: on ? '#E0B85C' : 'light-dark(#E1DCD2, #2a3439)' }}>
                   <input type="checkbox" checked={on} onChange={() => inboundOnly(p.id, !on)} /> {p.name}{on ? ' · inbound only' : ''}
                 </label>
               )
@@ -727,24 +787,24 @@ function parseCsv(text) {
 }
 
 const S = {
-  card: { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 14, padding: 16 },
-  h1: { fontSize: 18, fontWeight: 800, color: '#14302A' },
-  mut: { fontSize: 12.5, color: '#5F6763', margin: 0 },
-  cap: { fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#56605B' },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#E8E4DC, #2a3439)', borderRadius: 14, padding: 16 },
+  h1: { fontSize: 18, fontWeight: 800, color: 'light-dark(#14302A, #e8eef0)' },
+  mut: { fontSize: 12.5, color: 'light-dark(#5F6763, #b3c1c7)', margin: 0 },
+  cap: { fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'light-dark(#56605B, #b3c1c7)' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 },
   statRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 10 },
   form: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, alignItems: 'start' },
-  lbl: { display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 700, color: '#3B4541' },
-  input: { width: '100%', boxSizing: 'border-box', marginTop: 2, padding: '9px 11px', border: '1px solid #E1DCD2', borderRadius: 10, fontSize: 13.5, fontFamily: 'inherit', background: '#fff' },
-  inSm: { padding: '6px 8px', border: '1px solid #E1DCD2', borderRadius: 8, fontFamily: 'inherit', fontSize: 13 },
-  btn: { border: '1px solid #E1DCD2', borderRadius: 10, padding: '8px 14px', fontSize: 13, background: '#fff', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' },
+  lbl: { display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 700, color: 'light-dark(#3B4541, #b3c1c7)' },
+  input: { width: '100%', boxSizing: 'border-box', marginTop: 2, padding: '9px 11px', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 10, fontSize: 13.5, fontFamily: 'inherit', background: 'light-dark(#fff, #161d21)' },
+  inSm: { padding: '6px 8px', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13 },
+  btn: { border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 10, padding: '8px 14px', fontSize: 13, background: 'light-dark(#fff, #161d21)', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' },
   primary: { border: '1px solid #14302A', borderRadius: 10, padding: '9px 16px', fontSize: 13.5, background: '#14302A', color: '#fff', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' },
-  link: { border: 'none', background: 'none', color: '#2F5E4E', fontWeight: 700, cursor: 'pointer', fontSize: 12.5, fontFamily: 'inherit' },
+  link: { border: 'none', background: 'none', color: 'light-dark(#2F5E4E, #50a085)', fontWeight: 700, cursor: 'pointer', fontSize: 12.5, fontFamily: 'inherit' },
   pill: { display: 'inline-block', padding: '3px 9px', borderRadius: 999, fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' },
-  chip: { display: 'inline-flex', gap: 6, alignItems: 'center', border: '1px solid #E1DCD2', borderRadius: 999, padding: '5px 11px', fontSize: 12.5, cursor: 'pointer', background: '#fff' },
-  choice: { display: 'block', border: '1px solid #E1DCD2', borderRadius: 12, padding: 12, cursor: 'pointer', fontSize: 13.5 },
-  seg: { display: 'inline-flex', background: '#fff', border: '1px solid #E1DCD2', borderRadius: 10, padding: 3, gap: 2 },
+  chip: { display: 'inline-flex', gap: 6, alignItems: 'center', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 999, padding: '5px 11px', fontSize: 12.5, cursor: 'pointer', background: 'light-dark(#fff, #161d21)' },
+  choice: { display: 'block', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 12, padding: 12, cursor: 'pointer', fontSize: 13.5 },
+  seg: { display: 'inline-flex', background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 10, padding: 3, gap: 2 },
   segBtn: { border: 'none', background: 'transparent', padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' },
   segOn: { background: '#14302A', color: '#fff' },
-  ok: { background: '#E6F0EA', border: '1px solid #CFE3D8', color: '#14302A', borderRadius: 10, padding: '8px 12px', fontSize: 13 },
+  ok: { background: 'light-dark(#E6F0EA, #222c31)', border: '1px solid light-dark(#CFE3D8, #355a46)', color: 'light-dark(#14302A, #e8eef0)', borderRadius: 10, padding: '8px 12px', fontSize: 13 },
 }

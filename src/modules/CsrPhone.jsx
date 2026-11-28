@@ -27,11 +27,11 @@ const hhmm = s => { const h = Math.floor((s || 0) / 3600), m = Math.floor(((s ||
 const tme = ts => (ts ? new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '')
 const fmtPhone = v => { const d = String(v || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : v }
 const STATE_LOOK = {
-  ready: { label: 'Ready', color: '#16a34a', bg: '#dcfce7' },
-  not_ready: { label: 'Not ready', color: '#b45309', bg: '#fef3c7' },
-  on_call: { label: 'On a call', color: '#0e7490', bg: '#cffafe' },
-  wrap: { label: 'Wrapping up', color: '#7c3aed', bg: '#ede9fe' },
-  offline: { label: 'Logged out', color: '#64748b', bg: '#f1f5f9' },
+  ready: { label: 'Ready', color: '#16a34a', bg: 'light-dark(#dcfce7, #133920)' },
+  not_ready: { label: 'Not ready', color: 'light-dark(#b45309, #e07524)', bg: 'light-dark(#fef3c7, #393213)' },
+  on_call: { label: 'On a call', color: 'light-dark(#0e7490, #1da4c9)', bg: 'light-dark(#cffafe, #133639)' },
+  wrap: { label: 'Wrapping up', color: 'light-dark(#7c3aed, #a378ec)', bg: 'light-dark(#ede9fe, #1a1339)' },
+  offline: { label: 'Logged out', color: 'light-dark(#64748b, #9fb4bb)', bg: 'light-dark(#f1f5f9, #1b2327)' },
 }
 
 export default function CsrPhone({ accent = '#14302A' }) {
@@ -53,6 +53,8 @@ export default function CsrPhone({ accent = '#14302A' }) {
     if (error) setErr(error.message); else { setD(data); setErr('') }
   }, [])
   useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t) }, [load])
+  // 11/27 (Becky): this page has the call controls — the floating Phone popup stays closed here
+  useEffect(() => { if (voice?.open) voice.setOpen(false) }, [voice?.open]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
   // keep the softphone's own status in step with ours
   useEffect(() => { voice?.refreshStatus?.() }, [d?.status?.state]) // eslint-disable-line
@@ -100,18 +102,19 @@ export default function CsrPhone({ accent = '#14302A' }) {
     await act('csr_set_status', { p_state: 'ready' })
   }
 
-  if (!d) return <div style={S.wrap}><div style={S.card}>{err || 'Loading your phone…'}</div></div>
+  if (!d) return <div className="csr-wrap" style={S.wrap}><div style={S.card}>{err || 'Loading your phone…'}</div></div>
 
   const st = d.status?.state || 'offline'
   const loggedIn = !!d.day
-  const look = STATE_LOOK[voice?.busy ? 'on_call' : st] || STATE_LOOK.offline
+  const look0 = STATE_LOOK[voice?.busy ? 'on_call' : st] || STATE_LOOK.offline
+  const look = st === 'ready' && !voice?.busy && voice && !voice.registered ? { ...look0, label: 'Ready · connecting…', color: 'light-dark(#b45309, #e07524)', bg: 'light-dark(#fef3c7, #393213)' } : look0
   const since = d.status?.since ? Math.max(0, Math.floor((now - new Date(d.status.since).getTime()) / 1000)) : 0
   const dayLen = d.day ? Math.max(0, Math.floor((now - new Date(d.day.started_at).getTime()) / 1000)) : 0
   const onInbound = !!(voice?.inboundCall || voice?.incoming)
 
   // ---------- an answered inbound call: the guided call screen ----------
   if (onInbound && phase === 'idle') {
-    return <div style={S.wrap}><StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} /><div style={{ marginTop: 12 }}><Dialer /></div></div>
+    return <div className="csr-wrap" style={S.wrap}><StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} /><div style={{ marginTop: 12 }}><Dialer embedded /></div></div>
   }
 
   // ---------- a manual call in progress / wrapping up ----------
@@ -133,10 +136,10 @@ export default function CsrPhone({ accent = '#14302A' }) {
       </div>
     )
     return (
-      <div style={S.wrap}>
+      <div className="csr-wrap" style={S.wrap}>
         <StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} />
         <div style={{ marginTop: 12 }}>
-          <CallScreen script={call.script} ctx={{ first_name: (call.name || '').split(' ')[0] || '', brand: call.brand || '' }}
+          <CallScreen script={call.script} ctx={{ first_name: (call.name || '').split(' ')[0] || '', customer_name: call.name || '', brand: call.brand || '' }}
             context={[{ label: 'Calling', value: `${call.name || 'Customer'} · …${call.last4}` }, { label: 'Brand', value: call.brand }]}
             contact={null} contactNote="You typed this number." callBar={callBar}
             dispositions={call.dispositions || []} canSave={phase === 'dispo'} onSave={saveDispo} saving={saving} error={saveErr}
@@ -149,16 +152,16 @@ export default function CsrPhone({ accent = '#14302A' }) {
   // ---------- home ----------
   const t = d.today || {}
   return (
-    <div style={S.wrap}>
+    <div className="csr-wrap" style={S.wrap}>
       <StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} />
       {err && <div style={{ ...S.error, marginTop: 10 }}>{err}</div>}
 
       {!loggedIn ? (
         <div style={{ ...S.card, marginTop: 12, textAlign: 'center', padding: '36px 16px' }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: accent }}>Good to see you{d.me?.name ? `, ${d.me.name.split(' ')[0]}` : ''}.</div>
-          <p style={{ color: '#475569', margin: '8px 0 18px' }}>Log in for the day when you're at your desk. Calls will start ringing here, and you can make calls.</p>
+          <p style={{ color: 'light-dark(#475569, #b3c1c7)', margin: '8px 0 18px' }}>Log in for the day when you're at your desk. Calls will start ringing here, and you can make calls.</p>
           <button disabled={busy} onClick={() => act('csr_day_start')} style={{ ...S.big, background: accent }}>Log in for the day</button>
-          <p style={{ fontSize: 12.5, color: '#64748b', marginTop: 14 }}>Use a headset. Your browser will ask to use the microphone the first time.</p>
+          <p style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 14 }}>Use a headset. Your browser will ask to use the microphone the first time.</p>
         </div>
       ) : (
         <div style={S.grid}>
@@ -187,16 +190,16 @@ export default function CsrPhone({ accent = '#14302A' }) {
           </div>
 
           <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
-            {d.inbound_only && <div style={{ ...S.card, background: '#FFF8E8', borderColor: '#F0DDB0' }}><b>Inbound only.</b> <span style={S.mut}>Your manager has you taking incoming calls only right now, so no list calls will come to you.</span></div>}
+            {d.inbound_only && <div style={{ ...S.card, background: 'light-dark(#FFF8E8, #392e13)', borderColor: 'light-dark(#F0DDB0, #64532b)' }}><b>Inbound only.</b> <span style={S.mut}>Your manager has you taking incoming calls only right now, so no list calls will come to you.</span></div>}
             <div style={S.card}>
               <div style={S.h}>Taking calls</div>
               {(d.lines || []).length === 0 ? <p style={S.mut}>No phone line is assigned to you yet.</p> : (d.lines || []).map((l, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderTop: i ? '1px solid #eef2f6' : 'none' }}>
                   <span style={{ fontWeight: 600 }}>{l.name}</span>
-                  <span style={{ fontSize: 12.5, color: l.live ? '#16a34a' : '#b45309' }}>{l.live ? (l.number ? fmtPhone(l.number) : 'Live') : 'Not connected yet (test)'}</span>
+                  <span style={{ fontSize: 12.5, color: l.live ? '#16a34a' : 'light-dark(#b45309, #e07524)' }}>{l.live ? (l.number ? fmtPhone(l.number) : 'Live') : 'Not connected yet (test)'}</span>
                 </div>
               ))}
-              <p style={{ ...S.mut, marginTop: 8 }}>{st === 'ready' ? 'You’re Ready — calls will ring here. Click Answer when one comes in.' : 'Set yourself to Ready to get calls.'}</p>
+              <p style={{ ...S.mut, marginTop: 8 }}>{st === 'ready' ? (voice?.registered ? 'You’re Ready — calls will ring here. Click Answer when one comes in.' : 'Connecting your phone… calls start ringing here as soon as it’s connected (a few seconds). Don’t click Ready again.') : 'Set yourself to Ready to get calls.'}</p>
             </div>
             <div style={S.card}>
               <div style={S.h}>Today</div>
@@ -212,11 +215,11 @@ export default function CsrPhone({ accent = '#14302A' }) {
               {(d.recent || []).length === 0 ? <p style={S.mut}>No calls yet.</p> : (
                 <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}><tbody>
                   {(d.recent || []).slice(0, 12).map((r, i) => (
-                    <tr key={i} style={{ borderTop: '1px solid #eef2f6' }}>
+                    <tr key={i} style={{ borderTop: '1px solid light-dark(#eef2f6, #2a3439)' }}>
                       <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}>{r.kind === 'in' ? '↘ In' : '↗ Out'}</td>
                       <td style={{ padding: '6px 4px' }}>{r.name || 'Customer'} <span style={{ opacity: 0.55 }}>…{r.last4}</span></td>
-                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', color: '#475569' }}>{r.disposition || r.status || ''}</td>
-                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', textAlign: 'right', color: '#64748b' }}>{mmss(r.secs)} · {tme(r.at)}</td>
+                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', color: 'light-dark(#475569, #b3c1c7)' }}>{r.disposition || r.status || ''}</td>
+                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', textAlign: 'right', color: 'light-dark(#64748b, #9fb4bb)' }}>{mmss(r.secs)} · {tme(r.at)}</td>
                     </tr>
                   ))}
                 </tbody></table>
@@ -225,12 +228,14 @@ export default function CsrPhone({ accent = '#14302A' }) {
           </div>
         </div>
       )}
+      {/* My tasks (Becky 11/20): follow-ups assigned to this CSR (csr_tasks_mine / csr_task_set). "Call" fills the dial pad. */}
+      <MyTasks onCall={(p, n) => { setNum(p || ''); setName(n || ''); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
       {/* Calls from your lists (2026-11-10): blended outbound — next contact comes in the location's order
           (missed calls, speed to lead, callbacks…), paused while a customer is waiting on your line. */}
       {loggedIn && (d.queue_campaigns || 0) > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ ...S.h, margin: '4px 2px 8px' }}>Calls from your lists</div>
-          <Dialer />
+          <Dialer embedded />
         </div>
       )}
     </div>
@@ -244,7 +249,7 @@ function StatusBar({ d, look, since, dayLen, loggedIn, busy, act, accent }) {
     <div style={{ ...S.card, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ ...S.pill, color: look.color, background: look.bg }}><span style={{ ...S.dot, background: look.color }} />{look.label}{st === 'not_ready' && d.status?.reason ? ` · ${d.status.reason}` : ''}</span>
-        {loggedIn && <span style={S.mut}>for {mmss(since)} · logged in since {tme(d.day.started_at)} ({Math.floor(dayLen / 3600)}h {Math.floor((dayLen % 3600) / 60)}m)</span>}
+        {loggedIn && <span style={S.mut}>for {since >= 3600 ? hhmm(since) : mmss(since)} · logged in since {tme(d.day.started_at)} ({Math.floor(dayLen / 3600)}h {Math.floor((dayLen % 3600) / 60)}m)</span>}
         {d.me?.location && <span style={S.mut}>{d.me.brand} · {d.me.location}</span>}
       </div>
       {loggedIn && (
@@ -260,22 +265,139 @@ function StatusBar({ d, look, since, dayLen, loggedIn, busy, act, accent }) {
     </div>
   )
 }
-function Stat({ label, value }) { return <div><div style={{ fontSize: 22, fontWeight: 800 }}>{value}</div><div style={{ fontSize: 12, color: '#64748b' }}>{label}</div></div> }
+function Stat({ label, value }) { return <div><div style={{ fontSize: 22, fontWeight: 800 }}>{value}</div><div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{label}</div></div> }
+
+const TASK_KIND = { ai_csr: 'AI CSR message', billing: 'Billing / collections', phone_callback: 'Queue callback', abandoned: 'Hung up waiting', csr_callback: 'Your callback', s2l: 'Speed to lead', manual: 'Task' }
+function MyTasks({ onCall }) {
+  const [d, setD] = useState(null)
+  const [close, setClose] = useState(null) // { id, st }
+  const [out, setOut] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [hist, setHist] = useState({}) // Speed to Lead tasks: task id → the AI's calls on that lead (or 'loading')
+  const [ai, setAi] = useState(null)   // task id with the "Send back to the AI" choices open
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('csr_tasks_mine')
+    if (error) { setErr(error.message); return }
+    setErr(''); setD(data)
+  }, [])
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t) }, [load])
+  const save = async (id, st, outcome) => {
+    setBusy(true)
+    const { error } = await supabase.rpc('csr_task_set', { p_id: id, p_status: st, p_outcome: outcome || null })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setClose(null); setOut(''); load()
+  }
+  const toggleHist = async (id) => {
+    if (hist[id] && hist[id] !== 'loading') { setHist(h => { const n = { ...h }; delete n[id]; return n }); return }
+    setHist(h => ({ ...h, [id]: 'loading' }))
+    const { data, error } = await supabase.rpc('csr_s2l_task_timeline', { p_task: id })
+    setHist(h => ({ ...h, [id]: error ? { error: error.message } : (data || { error: 'No AI history for this task.' }) }))
+  }
+  const toAi = async (id, when) => {
+    setBusy(true)
+    const { error } = await supabase.rpc('csr_s2l_task_send_to_ai', { p_task: id, p_when: when })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setAi(null); load()
+  }
+  const tasks = d?.tasks || []
+  if (!d || (!tasks.length && !err)) return null
+  return (
+    <div style={{ ...S.card, marginTop: 12 }}>
+      <div style={{ ...S.h, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <span>My tasks ({tasks.length})</span>
+        {d.counts?.overdue ? <span style={{ fontSize: 12.5, color: 'light-dark(#9a3412, #f0905a)' }}>{d.counts.overdue} overdue</span> : null}
+      </div>
+      {err && <div style={S.error}>{err}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {tasks.map(t => {
+          const overdue = t.overdue
+          return (
+            <div key={t.id} style={{ border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, padding: 12, borderColor: overdue ? 'light-dark(#fdba74, #7c3a12)' : undefined }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <b>{t.name || 'Unknown caller'}</b> {t.phone ? <span style={S.mut}>{fmtPhone(t.phone)}</span> : null}
+                  <div style={S.mut}>{TASK_KIND[t.kind] || t.kind}{t.calls > 1 ? ` · ${t.calls} calls` : ''} · {overdue ? 'overdue' : 'due'} {new Date(t.due).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}{t.urgent ? ' · URGENT' : ''}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {t.phone && <button style={S.btn} onClick={() => onCall(t.phone, t.name)}>Call</button>}
+                  {t.status === 'open' && <button style={S.btn} disabled={busy} onClick={() => save(t.id, 'in_progress')}>Start</button>}
+                  <button style={S.btn} onClick={() => { setClose({ id: t.id, st: 'done' }); setOut('') }}>Done</button>
+                  <button style={S.btn} onClick={() => { setClose({ id: t.id, st: 'cant_reach' }); setOut('') }}>Can’t reach</button>
+                </div>
+              </div>
+              {t.reason && <div style={{ marginTop: 6, fontWeight: 600, fontSize: 13.5 }}>{t.reason}</div>}
+              {t.summary && <div style={{ ...S.mut, marginTop: 2 }}>{t.summary}</div>}
+              {t.kind === 's2l' && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => toggleHist(t.id)}>{hist[t.id] ? 'Hide AI calls' : 'AI calls so far'}</button>
+                  {ai === t.id ? (<>
+                    <span style={S.mut}>AI calls:</span>
+                    {[['now', 'Now'], ['1h', 'In 1 hour'], ['tomorrow', 'Tomorrow morning']].map(([k, l]) => <button key={k} disabled={busy} style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => toAi(t.id, k)}>{l}</button>)}
+                    <button style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => setAi(null)}>Cancel</button>
+                  </>) : <button style={{ ...S.btn, padding: '4px 10px', fontSize: 12.5 }} onClick={() => setAi(t.id)}>Send back to the AI</button>}
+                </div>
+              )}
+              {t.kind === 's2l' && hist[t.id] && <AiHistory h={hist[t.id]} />}
+              {close?.id === t.id && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  <label style={{ flex: '1 1 220px' }}><span style={{ position: 'absolute', left: -9999 }}>Outcome</span>
+                    <input autoFocus style={{ ...S.input, marginTop: 0, fontSize: 13.5 }} value={out} onChange={e => setOut(e.target.value)} placeholder={close.st === 'done' ? 'What happened? e.g. booked Tue 9–12' : 'How many tries, and how?'} />
+                  </label>
+                  <button style={S.btn} disabled={busy || !out.trim()} onClick={() => save(t.id, close.st, out.trim())}>Save</button>
+                  <button style={S.btn} onClick={() => setClose(null)}>Cancel</button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Speed to Lead task (Becky 11/25): what the AI already did, so the CSR never starts cold.
+const AI_OUT = { booked: 'Booked', transferred: 'Live transfer', callback: 'Asked for a callback', question_answered: 'Question answered', voicemail: 'Voicemail left', no_answer: 'No answer', busy: 'Busy', not_interested: 'Not interested', wrong_number: 'Wrong number', do_not_call: 'Opted out', already_handled: 'Already handled', failed: 'Call didn’t go through', callback_to_csr: 'Callback handed to a CSR' }
+const AI_KIND = { first: 'First AI call', retry: 'AI re-dial', callback: 'AI callback they asked for' }
+const aiWhen = x => (x ? new Date(x).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '')
+function AiHistory({ h }) {
+  if (h === 'loading') return <div style={{ ...S.mut, marginTop: 6 }}>Loading the AI’s calls…</div>
+  if (!h || h.error) return <div style={{ ...S.mut, marginTop: 6 }}>{(h && h.error) || 'No AI history for this task.'}</div>
+  return (
+    <div style={{ marginTop: 8, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={S.mut}>Request: {h.service}{h.message ? ` — ${h.message}` : ''}</div>
+      {(h.calls || []).map(c => {
+        const x = c.data || {}
+        const extra = [x.callback_time && `wants a call ${x.callback_time}`, x.urgency && x.urgency !== 'unknown' && x.urgency, x.property_type && x.property_type !== 'unknown' && x.property_type].filter(Boolean).join(' · ')
+        return (
+          <div key={c.id} style={{ borderTop: '1px solid light-dark(#e2e8f0, #2a3439)', paddingTop: 6 }}>
+            <b>{AI_KIND[c.kind] || `AI call ${c.attempt}`}</b> · {aiWhen(c.placed_at || c.scheduled_at)} · {c.status === 'scheduled' ? 'scheduled' : (AI_OUT[c.outcome] || c.outcome || c.status)}
+            {extra && <div style={S.mut}>{extra}</div>}
+            {c.summary && <div style={{ marginTop: 2 }}>{c.summary}</div>}
+          </div>
+        )
+      })}
+      {(h.dials || []).map((a, i) => <div key={i} style={{ borderTop: '1px solid light-dark(#e2e8f0, #2a3439)', paddingTop: 6 }}><b>{a.by || 'CSR'}</b> called · {aiWhen(a.at)} · {a.result}{a.notes ? <div style={S.mut}>{a.notes}</div> : null}</div>)}
+    </div>
+  )
+}
 
 const S = {
   wrap: { maxWidth: 1180, margin: '0 auto', padding: '16px 16px 8px' },
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 16 },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 16 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginTop: 12 },
   h: { fontWeight: 800, fontSize: 15, marginBottom: 10 },
-  mut: { fontSize: 12.5, color: '#64748b', margin: 0 },
-  lbl: { display: 'block', fontSize: 12.5, fontWeight: 600, color: '#334155', marginBottom: 8 },
-  input: { display: 'block', width: '100%', marginTop: 4, padding: '9px 11px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' },
+  mut: { fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', margin: 0 },
+  lbl: { display: 'block', fontSize: 12.5, fontWeight: 600, color: 'light-dark(#334155, #b3c1c7)', marginBottom: 8 },
+  input: { display: 'block', width: '100%', marginTop: 4, padding: '9px 11px', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 9, fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' },
   pad: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, margin: '6px 0 10px' },
-  key: { padding: '10px 0', fontSize: 18, fontWeight: 700, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer' },
+  key: { padding: '10px 0', fontSize: 18, fontWeight: 700, borderRadius: 10, border: '1px solid light-dark(#e2e8f0, #2a3439)', background: 'light-dark(#f8fafc, #161d21)', cursor: 'pointer' },
   big: { padding: '12px 22px', fontSize: 16, fontWeight: 800, color: '#fff', border: 'none', borderRadius: 11, cursor: 'pointer' },
-  btn: { padding: '8px 14px', fontSize: 13.5, fontWeight: 700, border: '1px solid #cbd5e1', borderRadius: 9, background: '#fff', cursor: 'pointer' },
+  btn: { padding: '8px 14px', fontSize: 13.5, fontWeight: 700, border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 9, background: 'light-dark(#fff, #161d21)', cursor: 'pointer' },
   pill: { display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 999, fontWeight: 800, fontSize: 14 },
   dot: { width: 9, height: 9, borderRadius: 999, display: 'inline-block' },
   stats: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 },
-  error: { color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '8px 10px', fontSize: 13 },
+  error: { color: 'light-dark(#b91c1c, #e86464)', background: 'light-dark(#fef2f2, #391313)', border: '1px solid light-dark(#fecaca, #642b2b)', borderRadius: 9, padding: '8px 10px', fontSize: 13 },
 }

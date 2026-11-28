@@ -696,7 +696,7 @@ function LessonBody({ lesson, onSave }) {
           onClick={() => onSave({ ...lesson, title, content_blocks: stripIds(blocks) })}>Save lesson</button>
       </div>
 
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', background: '#fbfcfd' }}>
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', background: 'light-dark(#fbfcfd, #161d21)' }}>
         <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', fontWeight: 600, marginRight: 4 }}>Add to end:</span>
         <AddBtn onClick={() => addBlock('heading')}>▤ Heading</AddBtn>
         <AddBtn onClick={() => addBlock('text')}>¶ Text</AddBtn>
@@ -1063,7 +1063,7 @@ function InsertBar({ onAdd }) {
           <div style={{ flex: 1, height: 1, background: show ? 'var(--accent)' : 'transparent' }} />
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', background: '#fbfcfd', border: '1px solid var(--accent)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', background: 'light-dark(#fbfcfd, #161d21)', border: '1px solid var(--accent)', borderRadius: 8 }}>
           <AddBtn onClick={() => pick('heading')}>▤ Heading</AddBtn>
           <AddBtn onClick={() => pick('text')}>¶ Text</AddBtn>
           <AddBtn onClick={() => pick('image')}>🖼 Image</AddBtn>

@@ -116,13 +116,13 @@ export const S = {
   th: { textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '6px 10px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' },
   td: { padding: '8px 10px', borderBottom: '1px solid var(--line)', fontSize: 13.5, whiteSpace: 'nowrap' },
   num: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
-  err: { background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, margin: '0 0 14px' },
+  err: { background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '10px 14px', fontSize: 13, margin: '0 0 14px' },
 }
 
 export const TIER_STYLE = {
-  A: { background: '#e7f5ec', color: '#1f8a53' },
+  A: { background: 'light-dark(#e7f5ec, #1b2327)', color: 'light-dark(#1f8a53, #2abb71)' },
   B: { background: 'var(--accent-bg, #e5f1f8)', color: 'var(--accent)' },
-  C: { background: '#e3edf0', color: '#245866' },
+  C: { background: 'light-dark(#e3edf0, #222c31)', color: 'light-dark(#245866, #419fb9)' },
   D: { background: 'var(--canvas)', color: 'var(--ink-soft)' },
 }
 export function TierChip({ tier }) {

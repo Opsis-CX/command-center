@@ -484,7 +484,7 @@ function LinkMenu({ editor }) {
               }}
               style={{ width: '100%', boxSizing: 'border-box', height: 30, padding: '0 8px', border: '1px solid var(--line)',
                 borderRadius: 6, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit' }} />
-            {err && <div style={{ color: '#c0392b', fontSize: 11.5, marginTop: 4 }}>{err}</div>}
+            {err && <div style={{ color: 'light-dark(#c0392b, #dd7469)', fontSize: 11.5, marginTop: 4 }}>{err}</div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               <button type="button" className="re-clear" style={{ background: 'var(--accent, #1a73e8)', color: '#fff', borderColor: 'transparent' }}
                 onMouseDown={e => { e.preventDefault(); apply() }}>Apply</button>
@@ -609,7 +609,7 @@ function splitSelectedLines(editor) {
  * @param onSubmit     called on Enter, when submitOnEnter is set
  * @param variant      'chat' | 'full'
  * @param editorRef    optional; receives { clear, focus, insertText, getHTML, isEmpty }
- * @param submitOnEnter  Enter submits, Shift+Enter is a newline (chat behaviour)
+ * @param submitOnEnter  Enter submits, Shift+Enter is a newline (chat behaviour); on touch devices Enter is always a newline
  */
 
 
@@ -706,6 +706,9 @@ export function RichEditor({
       handleKeyDown(view, event) {
         if (!submitOnEnter) return false
         if (event.key !== 'Enter' || event.shiftKey) return false
+        // Phones / tablets (2026-11-17, Becky): Enter is a new line, the Send button sends.
+        // Touch keyboards have no Shift+Enter, so Enter-to-send made multi-line messages impossible.
+        if (typeof window !== 'undefined' && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return false
 
         // Inside a list or a table, Enter must keep its normal meaning —
         // new bullet, next cell — not send the message.

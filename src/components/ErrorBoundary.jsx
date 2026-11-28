@@ -32,17 +32,17 @@ export default class ErrorBoundary extends React.Component {
     const e = this.state.error
     return (
       <div style={{ padding: 24, maxWidth: 760, fontFamily: 'system-ui, sans-serif' }}>
-        <h2 style={{ margin: '0 0 6px', fontSize: 19, color: '#b91c1c' }}>
+        <h2 style={{ margin: '0 0 6px', fontSize: 19, color: 'light-dark(#b91c1c, #e86464)' }}>
           {this.props.scope === 'root' ? 'Command Center hit an error' : 'This page hit an error'}
         </h2>
-        <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#6a665e' }}>
+        <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'light-dark(#6a665e, #b3c1c7)' }}>
           {this.props.scope === 'root'
             ? 'Sending the text below is enough to identify the problem.'
             : 'The rest of the app still works — use the menu to go somewhere else.'}
         </p>
         <pre style={{
           whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12.5, lineHeight: 1.5,
-          background: '#f7f7f5', color: '#1a1a1a', border: '1px solid #ddd',
+          background: 'light-dark(#f7f7f5, #1b2327)', color: 'light-dark(#1a1a1a, #e8eef0)', border: '1px solid light-dark(#ddd, #2a3439)',
           borderRadius: 8, padding: 12, maxHeight: 320, overflowY: 'auto',
         }}>{String(e?.name || 'Error')}: {String(e?.message || e)}{e?.stack ? '\n\n' + e.stack : ''}</pre>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
@@ -59,6 +59,6 @@ export default class ErrorBoundary extends React.Component {
 }
 
 const btn = {
-  border: '1px solid #ddd', borderRadius: 8, background: 'transparent',
+  border: '1px solid light-dark(#ddd, #2a3439)', borderRadius: 8, background: 'transparent',
   padding: '8px 14px', fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit',
 }

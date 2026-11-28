@@ -67,7 +67,7 @@ export default function CallReports() {
               {r.schedule?.enabled
                 ? <span style={S.tag}>✉ {FREQS[r.schedule.freq] || 'Scheduled'}{r.next_run_at ? ` · next ${new Date(r.next_run_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })}` : ''}</span>
                 : <span style={{ opacity: 0.5 }}>Not scheduled</span>}
-              {r.last_error && <div style={{ color: '#b91c1c', marginTop: 3 }}>Last send failed: {r.last_error}</div>}
+              {r.last_error && <div style={{ color: 'light-dark(#b91c1c, #e86464)', marginTop: 3 }}>Last send failed: {r.last_error}</div>}
             </div>
           </button>
         ))}
@@ -162,7 +162,7 @@ function Builder({ report, onBack, onSaved }) {
           <button onClick={exportCsv} disabled={!result} style={S.btn}>Export CSV</button>
           <button onClick={() => setShowSchedule(s => !s)} style={S.btn}>{schedule?.enabled ? '✉ Scheduled' : 'Schedule'}</button>
           {report.id && <button onClick={() => save(true)} style={S.btn}>Save as copy</button>}
-          {report.id && <button onClick={remove} style={{ ...S.btn, color: '#b91c1c' }}>Delete</button>}
+          {report.id && <button onClick={remove} style={{ ...S.btn, color: 'light-dark(#b91c1c, #e86464)' }}>Delete</button>}
           <button onClick={() => save(false)} style={S.primary}>{report.id ? 'Save' : 'Save report'}</button>
         </div>
       </div>
@@ -401,7 +401,7 @@ const S = {
   card: { padding: 14, borderRadius: 12, border: '1px solid rgba(100,116,139,0.25)', background: 'var(--card, transparent)', marginBottom: 12 },
   tile: { textAlign: 'left', padding: 16, borderRadius: 14, border: '1px solid rgba(100,116,139,0.25)', background: 'var(--card, transparent)', color: 'inherit', cursor: 'pointer' },
   row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(100,116,139,0.25)', background: 'var(--card, transparent)', color: 'inherit', cursor: 'pointer', textAlign: 'left', fontSize: 14 },
-  sectionTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#0e7490', margin: '14px 0 8px' },
+  sectionTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)', margin: '14px 0 8px' },
   miniTitle: { fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.65, marginBottom: 6 },
   tag: { padding: '3px 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: 'rgba(8,145,178,0.12)', color: '#0e7490', whiteSpace: 'nowrap' },
   primary: { padding: '8px 16px', borderRadius: 10, border: 'none', background: '#0891b2', color: '#fff', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' },

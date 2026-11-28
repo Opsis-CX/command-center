@@ -1346,7 +1346,7 @@ function FillRateView() {
                     <td style={{ padding: '9px 14px', fontWeight: 600 }}>{c.client}{c.uses_five9 && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--accent)', letterSpacing: '.04em' }}>FIVE9</span>}</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: rateColor(c.coverage_pct) }}>{c.coverage_pct ?? '—'}%</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right' }}>{c.filled_spots}/{c.total_spots}</td>
-                    <td style={{ padding: '9px 10px', textAlign: 'right', color: c.open_spots > 0 ? '#b71c1c' : 'inherit', fontWeight: c.open_spots > 0 ? 700 : 400 }}>{c.open_spots}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: c.open_spots > 0 ? 'light-dark(#b71c1c, #e76464)' : 'inherit', fontWeight: c.open_spots > 0 ? 700 : 400 }}>{c.open_spots}</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right' }}>{c.scheduled_hours_full}</td>
                     <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: c.uses_five9 ? rateColor(c.fill_rate) : 'var(--ink-soft)' }}>{c.uses_five9 ? (c.fill_rate == null ? '—' : c.fill_rate + '%') : '—'}</td>
                   </tr>
@@ -1393,7 +1393,7 @@ function FillRateView() {
             ) : opens.map((o, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none', fontSize: 13.5 }}>
                 <span style={{ fontWeight: 600 }}>{o.start}–{o.end}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: '#fdecea', color: '#b71c1c' }}>{o.open} of {o.spots} open</span>
+                <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'light-dark(#fdecea, #391713)', color: 'light-dark(#b71c1c, #e76464)' }}>{o.open} of {o.spots} open</span>
               </div>
             ))}
           </div>

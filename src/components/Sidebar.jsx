@@ -135,6 +135,7 @@ const NAV_MAIN = [
         children: [
           { to: '/reporting', label: 'Reporting hub', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+          { to: '/business-reviews', label: 'Business reviews', perm: '__admin' }, // WBR/MBR/QBR/Annual for Opsis CX (Becky 11/19)
         ],
       },
       {

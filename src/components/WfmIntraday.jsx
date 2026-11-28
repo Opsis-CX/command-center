@@ -101,11 +101,11 @@ export default function WfmIntraday({ clientId = null }) {
             <tbody>{rows.map(r => {
               const have = Math.max(r.logged_in, r.agents_on_calls), gap = r.need - have
               return (
-                <tr key={r.slot} style={{ background: r.now ? '#fefce8' : undefined }}>
+                <tr key={r.slot} style={{ background: r.now ? 'light-dark(#fefce8, #393613)' : undefined }}>
                   <td style={S.td}><b>{slotLabel(r.slot)}</b></td><td style={S.td}>{r.forecast}</td>
                   <td style={S.td}>{r.past ? r.actual : r.reFc?.toFixed(1)}</td><td style={S.td}>{Math.round(r.aht / 6) / 10} min</td>
                   <td style={S.td}><b>{r.need}</b></td><td style={S.td}>{r.agents_on_calls}</td><td style={S.td}>{r.logged_in}</td>
-                  <td style={{ ...S.td, color: gap > 0 ? NEED : '#166534', fontWeight: 700 }}>{r.past ? '' : gap > 0 ? `short ${gap}` : 'covered'}</td>
+                  <td style={{ ...S.td, color: gap > 0 ? NEED : 'light-dark(#166534, #29bc61)', fontWeight: 700 }}>{r.past ? '' : gap > 0 ? `short ${gap}` : 'covered'}</td>
                 </tr>
               )
             })}</tbody>
@@ -137,16 +137,16 @@ export default function WfmIntraday({ clientId = null }) {
   )
 }
 
-const Tile = ({ k, v, warn }) => <div style={{ ...S.card, borderColor: warn ? '#fca5a5' : '#e2e8f0' }}><div style={S.mut}>{k}</div><div style={{ fontSize: 22, fontWeight: 800, color: warn ? NEED : G }}>{v}</div></div>
+const Tile = ({ k, v, warn }) => <div style={{ ...S.card, borderColor: warn ? 'light-dark(#fca5a5, #642b2b)' : 'light-dark(#e2e8f0, #2a3439)' }}><div style={S.mut}>{k}</div><div style={{ fontSize: 22, fontWeight: 800, color: warn ? NEED : G }}>{v}</div></div>
 const Key = ({ c, t, dash }) => <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 10, background: dash ? 'transparent' : c, border: dash ? `1px dashed ${c}` : 'none', opacity: dash ? 1 : 0.7 }} />{t}</span>
 
 const S = {
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14 },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 14 },
   h2: { fontSize: 17, fontWeight: 800, color: G, marginBottom: 4 },
   h3: { fontSize: 15, fontWeight: 800, color: G, marginBottom: 4 },
-  mut: { fontSize: 12.5, color: '#64748b' },
-  input: { padding: '6px 8px', fontSize: 13, borderRadius: 8, border: '1px solid #cbd5e1' },
+  mut: { fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' },
+  input: { padding: '6px 8px', fontSize: 13, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)' },
   tiles: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 },
-  th: { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: '#64748b', padding: '6px', borderBottom: '1px solid #e2e8f0' },
-  td: { padding: '6px', borderBottom: '1px solid #f1f5f9' },
+  th: { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'light-dark(#64748b, #9fb4bb)', padding: '6px', borderBottom: '1px solid light-dark(#e2e8f0, #2a3439)' },
+  td: { padding: '6px', borderBottom: '1px solid light-dark(#f1f5f9, #2a3439)' },
 }

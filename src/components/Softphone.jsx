@@ -8,7 +8,7 @@
 //  Dialer and Inbound pages. Answering an inbound call opens the guided call
 //  screen on the Dialer page.
 // ============================================================
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useVoice } from '../lib/voice'
 import AgentStatus, { statusLook } from './AgentStatus'
@@ -34,6 +34,10 @@ export default function Softphone() {
   const [showKeys, setShowKeys] = useState(false)
   const [pos, setPos] = useState(loadPos)
   const drag = useRef(null)
+  // 11/27 (Becky): calls auto-answer (lib/voice.jsx). When one connects, go to the call screen like a click on Answer did.
+  // (Hooks stay above the early returns below — React error #310 otherwise.)
+  const answeredAt = v?.inboundCall?.answeredAt
+  useEffect(() => { if (answeredAt) { navigate('/dialer'); v?.setOpen(false) } }, [answeredAt]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!v) return null
   const onDown = (e) => { if (e.button !== undefined && e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, r: pos.right, b: pos.bottom, moved: false }; try { e.currentTarget.setPointerCapture(e.pointerId) } catch (x) { } }
   const onMove = (e) => { const d = drag.current; if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; if (!d.moved && Math.abs(dx) + Math.abs(dy) < 6) return; d.moved = true; setPos(clampPos({ right: d.r - dx, bottom: d.b - dy })) }
@@ -46,7 +50,6 @@ export default function Softphone() {
   const onWorkspace = location.pathname === '/dialer'
   if (!v.canCallPeople && !v.worksCalls && !active && !v.incoming && v.status !== 'error') return null
   const pressKey = k => (v.busy ? v.sendDigit(k) : setDial(d => (d + k).slice(0, 14)))
-  const answer = async () => { await v.acceptIncoming(); navigate('/dialer'); v.setOpen(false) }
 
   const fabColor = v.incoming ? '#f59e0b' : v.busy ? '#16a34a' : '#0891b2'
 
@@ -55,7 +58,7 @@ export default function Softphone() {
       <CxCallPanel />
       <button onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onDoubleClick={resetPos}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); v.setOpen(!v.open) } }}
-        aria-label="Phone" title="Phone (drag to move, double-click to reset)"
+        className="sp-fab" aria-label="Phone" title="Phone (drag to move, double-click to reset)"
         style={{ ...S.fab, right: pos.right, bottom: pos.bottom, touchAction: 'none', cursor: 'grab', background: fabColor, animation: v.incoming ? 'ccRing 1s ease-in-out infinite' : 'none' }}>
         {v.incoming ? '🔔' : v.busy ? '📞' : '☎'}
         {v.worksCalls && !v.busy && !v.incoming && <span style={{ ...S.dot, background: statusLook(v.agent.state).color }} />}
@@ -118,10 +121,7 @@ export default function Softphone() {
 
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             {v.incoming ? (
-              <>
-                <button onClick={v.declineIncoming} style={{ ...S.btn, flex: 1 }}>Decline</button>
-                <button onClick={answer} style={{ ...S.btn, flex: 2, background: '#16a34a', borderColor: '#16a34a', color: '#fff' }}>Answer</button>
-              </>
+              <div style={{ flex: 1, textAlign: 'center', fontWeight: 700, padding: '10px 0', color: '#16a34a' }}>Connecting you…</div>
             ) : v.busy ? (
               <>
                 <button onClick={v.toggleMute} disabled={v.status !== 'in-call'} style={{ ...S.btn, flex: 1, background: v.muted ? 'rgba(234,179,8,0.25)' : 'transparent' }}>
@@ -146,7 +146,7 @@ export default function Softphone() {
 
 const S = {
   fab: { position: 'fixed', right: 20, bottom: 20, zIndex: 1000, width: 52, height: 52, borderRadius: '50%', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },
-  dot: { position: 'absolute', right: 3, top: 3, width: 12, height: 12, borderRadius: '50%', border: '2px solid #fff' },
+  dot: { position: 'absolute', right: 3, top: 3, width: 12, height: 12, borderRadius: '50%', border: '2px solid light-dark(#fff, #2a3439)' },
   panel: { position: 'fixed', right: 20, bottom: 84, zIndex: 1000, width: 300, maxWidth: 'calc(100vw - 40px)', padding: 14, borderRadius: 16, background: 'var(--card, #fff)', color: 'var(--text, #0f172a)', border: '1px solid rgba(100,116,139,0.25)', boxShadow: '0 12px 40px rgba(0,0,0,0.25)' },
   head: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 },
   x: { background: 'none', border: 'none', fontSize: 22, lineHeight: 1, cursor: 'pointer', color: 'inherit', opacity: 0.6 },

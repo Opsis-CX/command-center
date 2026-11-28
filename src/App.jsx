@@ -44,6 +44,7 @@ import OpsisWeekly from './modules/OpsisWeekly'
 import Notes from './modules/Notes'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
+import BusinessReviews from './modules/BusinessReviews'
 import Notifications from './modules/Notifications'
 import KnowledgeBase from './modules/KnowledgeBase'
 import Scorecard from './modules/Scorecard'
@@ -74,6 +75,7 @@ import AppHeader from './components/AppHeader'
 import { RefreshProvider, RefreshBoundary } from './lib/refresh'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import Seasonal from './components/Seasonal'
+import PortalThanksgiving from './components/PortalThanksgiving'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
@@ -116,7 +118,7 @@ import SmsConsentBanner from './components/SmsConsentBanner'
 // server-side (can_place_calls() + the voice-token / voice-twiml edge functions).
 // Add a call button anywhere:  import { CallButton } from './lib/voice'
 //                              <CallButton profileId={p.id} name={p.full_name} />
-import { VoiceProvider } from './lib/voice'
+import { VoiceProvider, RingBounce } from './lib/voice'
 import Softphone from './components/Softphone'
 import Phone from './modules/Phone'
 // --- Dialer (Opsis Voice phase 1, 2026-10-15) ---
@@ -148,6 +150,7 @@ function MaybeVoice({ enabled, canCallPeople, canDialNumbers, children }) {
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
+import TechDay from './modules/TechDay'
 // /profile = your own page; /profile/:id = anyone's page (Admins and Owners only; the database enforces it)
 function ProfileRoute() {
   const { id } = useParams()
@@ -196,7 +199,7 @@ export default function App() {
   // signed in can reach the application and assessment forms.
   // /sms-consent is the agent SMS opt-in page — public on purpose (carrier/Twilio
   // review). Note it's an exact match: the admin report at /sms-consents is NOT public.
-  const publicPaths = ['/apply', '/assessment', '/sms-consent']
+  const publicPaths = ['/apply', '/assessment', '/sms-consent', '/tech'] // /tech/:token = FSM tech/rep phone page (secret link)
   const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
   // /mock-call is public ONLY for someone with no session at all (the legacy
   // emailed link). Anyone signed in — client portal, trainee, staff — must fall
@@ -215,6 +218,7 @@ export default function App() {
         <Route path="/assessment/:appId" element={<AssessmentRoute />} />
         <Route path="/assessment" element={<AssessmentForm />} />
         <Route path="/sms-consent" element={<SmsConsentForm />} />
+        <Route path="/tech/:token" element={<TechDay />} />
         <Route path="/mock-call/:appId" element={<MockCallRoute />} />
         <Route path="/mock-call" element={<Login />} />
       </Routes>
@@ -231,7 +235,8 @@ export default function App() {
 const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing', 'support'].includes(String(appRole || '').toLowerCase())
   if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
     // ?client=<id> picks the portal (Portals ▾ menu); no param = GarageCo, as before.
-    return <StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} />
+    // the Thanksgiving banner shows here too, so staff can see exactly what the client portal shows
+    return <><StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={OPSIS_CX_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} /><PortalThanksgiving /></>
   }
   // External client-portal login: a branded, single-purpose shell that shows ONLY
   // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
@@ -279,7 +284,7 @@ function CsrPortal({ session }) {
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || 'GarageCo'
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
       <header style={{ background: accent, color: '#fff', padding: '0 20px', minHeight: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {brand.portal_logo_url
@@ -302,6 +307,8 @@ function CsrPortal({ session }) {
       {hasPhone
         ? <MaybeVoice enabled canCallPeople={false} canDialNumbers={false}>
             {/* keep the phone mounted while on the Scorecard so calls still ring */}
+            {/* a ringing call jumps the CSR to the Phone tab (guided call screen + script) — Becky 11/22 */}
+            <RingBounce onRing={() => pickTab('phone')} />
             <div style={{ display: tab === 'phone' ? 'block' : 'none' }}><CsrPhone accent={accent} /></div>
             {tab !== 'phone' && <CsrScorecard supabase={supabase} mode="csr" accent={accent} />}
           </MaybeVoice>
@@ -313,7 +320,8 @@ function CsrPortal({ session }) {
 // External client portal — a branded, single-page shell that renders ONLY the
 // Call QA module in portal mode, plus CSR Scorecards. Clients see their own calls
 // (RLS-enforced), can export and add notes, but never manager controls or any other module.
-const GARAGECO_PORTAL_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'
+// Default portal logo for any company that hasn't uploaded its own: Opsis CX, never another client's (Becky 11/23).
+const OPSIS_CX_PORTAL_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/9726e6eb-1364-4dba-8ddb-10c07a408ecb/logo-1793310857674.png'
 function ClientPortal({ session, clientId }) {
   const { signOut, user } = useAuth()   // user is needed by PushEnrollmentBanner below
   const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
@@ -356,8 +364,8 @@ function ClientPortal({ session, clientId }) {
 
   const newView = myV2 ?? !!brand.portal_v2
   if (newView && !classic) {
-    return <OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
-      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} />
+    return <><OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
+      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} /><PortalThanksgiving /></>
   }
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || brand.name || 'Call QA'
@@ -365,7 +373,8 @@ function ClientPortal({ session, clientId }) {
     <button onClick={() => setTab(k)} style={{ background: tab === k ? '#fff' : 'rgba(255,255,255,0.12)', color: tab === k ? accent : '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
   )
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
+      <PortalThanksgiving />
       <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {brand.portal_logo_url
@@ -436,7 +445,7 @@ function TraineePortal({ session }) {
     <button onClick={() => setTab(k)} style={{ background: tab === k ? '#0077B6' : 'transparent', color: tab === k ? '#fff' : '#0f172a', border: '1px solid #0077B6', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
   )
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
       <header style={{ background: '#0077B6', color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontWeight: 800, fontSize: 18 }}>Opsis Command Center</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -445,13 +454,13 @@ function TraineePortal({ session }) {
         </div>
       </header>
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 40px' }}>
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+        <div style={{ background: 'light-dark(#eff6ff, #1b2327)', border: '1px solid light-dark(#bfdbfe, #2b4464)', color: 'light-dark(#1e3a8a, #7591e1)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
           {mock?.ok && !mock?.booked
             ? <>🎧 You're almost done! Your last step is a <strong>mock call</strong> with {mock.provider_name || 'our team'} — pick a time on the <strong>Schedule my mock call</strong> tab below.</>
             : mock?.ok && mock?.booked
               ? <>🎧 Your <strong>mock call</strong> is booked — see the details on the <strong>My mock call</strong> tab below.</>
               : <>👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.</>}
-          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
+          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: 'light-dark(#1d4ed8, #7090eb)', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {tabBtn('certs', 'My Certifications')}
@@ -461,7 +470,7 @@ function TraineePortal({ session }) {
           {certPassed && tabBtn('trades', '🔁 Trade Board')}
         </div>
         {certPassed && (tab === 'schedule' || tab === 'trades') && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#14532d', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+          <div style={{ background: 'light-dark(#f0fdf4, #13391f)', border: '1px solid light-dark(#bbf7d0, #2b643f)', color: 'light-dark(#14532d, #2db964)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
             🎉 Certification passed — you can pick up intervals while you finish onboarding. Accepting an interval is a commitment to service it.
           </div>
         )}
@@ -609,6 +618,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/finance" element={fin === null ? <p className="page-sub">Loading…</p> : fin.manager ? <Finance /> : <NoAccess />} />
               <Route path="/submit-purchase" element={fin === null ? <p className="page-sub">Loading…</p> : fin.submitter ? <SubmitPurchase /> : <NoAccess />} />
               <Route path="/weekly-sync" element={canAny(appRole, 'weekly_sync') ? <WeeklySync /> : <NoAccess />} />
+              <Route path="/business-reviews" element={isAdmin ? <BusinessReviews /> : <NoAccess />} />
               <Route path="/schedule-builder" element={canAny(appRole, 'schedule.create_schedules') ? <ScheduleBuilder /> : <NoAccess />} />
               <Route path="/positions" element={canAny(appRole, 'positions.view_only') ? <Positions /> : <NoAccess />} />
               <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
@@ -628,7 +638,7 @@ function titleFor(path) {
     '/': 'Dashboard', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync', '/business-reviews': 'Business reviews',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions', '/service-account': 'Service account',
     '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/profile': 'My profile', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',

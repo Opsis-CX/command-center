@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const G = '#14302A'
+const GT = 'light-dark(#14302A, #9fd6bd)'  // brand green for text/lines: lighter in dark mode
 const KIND = { praise: ['Great job', '#dcfce7', '#166534'], fix: ['Let’s fix', '#fef3c7', '#92400e'], listen: ['Listen to this', '#e0f2fe', '#075985'] }
 const mmss = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`
 const when = d => (d ? new Date(d).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')
@@ -31,14 +32,14 @@ function Clip({ start, url }) {
 
 function Lines({ segs, a, b, onPick }) {
   return (
-    <div style={{ maxHeight: 360, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, padding: 6 }}>
+    <div style={{ maxHeight: 360, overflow: 'auto', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, padding: 6 }}>
       {(segs || []).map((s, k) => {
         const on = a != null && s.t >= a && s.t <= (b ?? a)
         return (
           <button key={k} onClick={onPick ? () => onPick(s.t) : undefined} style={{ display: 'flex', gap: 8, width: '100%', textAlign: 'left', border: 'none', cursor: onPick ? 'pointer' : 'default',
-            background: on ? '#fef9c3' : 'transparent', padding: '4px 6px', borderRadius: 6, fontSize: 13, color: '#0f172a' }}>
-            <span style={{ color: '#64748b', fontVariantNumeric: 'tabular-nums', minWidth: 38 }}>{mmss(s.t)}</span>
-            <b style={{ minWidth: 52, color: s.s === 'Agent' ? G : '#7c2d12' }}>{s.s === 'Agent' ? 'CSR' : 'Caller'}</b>
+            background: on ? '#fef9c3' : 'transparent', padding: '4px 6px', borderRadius: 6, fontSize: 13, color: 'light-dark(#0f172a, #e8eef0)' }}>
+            <span style={{ color: 'light-dark(#64748b, #9fb4bb)', fontVariantNumeric: 'tabular-nums', minWidth: 38 }}>{mmss(s.t)}</span>
+            <b style={{ minWidth: 52, color: s.s === 'Agent' ? GT : 'light-dark(#7c2d12, #f0a57e)' }}>{s.s === 'Agent' ? 'CSR' : 'Caller'}</b>
             <span>{s.text}</span>
           </button>
         )
@@ -91,7 +92,7 @@ export function CoachingDesk() {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search" style={{ ...S.input, width: '100%', margin: '6px 0' }} />
         <div style={{ display: 'grid', gap: 2, maxHeight: 520, overflow: 'auto' }}>
           {shown.map(c => (
-            <button key={c.id} onClick={() => loadCsr(c)} style={{ ...S.row, background: csr?.id === c.id ? '#E6F0EA' : 'transparent' }}>
+            <button key={c.id} onClick={() => loadCsr(c)} style={{ ...S.row, background: csr?.id === c.id ? 'light-dark(#E6F0EA, #222c31)' : 'transparent' }}>
               <span><b>{c.name}</b><div style={S.mut}>{[c.brand, c.location].filter(Boolean).join(' · ')}</div></span>
               {c.open > 0 && <span style={S.pill}>{c.open} open</span>}
             </button>
@@ -106,7 +107,7 @@ export function CoachingDesk() {
             <div style={S.h3}>{csr.name} — calls from the last 14 days</div>
             {calls.length === 0 && <div style={S.mut}>No scored calls linked to this CSR yet.</div>}
             {calls.map(c => (
-              <button key={c.id} onClick={() => openCall(c)} style={{ ...S.row, borderTop: '1px solid #f1f5f9' }}>
+              <button key={c.id} onClick={() => openCall(c)} style={{ ...S.row, borderTop: '1px solid light-dark(#f1f5f9, #2a3439)' }}>
                 <span style={{ minWidth: 0 }}><b>{when(c.started_at)}</b> · {c.topic || c.outcome || 'Call'} {c.customer ? `· ${c.customer}` : ''}
                   <div style={{ ...S.mut, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 560 }}>{c.summary}</div></span>
                 <span style={{ whiteSpace: 'nowrap' }}>{c.score != null ? <b>{Math.round(c.score)}%</b> : ''} {c.clips > 0 ? <span style={S.pill}>{c.clips} clip</span> : ''}</span>
@@ -125,14 +126,14 @@ export function CoachingDesk() {
             <Lines segs={call.segments} a={a} b={b} onPick={pick} />
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
               {Object.entries(KIND).map(([k, [l, bg, fg]]) => (
-                <button key={k} onClick={() => setKind(k)} style={{ ...S.small, background: kind === k ? bg : '#fff', color: kind === k ? fg : '#334155', borderColor: kind === k ? fg : '#cbd5e1' }}>{l}</button>
+                <button key={k} onClick={() => setKind(k)} style={{ ...S.small, background: kind === k ? bg : 'light-dark(#fff, #161d21)', color: kind === k ? fg : 'light-dark(#334155, #b3c1c7)', borderColor: kind === k ? fg : '#cbd5e1' }}>{l}</button>
               ))}
             </div>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder={kind === 'praise' ? 'What they did well…' : kind === 'fix' ? 'What to do differently next time…' : 'What to listen for…'} style={{ ...S.input, width: '100%', marginTop: 8, resize: 'vertical' }} />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
               <button disabled={a == null || !note.trim()} style={S.primary} onClick={send}>Send to {csr.name.split(' ')[0]}</button>
-              {msg && <span style={{ color: '#166534', fontSize: 13 }}>{msg}</span>}
-              {err && <span style={{ color: '#b91c1c', fontSize: 13 }}>{err}</span>}
+              {msg && <span style={{ color: 'light-dark(#166534, #29bc61)', fontSize: 13 }}>{msg}</span>}
+              {err && <span style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{err}</span>}
             </div>
           </div>
         )}
@@ -140,7 +141,7 @@ export function CoachingDesk() {
           <div style={S.card}>
             <div style={S.h3}>Sent to {csr.name}</div>
             {sent.map(c => (
-              <div key={c.id} style={{ borderTop: '1px solid #f1f5f9', padding: '6px 0', fontSize: 13 }}>
+              <div key={c.id} style={{ borderTop: '1px solid light-dark(#f1f5f9, #2a3439)', padding: '6px 0', fontSize: 13 }}>
                 <span style={{ ...S.tag, background: KIND[c.kind]?.[1], color: KIND[c.kind]?.[2] }}>{KIND[c.kind]?.[0]}</span> {c.note}
                 <div style={S.mut}>{when(c.created_at)} by {c.from} · {c.acked_at ? `acknowledged ${when(c.acked_at)}` : c.seen_at ? 'seen, not acknowledged yet' : 'not opened yet'}{c.csr_reply ? ` · “${c.csr_reply}”` : ''}</div>
               </div>
@@ -168,7 +169,7 @@ export function CoachingInbox({ compact = false }) {
       <div style={S.h2}>My coaching {open.length > 0 && <span style={S.pill}>{open.length} new</span>}</div>
       {rows.length === 0 && <div style={S.mut}>Nothing yet. When your supervisor sends you a moment from one of your calls, it shows up here.</div>}
       {rows.map(c => (
-        <div key={c.id} style={{ borderTop: '1px solid #f1f5f9', padding: '10px 0', opacity: c.acked_at ? 0.7 : 1 }}>
+        <div key={c.id} style={{ borderTop: '1px solid light-dark(#f1f5f9, #2a3439)', padding: '10px 0', opacity: c.acked_at ? 0.7 : 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <span><span style={{ ...S.tag, background: KIND[c.kind]?.[1], color: KIND[c.kind]?.[2] }}>{KIND[c.kind]?.[0]}</span> <b>{c.from || 'Your supervisor'}</b> · {when(c.created_at)}</span>
             <span style={S.mut}>Call {when(c.call_at)}{c.customer ? ` · ${c.customer}` : ''}</span>
@@ -190,14 +191,14 @@ export function CoachingInbox({ compact = false }) {
 }
 
 const S = {
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14 },
-  h2: { fontSize: 17, fontWeight: 800, color: G, marginBottom: 4 },
-  h3: { fontSize: 15, fontWeight: 800, color: G, marginBottom: 4 },
-  mut: { fontSize: 12.5, color: '#64748b' },
-  input: { padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid #cbd5e1', boxSizing: 'border-box' },
-  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '8px 6px', borderRadius: 8, color: '#0f172a', background: 'transparent' },
-  pill: { fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e', marginLeft: 6 },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 14 },
+  h2: { fontSize: 17, fontWeight: 800, color: GT, marginBottom: 4 },
+  h3: { fontSize: 15, fontWeight: 800, color: GT, marginBottom: 4 },
+  mut: { fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' },
+  input: { padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', boxSizing: 'border-box' },
+  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '8px 6px', borderRadius: 8, color: 'light-dark(#0f172a, #e8eef0)', background: 'transparent' },
+  pill: { fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'light-dark(#fef3c7, #393213)', color: 'light-dark(#92400e, #e1712d)', marginLeft: 6 },
   tag: { fontSize: 11.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999 },
   primary: { padding: '8px 16px', fontSize: 13, fontWeight: 700, borderRadius: 10, border: 'none', background: G, color: '#fff', cursor: 'pointer' },
-  small: { padding: '5px 10px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' },
+  small: { padding: '5px 10px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: 'light-dark(#fff, #161d21)', cursor: 'pointer' },
 }

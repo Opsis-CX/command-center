@@ -21,14 +21,14 @@ import { useVoice } from '../lib/voice'
 import CallScreen, { prettyPhone } from '../components/CallScreen'
 import AgentStatus from '../components/AgentStatus'
 
-const LS_KEY = 'dialer_campaign'
 const POLL_MS = 15000
-const AUTO_POLL_MS = 4000   // auto-dial (speed-to-lead) campaigns look for new leads every 4s
+const AUTO_POLL_MS = 4000
+// Becky 11/25: CSRs don't choose outbound work. The next contact pops with who and why, and dials itself
+// after this many seconds. Speed-to-lead (auto-dial) campaigns still dial right away.
+const POP_SECS = 15   // auto-dial (speed-to-lead) campaigns look for new leads every 4s
 // Auto-dial = progressive with a 0-second countdown: calls go out as soon as a lead is handed over.
 const isAutoDial = c => !!c && c.mode === 'progressive' && Number(c.progressive_delay_sec) === 0
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-function lsGet() { try { return localStorage.getItem(LS_KEY) || 'all' } catch { return 'all' } }
-function lsSet(v) { try { localStorage.setItem(LS_KEY, v) } catch { /* ignore */ } }
 function mmss(s) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 function fmt(ts) { return ts ? new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' }
 const TYPE_LABEL = { team: 'Team member', applicant: 'Job applicant', campaign_contact: 'Campaign contact', unknown: 'New caller' }
@@ -42,7 +42,8 @@ function scriptFor(campaign) {
   }
 }
 
-export default function Dialer() {
+// embedded (Becky 11/20): inside the CSR phone, which has its own status bar — one status control, not two.
+export default function Dialer({ embedded = false } = {}) {
   const voice = useVoice()
   const [me, setMe] = useState({ name: '', first: '' })
   useEffect(() => {
@@ -58,13 +59,13 @@ export default function Dialer() {
   if (!voice) return <div className="card">Calling isn't available for your login.</div>
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      {!embedded && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <h1 className="page-title" style={{ marginBottom: 2 }}>Agent workspace</h1>
           <p className="page-sub" style={{ margin: 0 }}>Set yourself Ready — inbound calls ring you first, and the Dialer feeds you outbound contacts in between.</p>
         </div>
         <AgentStatus />
-      </div>
+      </div>}
       {voice.inboundCall
         ? <InboundWork key={voice.inboundCall.id || voice.inboundCall.answeredAt} call={voice.inboundCall} me={me} />
         : <OutboundWork me={me} />}
@@ -116,7 +117,17 @@ function InboundWork({ call, me }) {
 
   const script = ctx?.script || null
   const f = ctx?.ai_fields || {}
-  const name = ctx?.caller_name || (call.callerName || '').replace(/\s*\(.*\)$/, '') || ''
+  const known = ctx?.caller_name || (call.callerName || '').replace(/\s*\(.*\)$/, '') || ''
+  // 11/25: the CSR can type the caller's name (saved on the call as soon as they leave the box)
+  const [typed, setTyped] = useState(null)
+  const [nameMsg, setNameMsg] = useState('')
+  const name = (typed ?? known).trim() || ''
+  async function saveName() {
+    if (typed == null || typed.trim() === (known || '').trim()) return
+    const { error } = await supabase.rpc('csr_set_caller_name', { p_call: call.id, p_name: typed })
+    setNameMsg(error ? error.message : 'Saved')
+    if (!error) setTimeout(() => setNameMsg(''), 2000)
+  }
   const mctx = useMemo(() => ({
     first_name: name.split(' ')[0] || '', last_name: name.split(' ').slice(1).join(' '), customer_name: name,
     agent_name: me.name, agent_first: me.first, brand: ctx?.brand || 'Opsis CX',
@@ -125,7 +136,6 @@ function InboundWork({ call, me }) {
   }), [name, me, ctx, script, f.reason, f.company, call.queueLabel])
 
   const context = [
-    { label: 'Caller', value: name || 'Unknown caller' },
     { label: 'Who they are', value: TYPE_LABEL[ctx?.caller_type] || 'New caller' },
     { label: 'Menu option', value: ctx?.menu_choice || call.queueLabel },
     { label: 'Line', value: ctx?.line || call.lineName },
@@ -138,6 +148,7 @@ function InboundWork({ call, me }) {
     const { error } = await supabase.rpc('inbound_disposition', {
       p_call: call.id, p_code: code, p_notes: notes || null, p_fields: fields || {}, p_callback_at: callbackAt,
     })
+    if (!error && typed != null) await supabase.rpc('csr_set_caller_name', { p_call: call.id, p_name: typed })
     setSaving(false)
     if (error) { setSaveErr(error.message); return }
     await voice.clearInbound()
@@ -147,7 +158,13 @@ function InboundWork({ call, me }) {
   const callBar = (
     <div>
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#d97706' }}>Inbound call</div>
-      <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{name || 'Caller'}</div>
+      <label style={{ display: 'block', marginTop: 4 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.65 }}>Caller name{nameMsg ? ` · ${nameMsg}` : ''}</span>
+        <input value={typed ?? known} onChange={e => setTyped(e.target.value)} onBlur={saveName}
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+          placeholder="Type the caller's name"
+          style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 2, padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 17, fontWeight: 800, fontFamily: 'inherit' }} />
+      </label>
       <div style={{ fontSize: 13, opacity: 0.7 }}>{[call.queueLabel, ctx?.after_hours ? 'after hours' : ''].filter(Boolean).join(' · ')}</div>
       <div style={{ marginTop: 8, fontWeight: 700, color: voice.status === 'in-call' ? '#16a34a' : 'inherit' }}>
         {voice.status === 'in-call' ? `On call · ${mmss(voice.seconds)}` : voice.status === 'connecting' ? 'Connecting…' : live ? 'Connecting…' : `Call ended${talk ? ` · talked ${mmss(talk)}` : ''} — save the disposition`}
@@ -211,7 +228,7 @@ function InboundWork({ call, me }) {
 function OutboundWork({ me }) {
   const voice = useVoice()
   const [campaigns, setCampaigns] = useState(null)
-  const [sel, setSel] = useState(lsGet())
+  const sel = 'all'   // always every campaign I'm on, in the location's order (no picker)
   const [contact, setContact] = useState(null)        // dialer_next row + campaign_id
   const [phase, setPhase] = useState('idle')            // idle | preview | countdown | calling | dispo
   const [countdown, setCountdown] = useState(0)
@@ -238,7 +255,6 @@ function OutboundWork({ me }) {
     setCampaigns(data || [])
   }, [])
   useEffect(() => { loadCampaigns() }, [loadCampaigns])
-  useEffect(() => { lsSet(sel) }, [sel])
 
   // Leaving the page hands back a contact we never called.
   const contactRef = useRef(null); const phaseRef = useRef('idle')
@@ -265,7 +281,7 @@ function OutboundWork({ me }) {
         setContact(row); setInfo(null); callStarted.current = false
         // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
         // lead is handed over — no Call, Pause or Skip for the agent.
-        if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
+        setPhase('countdown'); setCountdown(isAutoDial(c) ? 0 : POP_SECS)
         return
       }
       setContact(null); setPhase('idle'); setMsg('No one to call right now. Checking again every few seconds…')
@@ -288,7 +304,7 @@ function OutboundWork({ me }) {
     if (!ready && ['preview', 'countdown'].includes(phase) && voice.agent.state !== 'on_call') {
       supabase.rpc('dialer_skip', { p_queue: contact.queue_id }); setContact(null); setPhase('idle')
     }
-    if (voice.incoming && phase === 'countdown' && !isAutoDial(campaign)) setPhase('preview')
+    if (voice.incoming && phase === 'countdown' && countdown < 3) setCountdown(3)
   }, [ready, voice.incoming, phase, contact, voice.agent.state]) // eslint-disable-line
 
   // Progressive countdown → auto-dial.
@@ -330,8 +346,7 @@ function OutboundWork({ me }) {
     // An inbound call is ringing / on screen: hold the auto-dial and retry in a moment
     // instead of dropping the agent into a manual preview.
     if (voice.incoming || voice.inboundCall) {
-      if (isAutoDial(campaign)) { setCountdown(2); return }
-      setPhase('preview'); return
+      setPhase('countdown'); setCountdown(3); return
     }
     wasReady.current = wasReady.current || voice.agent.state === 'ready'
     callStarted.current = true
@@ -367,7 +382,6 @@ function OutboundWork({ me }) {
 
   if (campaigns === null) return <p className="page-sub">Loading…</p>
 
-  const totalReady = campaigns.reduce((n, c) => n + (c.ready_now || 0), 0)
   if (!contact) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -379,16 +393,8 @@ function OutboundWork({ me }) {
         ) : (
           <>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{ready ? 'Waiting for your next call…' : "You're not Ready"}</div>
-            <div className="page-sub" style={{ margin: '6px 0 14px' }}>
-              {ready ? (msg || 'Looking…') : `Set yourself Ready (top right) to start. ${totalReady} contact${totalReady === 1 ? '' : 's'} ready to call now.`}
-            </div>
-            <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-              <span style={S.small}>Outbound from</span>
-              <select value={sel} onChange={e => setSel(e.target.value)} style={S.select}>
-                <option value="all">All my campaigns ({totalReady} ready)</option>
-                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}{c.brand ? ` · ${c.brand}` : ''} ({c.ready_now} ready)</option>)}
-              </select>
-              {ready && <button onClick={fetchNext} style={S.btn}>Check now</button>}
+            <div className="page-sub" style={{ margin: '6px 0 0' }}>
+              {ready ? 'Calls come to you automatically.' : 'Set yourself Ready at the top to start taking calls.'}
             </div>
           </>
         )}
@@ -419,28 +425,20 @@ function OutboundWork({ me }) {
 
   const callBar = (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#0e7490' }}>{campaign?.name}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)' }}>{phase === 'countdown' ? 'Next call' : campaign?.name}</div>
       <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{contact.contact_name || 'Unknown name'}</div>
+      <div style={{ fontSize: 14, marginTop: 4 }}><b>Why:</b> {mctx.reason || campaign?.name || 'Follow-up call'}{campaign?.brand ? ` · ${campaign.brand}` : ''}</div>
       <div style={S.small}>{info?.phone ? prettyPhone(info.phone) : `Phone ending ${contact.phone_last4}`} · their time {contact.customer_local_time}</div>
       {contact.dial_no && <div style={{ marginTop: 6, display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#E6F0EA', color: '#14532d' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'light-dark(#E6F0EA, #222c31)', color: 'light-dark(#14532d, #2db964)' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
         <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: contact.voicemail === 'none' ? '#F3F4F6' : '#FEF3C7', color: contact.voicemail === 'none' ? '#374151' : '#92400E' }}>
           {contact.voicemail === 'leave' ? 'Leave a voicemail' : contact.voicemail === 'final' ? 'Leave the final voicemail' : 'No voicemail — hang up'}</span>
       </div>}
       {contact.last_disposition && <div style={{ ...S.small, marginTop: 2 }}>Last result: {(campaign?.dispositions || []).find(x => x.code === contact.last_disposition)?.label || contact.last_disposition}</div>}
       <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-        {phase === 'preview' && <>
-          <button onClick={placeCall} disabled={voice.incoming} style={{ ...S.callBtn, flex: 2 }}>📞 Call</button>
-          <button onClick={skip} style={{ ...S.btn, flex: 1 }}>Skip</button>
-        </>}
-        {phase === 'countdown' && isAutoDial(campaign) && (
-          <div style={{ width: '100%', fontWeight: 700 }}>📞 Auto-dialing…</div>
+        {['preview', 'countdown'].includes(phase) && (
+          <div style={{ width: '100%', fontWeight: 800, fontSize: 15, color: 'light-dark(#15803d, #2db964)' }}>📞 {countdown > 0 ? `Dialing in ${countdown}…` : 'Dialing…'}</div>
         )}
-        {phase === 'countdown' && !isAutoDial(campaign) && <>
-          <button onClick={placeCall} style={{ ...S.callBtn, flex: 2 }}>📞 Dialing in {countdown}…</button>
-          <button onClick={() => setPhase('preview')} style={S.btn}>Pause</button>
-          <button onClick={skip} style={S.btn}>Skip</button>
-        </>}
         {phase === 'calling' && <>
           <div style={{ width: '100%', fontWeight: 700, color: voice.status === 'in-call' ? '#16a34a' : 'inherit' }}>
             {voice.status === 'connecting' ? 'Connecting…' : voice.status === 'ringing' ? 'Ringing…' : voice.status === 'in-call' ? `On call · ${mmss(voice.seconds)}` : 'Ending…'}
@@ -451,7 +449,7 @@ function OutboundWork({ me }) {
         {phase === 'dispo' && <>
           <div style={{ width: '100%', fontWeight: 700 }}>Call ended{lastTalk ? ` · talked ${mmss(lastTalk)}` : ''}</div>
           {wrapStart && (() => { const w = Math.floor((Date.now() - wrapStart) / 1000), over = w > wrapLimit; return (
-            <div style={{ width: '100%', fontSize: 13, fontWeight: 700, color: over ? '#b91c1c' : '#475569' }}>
+            <div style={{ width: '100%', fontSize: 13, fontWeight: 700, color: over ? 'light-dark(#b91c1c, #e86464)' : 'light-dark(#475569, #b3c1c7)' }}>
               Wrap-up {mmss(w)} / {mmss(wrapLimit)}{over ? ' — over your wrap-up time, save the disposition' : ''}
             </div>) })()}
           {voice.status === 'error' && voice.error && <div style={{ ...S.small, width: '100%' }}>{voice.error}</div>}
@@ -479,7 +477,7 @@ function OutboundWork({ me }) {
 
 const S = {
   card: { padding: 14, borderRadius: 14, border: '1px solid rgba(100,116,139,0.22)', background: 'var(--card, #fff)' },
-  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#0e7490', marginBottom: 8 },
+  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)', marginBottom: 8 },
   select: { padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14, maxWidth: 360 },
   btn: { padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   callBtn: { padding: '9px 14px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' },

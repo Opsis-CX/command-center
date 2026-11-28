@@ -7,11 +7,11 @@ import { useAuth } from './auth'
 // in total, live (no refresh). Lives above Chat + Sidebar so
 // both can read it. Also sets the app icon badge (where supported).
 //
-//   const { counts, total, markRead, refreshUnread } = useUnread()
+//   const { counts, total, markRead, markAllRead, refreshUnread } = useUnread()
 //   counts = { [channelId]: number }
 // ============================================================
 
-const UnreadContext = createContext({ counts: {}, total: 0, markRead: () => {}, refreshUnread: () => {} })
+const UnreadContext = createContext({ counts: {}, total: 0, markRead: () => {}, markAllRead: () => {}, refreshUnread: () => {} })
 export const useUnread = () => useContext(UnreadContext)
 
 export function UnreadProvider({ children }) {
@@ -86,6 +86,21 @@ export function UnreadProvider({ children }) {
     if (error) console.error('markRead upsert failed:', error.message, error)
   }, [meId])
 
+  // Mark EVERY channel with unread messages as read in one go. Used by the
+  // notification bell's "Mark all read" so the chat sidebar badges clear too
+  // (Becky, 2026-11-23).
+  const markAllRead = useCallback(async () => {
+    if (!meId) return
+    const ids = Object.keys(counts)
+    if (!ids.length) return
+    setCounts({})
+    const nowIso = new Date().toISOString()
+    ids.forEach(id => { lastRead.current[id] = nowIso })
+    const { error } = await supabase.from('channel_prefs')
+      .upsert(ids.map(id => ({ profile_id: meId, channel_id: id, last_read_at: nowIso })), { onConflict: 'profile_id,channel_id' })
+    if (error) { console.error('markAllRead upsert failed:', error.message, error); refreshUnread() }
+  }, [meId, counts, refreshUnread])
+
   const total = Object.values(counts).reduce((s, n) => s + n, 0)
 
   // App icon badge (works on desktop Chrome/Edge + some Android; iOS ignores it).
@@ -99,7 +114,7 @@ export function UnreadProvider({ children }) {
   }, [total])
 
   return (
-    <UnreadContext.Provider value={{ counts, total, markRead, refreshUnread }}>
+    <UnreadContext.Provider value={{ counts, total, markRead, markAllRead, refreshUnread }}>
       {children}
     </UnreadContext.Provider>
   )

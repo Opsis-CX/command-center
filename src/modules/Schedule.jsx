@@ -50,6 +50,12 @@ function mondayOf(d) {
   x.setDate(x.getDate() + diff); x.setHours(0, 0, 0, 0); return x
 }
 
+// True once the database's release_at for this interval has passed (or it has
+// none). This is the SAME moment the enforce_claim_rules trigger allows agent
+// claims — keeping the UI on it means an agent never sees an interval the
+// database will refuse ("isn't released yet").
+function isReleased(block) { return !block?.release_at || new Date(block.release_at).getTime() <= Date.now() }
+
 function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -209,7 +215,7 @@ export default function Schedule() {
       const { data: { user } } = await supabase.auth.getUser()
       const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes, trdRes, vtoRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').order('full_name'),
+        supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').is('client_id', null).order('full_name'),
         supabase.from('performance_tiers').select('*').order('sort_order'),
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
         fetchAllRows(() => supabase.from('shift_blocks').select('*').order('block_date').order('start_time').order('id')),
@@ -370,6 +376,10 @@ export default function Schedule() {
       if (block.block_date > isoDate(horizon)) {
         flash(`That interval isn't available yet — it unlocks at your release time.`); return
       }
+      if (!isReleased(block)) {
+        const at = new Date(block.release_at).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        flash(`That interval isn't released yet — it opens ${at} ET.`); load(true); return
+      }
     }
     const existing = claims.filter(c => c.shift_block_id === block.id)
     if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(true); return }
@@ -395,7 +405,8 @@ export default function Schedule() {
       else if (msg.includes('overlaps')) flash('That overlaps an interval you already claimed')
       else if (msg.includes('40 hours')) flash('That would put you over 40 hours this week')
       else if (msg.includes('no longer exists')) flash('That interval was removed')
-      else flash('Could not claim that interval')
+      else if (msg.includes('released yet') || msg.includes('opens for you')) flash(msg)
+      else flash(msg ? `Could not claim that interval: ${msg}` : 'Could not claim that interval')
       load(true)
       return
     }
@@ -637,7 +648,7 @@ export default function Schedule() {
         <FillRateView />
       ) : tab === 'claim' ? (
         <ClaimView
-          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
+          isAdmin={isAdmin} canTeamView={isAdmin || !!me?.schedule_team_view} adminView={adminView} setAdminView={setAdminView}
           me={me} profiles={profiles} tiers={tiers}
           schedules={myVisibleSchedules(isAdmin && adminView === 'mine')} blocks={blocks} claims={claims}
           weekStart={weekStart} setWeekStart={setWeekStart}
@@ -691,7 +702,7 @@ function VtoBanner({ rows, schedules }) {
 }
 
 function ClaimView(props) {
-  const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
+  const { isAdmin, canTeamView, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
     canAssign, audience, onAssign, onUnassign,
     trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor, callable } = props
@@ -699,7 +710,8 @@ function ClaimView(props) {
 
   // Admins in 'team' view see the team grid; everyone else (agents, and
   // admins who switched to 'My view') see the personal claim grid.
-  const teamMode = isAdmin && adminView === 'team'
+  // Becky 11/23: profiles.schedule_team_view lets a non-admin (e.g. Sarah VanEpps) see the Team view, view-only.
+  const teamMode = canTeamView && adminView === 'team'
 
   if (!schedules.length) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
@@ -719,7 +731,7 @@ function ClaimView(props) {
     <div>
       {!teamMode && !isAdmin && releaseStatus?.releaseDate && <ReleaseBanner status={releaseStatus} />}
 
-      {isAdmin && (
+      {canTeamView && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           <button className={'btn ' + (adminView === 'team' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('team')}>Team view</button>
           <button className={'btn ' + (adminView === 'mine' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('mine')}>My view</button>
@@ -819,6 +831,8 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
   const horizonStr = (() => {
     const d = etNow(); d.setDate(d.getDate() + (horizonDays ?? 13)); return isoDate(d)
   })()
+  // Agents (horizon < 3650) are held to each interval's release_at; no-release roles aren't.
+  const gateRelease = (horizonDays ?? 13) < 3650
   // Mon–Sun total for the week on screen. Shown under "Your intervals".
   const myHours = personWeekHours(me.id, weekBlocks, claims, isoDate(days[0]), isoDate(days[6]))
   const myOver = myHours > WEEKLY_HOUR_CAP
@@ -853,6 +867,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     const items = weekBlocks.filter(b => {
       if (b.block_date !== ds) return false
       if (b.block_date > horizonStr) return false   // beyond the rolling window — not visible yet
+      if (gateRelease && !isReleased(b)) return false   // DB release_at not reached yet — hide it
       // (started/ended intervals stay claimable — late pickup is allowed)
       const cl = claims.filter(c => c.shift_block_id === b.id)
       if (cl.some(c => c.profile_id === me.id)) return false   // I already hold it
@@ -1349,7 +1364,7 @@ function FillRateView() {
                     <td style={{ padding: '9px 14px', fontWeight: 600 }}>{c.client}{c.uses_five9 && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--accent)', letterSpacing: '.04em' }}>FIVE9</span>}</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: rateColor(c.coverage_pct) }}>{c.coverage_pct ?? '—'}%</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right' }}>{c.filled_spots}/{c.total_spots}</td>
-                    <td style={{ padding: '9px 10px', textAlign: 'right', color: c.open_spots > 0 ? '#b71c1c' : 'inherit', fontWeight: c.open_spots > 0 ? 700 : 400 }}>{c.open_spots}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: c.open_spots > 0 ? 'light-dark(#b71c1c, #e76464)' : 'inherit', fontWeight: c.open_spots > 0 ? 700 : 400 }}>{c.open_spots}</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right' }}>{c.scheduled_hours_full}</td>
                     <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: c.uses_five9 ? rateColor(c.fill_rate) : 'var(--ink-soft)' }}>{c.uses_five9 ? (c.fill_rate == null ? '—' : c.fill_rate + '%') : '—'}</td>
                   </tr>
@@ -1396,7 +1411,7 @@ function FillRateView() {
             ) : opens.map((o, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none', fontSize: 13.5 }}>
                 <span style={{ fontWeight: 600 }}>{o.start}–{o.end}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: '#fdecea', color: '#b71c1c' }}>{o.open} of {o.spots} open</span>
+                <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'light-dark(#fdecea, #391713)', color: 'light-dark(#b71c1c, #e76464)' }}>{o.open} of {o.spots} open</span>
               </div>
             ))}
           </div>

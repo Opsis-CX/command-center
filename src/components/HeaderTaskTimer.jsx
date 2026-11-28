@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, fetchAllRows } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { canAny } from '../lib/permissions'
 import useDismiss from '../lib/useDismiss'
@@ -48,18 +48,33 @@ export default function HeaderTaskTimer() {
 
   const load = useCallback(async () => {
     if (!userId || !isSupport) return
-    const [taskRes, taRes, timeRes, projRes, cliRes] = await Promise.all([
-      fetchAllRows(() => supabase.from('tasks').select('id, name, status, project_id, client_id').is('deleted_at', null).order('id')),
-      supabase.from('task_assignees').select('task_id, profile_id').eq('profile_id', userId),
+    // Only what this widget needs: MY OPEN tasks (for the pick-list) and my running timer. It used to read every
+    // task in the company (5,000+, five pages one after another) on every page load and every start/stop.
+    const [taRes, timeRes, projRes, cliRes] = await Promise.all([
+      supabase.from('task_assignees')
+        .select('task_id, profile_id, tasks!inner(id, name, status, project_id, client_id)')
+        .eq('profile_id', userId).neq('tasks.status', 'done').is('tasks.deleted_at', null),
       // only the open entry matters here (the running timer), not a person's whole history
       supabase.from('time_entries').select('id, task_id, user_id, client_id, started_at, ended_at').eq('user_id', userId).is('ended_at', null),
       supabase.from('projects').select('id, name').order('name'),
       supabase.from('clients').select('id, name').eq('show_in_tasks', true).order('name'),
     ])
     // a failed read keeps what we already had, so a blip never hides a running timer
-    if (!taskRes.error) setTasks(taskRes.data || [])
-    if (!taRes.error) setAssignees(taRes.data || [])
-    if (!timeRes.error) setRunning((timeRes.data || []).find(e => e.started_at && !e.ended_at) || null)
+    let mine = null
+    if (!taRes.error) {
+      mine = (taRes.data || []).map(r => r.tasks).filter(Boolean)
+      setAssignees((taRes.data || []).map(r => ({ task_id: r.task_id, profile_id: r.profile_id })))
+    }
+    if (!timeRes.error) {
+      const run = (timeRes.data || []).find(e => e.started_at && !e.ended_at) || null
+      setRunning(run)
+      // the running task may not be one of my open assigned tasks (done, or someone else's): fetch just that one
+      if (run && run.task_id && mine && !mine.some(t => t.id === run.task_id)) {
+        const { data: rt } = await supabase.from('tasks').select('id, name, status, project_id, client_id').eq('id', run.task_id).maybeSingle()
+        if (rt) mine = [...mine, rt]
+      }
+    }
+    if (mine) setTasks(mine)
     if (!projRes.error) setProjects(projRes.data || [])
     if (!cliRes.error) setClients(cliRes.data || [])
   }, [userId, isSupport])
@@ -107,12 +122,17 @@ export default function HeaderTaskTimer() {
   const canStart = !!(form.picked || typed)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  async function stopRunning() {
+  // Stop shows instantly; the save happens behind it. If the save fails the timer comes back and we say so.
+  async function stopRunning(opts = {}) {
     if (!running) return
+    const entry = running
     const endedAt = new Date()
-    const mins = Math.max(1, Math.round((endedAt - new Date(running.started_at)) / 60000))
-    await supabase.from('time_entries').update({ ended_at: endedAt.toISOString(), duration_minutes: mins }).eq('id', running.id)
-    setOpen(null); load()
+    const mins = Math.max(1, Math.round((endedAt - new Date(entry.started_at)) / 60000))
+    setRunning(null)
+    if (!opts.keepOpen) setOpen(null)
+    const { error } = await supabase.from('time_entries').update({ ended_at: endedAt.toISOString(), duration_minutes: mins }).eq('id', entry.id)
+    if (error) { setRunning(entry); window.alert('Could not stop the timer — please try again.'); return false }
+    return true
   }
 
   async function startTimer() {
@@ -120,20 +140,30 @@ export default function HeaderTaskTimer() {
     setBusy(true)
     try {
       let taskId = form.picked
+      let newTask = null
       // An existing task wins. Otherwise a typed description becomes a new task (with the chosen project/client),
       // assigned to me, and time is tracked on it.
       if (!taskId) {
         const id = crypto.randomUUID()
-        const { error } = await supabase.from('tasks').insert({ id, name: typed, status: 'todo', project_id: form.project || null, client_id: form.client || null, created_by: userId })
+        newTask = { id, name: typed, status: 'todo', project_id: form.project || null, client_id: form.client || null }
+        const { error } = await supabase.from('tasks').insert({ ...newTask, created_by: userId })
         if (error) { window.alert('Could not create task: ' + error.message); return }
         await supabase.from('task_assignees').insert({ task_id: id, profile_id: userId })
         taskId = id
       }
-      if (running) await stopRunning()
-      await supabase.from('time_entries').insert({ task_id: taskId, user_id: userId, client_id: (!form.picked ? (form.client || null) : null), started_at: new Date().toISOString(), is_manual: false })
+      if (running && (await stopRunning({ keepOpen: true })) === false) return
+      const { data, error } = await supabase.from('time_entries')
+        .insert({ task_id: taskId, user_id: userId, client_id: (!form.picked ? (form.client || null) : null), started_at: new Date().toISOString(), is_manual: false })
+        .select('id, task_id, user_id, client_id, started_at, ended_at').single()
+      if (error) {
+        window.alert(error.code === '23505' ? 'You already have a timer running somewhere else. Stop it first, then start this one.' : 'Could not start the timer — please try again.')
+        load(); return
+      }
+      // show it straight away from what we already know — no full reload
+      if (newTask) { setTasks(ts => [...ts, newTask]); setAssignees(as => [...as, { task_id: newTask.id, profile_id: userId }]) }
+      setRunning(data)
       setForm({ name: '', project: '', client: '', picked: '' })
       setOpen(null)
-      await load()
     } finally { setBusy(false) }
   }
 

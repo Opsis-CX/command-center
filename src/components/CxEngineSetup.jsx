@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const G = '#14302A'
+const GT = 'light-dark(#14302A, #9fd6bd)'  // brand green for text/lines: lighter in dark mode
 const LINE_DEFAULTS = { transcribe: false, pci_auto: true, announce_position: true, callback_offer: true, hold_offer_ai: true, hold_options_after_secs: 60, block_spam: true, robo_gate: false, nl_greeting: false, survey_sms: false, auto_qa: true, max_wait_secs: 300, overflow: false, overflow_after_secs: 60, sticky: true, sticky_secs: 20, ring_seconds: 20, missed_not_ready: true, whisper: true, survey: false, sla_secs: 20, alert_wait_secs: 90, ai_number: '', hold_music_url: '', transfer_numbers: [] }
 const CAMP_DEFAULTS = { transcribe: false, pci_auto: true, local_presence: false, require_consent: false, amd: false, vm_drop: false, auto_qa: true, vm_drop_text: '', vm_drop_audio: '', transfer_numbers: [] }
 
@@ -46,7 +47,7 @@ export default function CxEngineSetup({ args, people = [], can }) {
         <div style={S.h2}>Advanced engine</div>
         <div style={S.mut}>Lines and campaigns on the Advanced engine get hold, warm/cold transfer, conference, supervisor listen/whisper/barge, a real hold queue, live transcript with agent assist, and AI wrap-up. Lines left on Standard work exactly as before. Live transcript adds a small per-minute charge, so it is off until you turn it on.</div>
         {msg && <div style={{ ...S.ok, marginTop: 8 }}>{msg}</div>}
-        {err && <div style={{ color: '#b91c1c', fontSize: 13, marginTop: 8 }}>{err}</div>}
+        {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13, marginTop: 8 }}>{err}</div>}
       </div>
 
       <EmergencySwitch args={args} can={can} flash={flash} onErr={setErr} />
@@ -83,7 +84,7 @@ export default function CxEngineSetup({ args, people = [], can }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 8 }}>
           <thead><tr>{['State', 'Hours', 'Sundays', 'Max calls / 24h', 'Rule'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>{(d.state_rules || []).map(r => (
-            <tr key={r.state}><td style={S.td}><b>{r.state}</b></td><td style={S.td}>{String(r.start_local).slice(0, 5)}–{String(r.end_local).slice(0, 5)}</td><td style={S.td}>{r.sunday_ok ? 'OK' : 'No calls'}</td><td style={S.td}>{r.max_per_24h || '—'}</td><td style={{ ...S.td, color: '#64748b' }}>{r.note}</td></tr>
+            <tr key={r.state}><td style={S.td}><b>{r.state}</b></td><td style={S.td}>{String(r.start_local).slice(0, 5)}–{String(r.end_local).slice(0, 5)}</td><td style={S.td}>{r.sunday_ok ? 'OK' : 'No calls'}</td><td style={S.td}>{r.max_per_24h || '—'}</td><td style={{ ...S.td, color: 'light-dark(#64748b, #9fb4bb)' }}>{r.note}</td></tr>
           ))}</tbody>
         </table>
       </div>
@@ -93,7 +94,7 @@ export default function CxEngineSetup({ args, people = [], can }) {
 
 function EngineRow({ title, sub, engine, open, onToggle, children }) {
   return (
-    <div style={{ borderTop: '1px solid #eef2f7', padding: '10px 0' }}>
+    <div style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', padding: '10px 0' }}>
       <button onClick={onToggle} style={S.rowBtn}>
         <span><b>{title}</b><div style={S.mut}>{sub}</div></span>
         <span style={{ ...S.pill, background: engine === 'conf' ? '#dcfce7' : '#f1f5f9', color: engine === 'conf' ? '#15803d' : '#475569' }}>{engine === 'conf' ? 'Advanced' : 'Standard'} {open ? '▴' : '▾'}</span>
@@ -231,7 +232,44 @@ function CampForm({ c, can, onSave }) {
           <div><TransferNumbers list={cx.transfer_numbers} set={v => set('transfer_numbers', v)} disabled={off} /></div>
         </div>
       )}
+      <Exclusions c={c} x={cx.exclusions || {}} set={v => set('exclusions', v)} disabled={off} />
       {can && <div><button style={S.primary} onClick={() => onSave(engine, { ...cx, transfer_numbers: (cx.transfer_numbers || []).filter(x => String(x.number || '').replace(/\D/g, '').length >= 10) })}>Save</button></div>}
+    </div>
+  )
+}
+
+// "Who the dialer skips" (Becky 11/16, rebuilt 11/23). Works on Standard and Advanced campaigns: dialer_next skips
+// any lead dialer_exclusion() names a reason for. Saved in dial_campaigns.cx.exclusions.
+function Exclusions({ c, x, set, disabled }) {
+  const [counts, setCounts] = useState(null)
+  useEffect(() => {
+    let live = true
+    supabase.rpc('dialer_exclusion_counts', { p_campaign: c.id }).then(({ data }) => { if (live) setCounts(data || {}) })
+    return () => { live = false }
+  }, [c.id, c.cx])
+  const put = (k, v) => set({ ...x, [k]: v })
+  const total = counts ? Object.values(counts).reduce((a, b) => a + Number(b || 0), 0) : 0
+  return (
+    <div style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', paddingTop: 10 }}>
+      <div style={S.cap}>Who the dialer skips</div>
+      <div style={S.mut}>Skipped leads stay in the list; they are dialed once the reason no longer applies (for example, after the weekend).</div>
+      <div style={S.cols}>
+        <div>
+          <Toggle label="Don’t dial the same number twice in 24 hours" hint="Across every campaign for this client." v={x.dedupe_24h} on={v => put('dedupe_24h', v)} disabled={disabled} />
+          <Toggle label="Skip weekends" hint="Uses the customer’s time zone when we know it." v={x.skip_weekends} on={v => put('skip_weekends', v)} disabled={disabled} />
+          <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>Skip anyone we talked to in the last
+            <input type="number" min="0" max="365" value={x.recent_days ?? ''} disabled={disabled} onChange={e => put('recent_days', e.target.value === '' ? null : Math.max(0, Math.min(365, Number(e.target.value))))} style={{ ...S.input, width: 70 }} /> days</label>
+          <div style={S.mut}>Leave empty or 0 to turn off. Counts calls with talk time from any campaign for this client.</div>
+        </div>
+        <div>
+          <Toggle label="Skip anyone with a future appointment" hint="Appointments we booked, plus HubSpot’s next appointment date once HubSpot sends it." v={x.skip_booked} on={v => put('skip_booked', v)} disabled={disabled} />
+          <Toggle label="Skip contacts inactive in the CRM" hint="HubSpot lead status Unqualified / Inactive, or lifecycle stage Other, when it comes in with the lead." v={x.skip_inactive} on={v => put('skip_inactive', v)} disabled={disabled} />
+          <Toggle label="Skip Gold Star / members" hint="When the lead arrives marked as a member." v={x.skip_member} on={v => put('skip_member', v)} disabled={disabled} />
+        </div>
+      </div>
+      {counts && total > 0 && (
+        <div style={{ fontSize: 12.5, marginTop: 6 }}><b>Being skipped right now (saved settings):</b> {Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')}</div>
+      )}
     </div>
   )
 }
@@ -287,7 +325,7 @@ function CallerIds({ d, args, can, reload, onErr, flash }) {
       <div style={S.mut}>Numbers used for local caller ID on outbound calls. Keep them registered (STIR/SHAKEN, CNAM) so calls don’t show as spam.</div>
       <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
         {(d.caller_ids || []).map(n => (
-          <div key={n.id} style={{ fontSize: 13 }}>{n.number} · {[n.brand, n.location, `area ${n.area_code}`].filter(Boolean).join(' · ')}{n.spam_flag ? <b style={{ color: '#b91c1c' }}> · flagged {n.spam_flag}</b> : ''}{!n.active ? ' · off' : ''}</div>
+          <div key={n.id} style={{ fontSize: 13 }}>{n.number} · {[n.brand, n.location, `area ${n.area_code}`].filter(Boolean).join(' · ')}{n.spam_flag ? <b style={{ color: 'light-dark(#b91c1c, #e86464)' }}> · flagged {n.spam_flag}</b> : ''}{!n.active ? ' · off' : ''}</div>
         ))}
         {(d.caller_ids || []).length === 0 && <div style={S.mut}>No caller IDs yet.</div>}
       </div>
@@ -317,7 +355,40 @@ function CallerIds({ d, args, can, reload, onErr, flash }) {
 }
 
 // ---------- storm / emergency closure (works on every line, Standard or Advanced) ----------
-function EmergencySwitch({ args, can, flash, onErr }) {
+// Also shown on the supervisor Wallboard (Becky 11/18): RMs/GMs can close and reopen their own lines there without
+// Phone setup. The server (cx_emergency_close / cx_emergency_lift) still decides who may change which line.
+// collapsible (Becky 11/20, Supervisor page): folded behind an arrow since it's rarely used; any closed lines still show.
+// Blocked numbers for the Supervisor page (go-live CX-13: testers couldn't find how to unblock a number).
+export function SpamBlocks({ clientId = null }) {
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
+  const flash = useCallback(t => { setMsg(t); setErr(''); setTimeout(() => setMsg(''), 4000) }, [])
+  if (err === 'Not allowed') return null
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <BlockedNumbers args={args} flash={flash} onErr={setErr} />
+      {msg && <div style={S.ok}>{msg}</div>}
+      {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{err}</div>}
+    </div>
+  )
+}
+
+export function StormSwitch({ clientId = null, collapsible = false }) {
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
+  const flash = useCallback(t => { setMsg(t); setErr(''); setTimeout(() => setMsg(''), 4000) }, [])
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <EmergencySwitch args={args} can={true} flash={flash} onErr={setErr} collapsible={collapsible} />
+      {msg && <div style={S.ok}>{msg}</div>}
+      {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{err === 'Not allowed' ? 'Your login can’t close these lines.' : err}</div>}
+    </div>
+  )
+}
+function EmergencySwitch({ args, can, flash, onErr, collapsible = false }) {
+  const [open, setOpen] = useState(!collapsible)
   const [rows, setRows] = useState(null)
   const [pick, setPick] = useState({})
   const [msg, setMsg] = useState('')
@@ -346,25 +417,36 @@ function EmergencySwitch({ args, can, flash, onErr }) {
     if (error) onErr(error.message); else { flash(`Reopened ${data?.reopened || 0} line(s).`); load() }
   }
   return (
-    <div style={{ ...S.card, borderColor: closed.length ? '#fca5a5' : '#e2e8f0', background: closed.length ? '#fef2f2' : '#fff' }}>
+    <div style={{ ...S.card, borderColor: closed.length ? 'light-dark(#fca5a5, #642b2b)' : 'light-dark(#e2e8f0, #2a3439)', background: closed.length ? 'light-dark(#fef2f2, #391313)' : 'light-dark(#fff, #161d21)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {collapsible ? (
+          <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit', minHeight: 32 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}><path d="M9 6l6 6-6 6" /></svg>
+            <span>
+              <span style={{ ...S.h3, display: 'block' }}>Storm / emergency closure{closed.length ? ` · ${closed.length} closed` : ''}</span>
+              {open && <span style={{ ...S.mut, display: 'block' }}>Close lines right now (weather, power outage, emergency). Callers hear your message, then go to the AI CSR or voicemail.</span>}
+            </span>
+          </button>
+        ) : (
         <div>
           <div style={S.h3}>Storm / emergency closure</div>
           <div style={S.mut}>Close lines right now (weather, power outage, emergency). Callers hear your message, then go to the AI CSR or voicemail. Works on every line.</div>
         </div>
+        )}
         {closed.length > 0 && can && <button disabled={busy} style={{ ...S.primary, background: '#15803d' }} onClick={() => lift(closed.map(r => r.line_id))}>Reopen all ({closed.length})</button>}
       </div>
       {closed.length > 0 && (
         <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
           {closed.map(r => (
             <div key={r.line_id} style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <b style={{ color: '#b91c1c' }}>CLOSED</b> {r.name} · through {r.closure.ends_on}
+              <b style={{ color: 'light-dark(#b91c1c, #e86464)' }}>CLOSED</b> {r.name} · through {r.closure.ends_on}
               {can && <button disabled={busy} style={S.small} onClick={() => lift([r.line_id])}>Reopen</button>}
             </div>
           ))}
         </div>
       )}
-      {can && (
+      {can && open && (
         <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <button style={S.small} onClick={() => setPick(Object.fromEntries(rows.filter(r => !r.closure).map(r => [r.line_id, true])))}>Select all open</button>
@@ -405,13 +487,13 @@ function BlockedNumbers({ args, flash, onErr }) {
   }
   async function unblock(id) {
     const { error } = await supabase.rpc('cx_unblock_number', args({ p_id: id }))
-    if (error) onErr(error.message); else load()
+    if (error) onErr(error.message); else { flash('Unblocked. That number can call in again.'); load() }
   }
   const src = { manual: 'Added by hand', auto: 'Auto (too many calls)', report: 'Reported by CSR' }
   return (
     <div style={S.card}>
       <button onClick={() => setShow(v => !v)} style={S.rowBtn}>
-        <span><b style={{ fontSize: 15, color: G }}>Blocked numbers</b><div style={S.mut}>Spam and robocallers that can’t reach your lines.</div></span>
+        <span><b style={{ fontSize: 15, color: GT }}>Blocked numbers</b><div style={S.mut}>Spam and robocallers that can’t reach your lines. Open to see them; Unblock lets a number call in again.</div></span>
         <span style={S.mut}>{show ? '▴' : '▾'}</span>
       </button>
       {show && (
@@ -432,7 +514,7 @@ function BlockedNumbers({ args, flash, onErr }) {
                   <td style={S.td}><button style={S.small} onClick={() => unblock(r.id)}>Unblock</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={6} style={{ ...S.td, color: '#64748b' }}>No blocked numbers.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={6} style={{ ...S.td, color: 'light-dark(#64748b, #9fb4bb)' }}>No blocked numbers.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -442,25 +524,25 @@ function BlockedNumbers({ args, flash, onErr }) {
 }
 
 const S = {
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14 },
-  h2: { fontSize: 17, fontWeight: 800, color: G, marginBottom: 4 },
-  h3: { fontSize: 15, fontWeight: 800, color: G, marginBottom: 4 },
-  mut: { fontSize: 12.5, color: '#64748b' },
-  ok: { padding: '6px 10px', borderRadius: 8, background: '#dcfce7', color: '#166534', fontSize: 13 },
-  warn: { padding: '8px 10px', borderRadius: 8, background: '#fef3c7', color: '#92400e', fontSize: 13 },
-  cap: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: '#64748b', margin: '4px 0' },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 14 },
+  h2: { fontSize: 17, fontWeight: 800, color: GT, marginBottom: 4 },
+  h3: { fontSize: 15, fontWeight: 800, color: GT, marginBottom: 4 },
+  mut: { fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' },
+  ok: { padding: '6px 10px', borderRadius: 8, background: 'light-dark(#dcfce7, #133920)', color: 'light-dark(#166534, #29bc61)', fontSize: 13 },
+  warn: { padding: '8px 10px', borderRadius: 8, background: 'light-dark(#fef3c7, #393213)', color: 'light-dark(#92400e, #e1712d)', fontSize: 13 },
+  cap: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: 'light-dark(#64748b, #9fb4bb)', margin: '4px 0' },
   cols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 },
   two: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 },
-  rowBtn: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, color: '#0f172a' },
+  rowBtn: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, color: 'light-dark(#0f172a, #e8eef0)' },
   pill: { fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, whiteSpace: 'nowrap' },
-  seg: { display: 'inline-flex', gap: 4, background: '#f1f5f9', padding: 3, borderRadius: 10 },
-  segBtn: { padding: '6px 12px', fontSize: 13, fontWeight: 700, border: 'none', borderRadius: 8, background: 'transparent', cursor: 'pointer', color: '#475569' },
-  segOn: { background: '#fff', color: G, boxShadow: '0 1px 3px rgba(0,0,0,0.12)' },
-  input: { padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid #cbd5e1', boxSizing: 'border-box' },
+  seg: { display: 'inline-flex', gap: 4, background: 'light-dark(#f1f5f9, #1b2327)', padding: 3, borderRadius: 10 },
+  segBtn: { padding: '6px 12px', fontSize: 13, fontWeight: 700, border: 'none', borderRadius: 8, background: 'transparent', cursor: 'pointer', color: 'light-dark(#475569, #b3c1c7)' },
+  segOn: { background: 'light-dark(#fff, #161d21)', color: GT, boxShadow: '0 1px 3px rgba(0,0,0,0.12)' },
+  input: { padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', boxSizing: 'border-box' },
   primary: { padding: '8px 16px', fontSize: 13, fontWeight: 700, borderRadius: 10, border: 'none', background: G, color: '#fff', cursor: 'pointer' },
-  small: { padding: '5px 10px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' },
-  chip: { fontSize: 12, fontWeight: 600, padding: '4px 8px', borderRadius: 999, background: '#f1f5f9', display: 'inline-flex', alignItems: 'center', gap: 4 },
-  x: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: '#64748b' },
-  th: { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: '#64748b', padding: '6px', borderBottom: '1px solid #e2e8f0' },
-  td: { padding: '6px', borderBottom: '1px solid #f1f5f9' },
+  small: { padding: '5px 10px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: 'light-dark(#fff, #161d21)', cursor: 'pointer' },
+  chip: { fontSize: 12, fontWeight: 600, padding: '4px 8px', borderRadius: 999, background: 'light-dark(#f1f5f9, #1b2327)', display: 'inline-flex', alignItems: 'center', gap: 4 },
+  x: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: 'light-dark(#64748b, #9fb4bb)' },
+  th: { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'light-dark(#64748b, #9fb4bb)', padding: '6px', borderBottom: '1px solid light-dark(#e2e8f0, #2a3439)' },
+  td: { padding: '6px', borderBottom: '1px solid light-dark(#f1f5f9, #2a3439)' },
 }

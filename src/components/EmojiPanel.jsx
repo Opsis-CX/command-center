@@ -265,6 +265,11 @@ const GIF_CSS = `
 .gif-act.on { background: #f59e0b; }
 .gif-act.warn { background: #dc2626; }
 .gif-upload { border: 1px dashed var(--line); border-radius: 10px; padding: 10px; margin: 0 0 10px; display: grid; gap: 6px; font-size: 12.5px; }
+.gif-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 2px 2px; }
+.gif-chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.gif-chip:hover { border-color: var(--accent); color: var(--accent); }
+.gif-chips .lbl { font-size: 12px; color: var(--ink-soft); align-self: center; }
+.gif-more { display: block; width: 100%; margin: 4px 0 10px; }
 .gif-upload input[type=text] { border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; font: inherit; background: var(--surface); color: var(--ink); }
 `
 function GifTile({ g, fav, pinned, canPin, canDelete, onPick, onFav, onPin, onDelete }) {
@@ -283,11 +288,12 @@ function GifTile({ g, fav, pinned, canPin, canDelete, onPick, onFav, onPin, onDe
     </div>
   )
 }
+const GIF_TOPICS = ['Thank you', 'Yes', 'No', 'LOL', 'Happy', 'Celebrate', 'Good job', 'Good morning', 'Happy Friday', 'Coffee', 'Wow', 'Facepalm', 'Hug', 'Sorry', 'Tired', 'Help', 'Mind blown', 'High five']
 function GifPane({ onPickGif, autoFocus }) {
   const { user, isAdmin } = useAuth()
   const me = user?.id
   const [q, setQ] = useState('')
-  const [giphy, setGiphy] = useState({ loading: true, results: [], error: null })
+  const [giphy, setGiphy] = useState({ loading: true, results: [], error: null, next: null, related: [], more: false })
   const [team, setTeam] = useState([]), [favs, setFavs] = useState([]), [picks, setPicks] = useState([])
   const [rating, setRating] = useState(null)
   const [adding, setAdding] = useState(false), [upMsg, setUpMsg] = useState('')
@@ -311,11 +317,28 @@ function GifPane({ onPickGif, autoFocus }) {
         refreshRating.current = false
         if (!alive) return
         if (error) throw error
-        setGiphy({ loading: false, results: data?.results || [], error: data?.error || null })
-      } catch (e) { if (alive) setGiphy({ loading: false, results: [], error: 'failed' }) }
+        setGiphy({ loading: false, results: data?.results || [], error: data?.error || null, next: data?.next ?? null, related: data?.related || [], more: false })
+      } catch (e) { if (alive) setGiphy({ loading: false, results: [], error: 'failed', next: null, related: [], more: false }) }
     }, q ? 300 : 0)
     return () => { alive = false; clearTimeout(t) }
   }, [q, rating])
+  // endless scroll: next page of GIPHY results (50 at a time)
+  const moreBusy = useRef(false)
+  const loadMore = useCallback(async () => {
+    if (moreBusy.current || giphy.next == null || giphy.loading) return
+    moreBusy.current = true; setGiphy(st => ({ ...st, more: true }))
+    const askedFor = q
+    try {
+      const { data } = await supabase.functions.invoke('gif-search', { body: { q: askedFor, offset: giphy.next } })
+      setGiphy(st => {
+        if (askedFor !== q) return st
+        const seen = new Set(st.results.map(r => r.id))
+        return { ...st, more: false, next: data?.next ?? null, results: [...st.results, ...(data?.results || []).filter(r => !seen.has(r.id))] }
+      })
+    } catch { setGiphy(st => ({ ...st, more: false })) }
+    moreBusy.current = false
+  }, [giphy.next, giphy.loading, q])
+  const onBodyScroll = (e) => { const el = e.currentTarget; if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMore() }
   const favSet = new Set(favs.map(f => f.url)), pinSet = new Set(picks.map(p => p.url))
   const norm = (g) => ({ url: g.url, preview: g.preview || g.url, title: g.title || 'GIF', width: g.width || null, height: g.height || null })
   async function toggleFav(g, on) {
@@ -366,15 +389,31 @@ function GifPane({ onPickGif, autoFocus }) {
       ))}
     </div>
   )
+  const giphyBlock = (<>
+    <div className="gif-sec">{t ? '🔎 GIPHY results' : '🔥 Trending'}</div>
+    {giphy.error === 'not_configured' ? (
+      <p className="page-sub" style={{ padding: 8 }}>GIPHY search isn’t set up yet.</p>
+    ) : giphy.error ? (
+      <p className="page-sub" style={{ padding: 8 }}>Couldn’t load GIFs right now. Try again in a moment.</p>
+    ) : giphy.loading && !giphy.results.length ? (
+      <p className="page-sub" style={{ padding: 8 }}>Loading GIFs…</p>
+    ) : !giphy.results.length ? <p className="page-sub" style={{ padding: 8 }}>No GIFs found{t ? ' — try fewer or simpler words.' : '.'}</p> : (<>
+      {tiles(giphy.results)}
+      {giphy.next != null && <button className="btn btn-ghost gif-more" disabled={giphy.more} onClick={loadMore}>{giphy.more ? 'Loading more…' : 'Load more GIFs'}</button>}
+    </>)}
+  </>)
   return (
     <>
       <style>{GIF_CSS}</style>
       <label className="rp-search"><RpIcon d={RP_ICON.search} size={16} /><input autoFocus={autoFocus} value={q} onChange={e => setQ(e.target.value)} placeholder="Search GIFs…" aria-label="Search GIFs" /></label>
-      <div className="rp-body" style={{ paddingTop: 4 }}>
+      <div className="rp-body" style={{ paddingTop: 4 }} onScroll={onBodyScroll}>
+        {!t && <div className="gif-chips">{GIF_TOPICS.map(x => <button key={x} className="gif-chip" onClick={() => setQ(x)}>{x}</button>)}</div>}
+        {t && giphy.related.length > 0 && <div className="gif-chips"><span className="lbl">Try:</span>{giphy.related.map(x => <button key={x} className="gif-chip" onClick={() => setQ(x)}>{x}</button>)}</div>}
+        {t && giphyBlock}
         {!t && favShown.length > 0 && <><div className="gif-sec">⭐ Your favorites</div>{tiles(favShown)}</>}
         {!t && picks.length > 0 && <><div className="gif-sec">📌 Picks</div>{tiles(picks)}</>}
-        <div className="gif-sec">🏢 Team GIFs{teamShown.length ? ` (${teamShown.length})` : ''}
-          <button className="act" onClick={() => { setAdding(a => !a); setUpMsg('') }}>{adding ? 'Cancel' : '＋ Add team GIF'}</button></div>
+        {(!t || teamShown.length > 0 || adding) && <div className="gif-sec">🏢 Team GIFs{teamShown.length ? ` (${teamShown.length})` : ''}
+          <button className="act" onClick={() => { setAdding(a => !a); setUpMsg('') }}>{adding ? 'Cancel' : '＋ Add team GIF'}</button></div>}
         {adding && (
           <form className="gif-upload" onSubmit={upload}>
             <input name="file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" />
@@ -383,15 +422,8 @@ function GifPane({ onPickGif, autoFocus }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><button className="btn btn-primary" style={{ fontSize: 12.5, padding: '5px 12px' }}>Upload</button><span className="page-sub">{upMsg || 'Up to 8 MB. Everyone on the team can use it.'}</span></div>
           </form>
         )}
-        {teamShown.length ? tiles(teamShown, { team: true }) : !adding && <p className="page-sub" style={{ padding: '0 4px 6px', fontSize: 12.5 }}>{t ? 'No team GIFs match.' : 'No team GIFs yet — add your first one!'}</p>}
-        <div className="gif-sec">{t ? '🔎 GIPHY results' : '🔥 Trending'}</div>
-        {giphy.error === 'not_configured' ? (
-          <p className="page-sub" style={{ padding: 8 }}>GIPHY search isn’t set up yet.</p>
-        ) : giphy.error ? (
-          <p className="page-sub" style={{ padding: 8 }}>Couldn’t load GIFs right now. Try again in a moment.</p>
-        ) : giphy.loading && !giphy.results.length ? (
-          <p className="page-sub" style={{ padding: 8 }}>Loading GIFs…</p>
-        ) : !giphy.results.length ? <p className="page-sub" style={{ padding: 8 }}>No GIFs found.</p> : tiles(giphy.results)}
+        {teamShown.length ? tiles(teamShown, { team: true }) : !adding && !t && <p className="page-sub" style={{ padding: '0 4px 6px', fontSize: 12.5 }}>No team GIFs yet — add your first one!</p>}
+        {!t && giphyBlock}
       </div>
       <div className="rp-foot">
         <span className="name">★ to save · Powered by GIPHY</span>

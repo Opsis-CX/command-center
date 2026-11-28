@@ -22,11 +22,11 @@ const mmss = s => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s 
 const hm = s => { s = Math.max(0, Math.round(s || 0)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : `${m}m` }
 const tme = ts => (ts ? new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '')
 const STATE = {
-  ready: { label: 'Ready', color: '#15803d', bg: '#dcfce7' },
-  on_call: { label: 'On a call', color: '#0e7490', bg: '#cffafe' },
-  wrap: { label: 'Wrapping up', color: '#7c3aed', bg: '#ede9fe' },
-  not_ready: { label: 'Not ready', color: '#b45309', bg: '#fef3c7' },
-  offline: { label: 'Logged out', color: '#64748b', bg: '#f1f5f9' },
+  ready: { label: 'Ready', color: 'light-dark(#15803d, #20c55e)', bg: 'light-dark(#dcfce7, #133920)' },
+  on_call: { label: 'On a call', color: 'light-dark(#0e7490, #1da4c9)', bg: 'light-dark(#cffafe, #133639)' },
+  wrap: { label: 'Wrapping up', color: 'light-dark(#7c3aed, #a378ec)', bg: 'light-dark(#ede9fe, #1a1339)' },
+  not_ready: { label: 'Not ready', color: 'light-dark(#b45309, #e07524)', bg: 'light-dark(#fef3c7, #393213)' },
+  offline: { label: 'Logged out', color: 'light-dark(#64748b, #9fb4bb)', bg: 'light-dark(#f1f5f9, #1b2327)' },
 }
 const RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['custom', 'Custom']]
 
@@ -65,7 +65,7 @@ function Leaderboard({ data, failed, tv }) {
   return (
     <div style={{ ...S.card, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <div style={{ fontSize: tv ? 22 : 18, fontWeight: 800, color: '#14302A' }}>🏆 Leaderboard</div>
+        <div style={{ fontSize: tv ? 22 : 18, fontWeight: 800, color: 'light-dark(#14302A, #e8eef0)' }}>🏆 Leaderboard</div>
         <div style={{ fontSize: 11.5, color: '#8a918d' }}>from reviewed calls</div>
       </div>
       {!data ? <div style={S.mut}>{failed ? 'Couldn’t load the leaderboard.' : 'Loading…'}</div> : (
@@ -73,22 +73,22 @@ function Leaderboard({ data, failed, tv }) {
           {BOARDS.map(([k, label, hint]) => {
             const rows = (data[k] || []).slice(0, 3)
             return (
-              <div key={k} style={{ background: '#FAF8F4', border: '1px solid #EEEAE2', borderRadius: 12, padding: '12px 14px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: '#2F7D5B' }}>{label}</div>
+              <div key={k} style={{ background: 'light-dark(#FAF8F4, #1b2327)', border: '1px solid light-dark(#EEEAE2, #2a3439)', borderRadius: 12, padding: '12px 14px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: 'light-dark(#2F7D5B, #3fa779)' }}>{label}</div>
                 <div style={{ fontSize: 11, color: '#8a918d', marginBottom: 8 }}>{hint}</div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
                 {rows.length === 0 ? <div style={{ ...S.mut, fontSize: 12, textAlign: 'center' }}>No reviewed calls yet</div> : rows.map((r, i) => {
                   const lead = i === 0
                   return (
                     <div key={r.name} title={r.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: lead ? '10px 12px' : '8px 12px', borderRadius: 10,
-                      background: lead ? '#fff' : 'transparent', border: lead ? '1px solid #E8E4DC' : '1px solid transparent', boxShadow: lead ? '0 1px 3px rgba(20,48,42,0.06)' : 'none' }}>
+                      background: lead ? 'light-dark(#fff, #161d21)' : 'transparent', border: lead ? '1px solid #E8E4DC' : '1px solid transparent', boxShadow: lead ? '0 1px 3px rgba(20,48,42,0.06)' : 'none' }}>
                       <span style={{ width: lead ? 26 : 20, height: lead ? 26 : 20, flex: 'none', borderRadius: 999, background: MEDAL[i], color: '#fff',
                         fontSize: lead ? 12.5 : 10.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontWeight: lead ? 800 : 700, fontSize: lead ? (tv ? 17 : 14.5) : (tv ? 15 : 13), color: '#1C2421', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(r.name)}</span>
+                        <span style={{ display: 'block', fontWeight: lead ? 800 : 700, fontSize: lead ? (tv ? 17 : 14.5) : (tv ? 15 : 13), color: 'light-dark(#1C2421, #e8eef0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(r.name)}</span>
                         <span style={{ display: 'block', fontSize: 11, color: '#8a918d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.sub}</span>
                       </span>
-                      <span style={{ flex: 'none', fontWeight: 800, fontSize: lead ? (tv ? 24 : 20) : (tv ? 18 : 15), color: lead ? '#14302A' : '#33403A', fontVariantNumeric: 'tabular-nums' }}>{r.value}</span>
+                      <span style={{ flex: 'none', fontWeight: 800, fontSize: lead ? (tv ? 24 : 20) : (tv ? 18 : 15), color: lead ? 'light-dark(#14302A, #e8eef0)' : 'light-dark(#33403A, #e8eef0)', fontVariantNumeric: 'tabular-nums' }}>{r.value}</span>
                     </div>
                   )
                 })}
@@ -102,7 +102,12 @@ function Leaderboard({ data, failed, tv }) {
   )
 }
 
-export default function SupervisorWallboard({ clientId = null }) {
+// section (Becky 11/20): 'board' = the wallboard (top metrics, leaderboard, lines, latest calls — what the TV shows);
+// 'supervisor' = the CSR table with Not ready / Log out actions, plus phone lines + latest calls, on the Supervisor page
+// (Becky 11/20: the wallboard is just stats and calls in queue).
+export default function SupervisorWallboard({ clientId = null, brands = null, locations = null, section = 'board' }) {
+  // brand / location picks from the GarageCo portal's top bar (Becky 11/20); empty = everything this login can see
+  const pickB = (brands || []).join('|'), pickL = (locations || []).join('|')
   const [range, setRange] = useState('today')
   const [cs, setCs] = useState(ymd(addDays(new Date(), -6)))
   const [ce, setCe] = useState(ymd(new Date()))
@@ -115,6 +120,8 @@ export default function SupervisorWallboard({ clientId = null }) {
   const [leaders, setLeaders] = useState(null)
   const [leadersFailed, setLeadersFailed] = useState(false)
   const [, tick] = useState(0)
+  const [busyId, setBusyId] = useState(null)
+  const [actErr, setActErr] = useState('')
 
   const dates = useMemo(() => {
     const now = new Date()
@@ -129,17 +136,21 @@ export default function SupervisorWallboard({ clientId = null }) {
   const load = useCallback(async () => {
     const args = { p_start: dates[0], p_end: dates[1], p_tz: TZ }
     if (clientId) args.p_client = clientId
+    if (pickB) args.p_brands = pickB.split('|')
+    if (pickL) args.p_locations = pickL.split('|')
     const { data, error } = await supabase.rpc('sup_wallboard', args)
     if (error) setErr(error.message); else { setD(data); setErr('') }
-  }, [dates, clientId])
+  }, [dates, clientId, pickB, pickL])
   useEffect(() => { load(); const t = setInterval(load, tv ? 10000 : 20000); return () => clearInterval(t) }, [load, tv])
   // Leaderboards (2026-11-10, Becky): from reviewed calls, refreshed every minute.
   const loadLeaders = useCallback(async () => {
     const args = { p_start: dates[0], p_end: dates[1], p_tz: TZ }
     if (clientId) args.p_client = clientId
+    if (pickB) args.p_brands = pickB.split('|')
+    if (pickL) args.p_locations = pickL.split('|')
     const { data, error } = await supabase.rpc('sup_leaders', args)
     if (!error) { setLeaders(data); setLeadersFailed(false) } else setLeadersFailed(true)
-  }, [dates, clientId])
+  }, [dates, clientId, pickB, pickL])
   useEffect(() => { loadLeaders(); const t = setInterval(loadLeaders, 60000); return () => clearInterval(t) }, [loadLeaders])
   useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t) }, [])
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(tiles)); localStorage.setItem(LS + '-lb', '1') } catch { /* ignore */ } }, [tiles])
@@ -151,7 +162,8 @@ export default function SupervisorWallboard({ clientId = null }) {
   if (err && !d) return <div style={S.card}><b>Couldn’t load the wallboard.</b><p style={S.mut}>{err}</p></div>
   if (!d) return <div style={S.card}>Loading the wallboard…</div>
 
-  const scopeLabel = d.scope.location ? `${d.scope.brand} · ${d.scope.location}` : d.scope.brand || 'All brands'
+  const scopeLabel = pickB || pickL ? [pickB.split('|').filter(Boolean).join(', ') || d.scope.brand || 'All brands', pickL.split('|').filter(Boolean).join(', ')].filter(Boolean).join(' · ')
+    : d.scope.location ? `${d.scope.brand} · ${d.scope.location}` : d.scope.brand || 'All brands'
   const isToday = dates[0] === dates[1] && dates[0] === d.range.today
   const rows = [...(d.csrs || [])].sort((a, b) => {
     const [k, dir] = sort
@@ -173,12 +185,102 @@ export default function SupervisorWallboard({ clientId = null }) {
   const shown = TILES.filter(t => tiles.includes(t[0]))
   const groups = [...new Set(shown.map(t => t[2]))]
 
+  async function setAgent(r, state) {
+    if (state === 'offline' && !window.confirm(`Log ${r.full_name} out for the day?`)) return
+    setBusyId(r.id); setActErr('')
+    const { error } = await supabase.rpc('sup_agent_set', { p_profile: r.id, p_state: state, p_client: clientId || null })
+    setBusyId(null)
+    if (error) setActErr(error.message); else load()
+  }
+  const csrCard = (
+      <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px 6px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ fontWeight: 800 }}>CSRs <span style={S.mut}>· {rows.length}</span></div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={range} onChange={e => setRange(e.target.value)} style={S.sel} aria-label="Dates">{RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            {range === 'custom' && (<><input type="date" value={cs} onChange={e => setCs(e.target.value)} style={S.sel} aria-label="Start" /><input type="date" value={ce} onChange={e => setCe(e.target.value)} style={S.sel} aria-label="End" /></>)}
+            <button onClick={exportCsv} style={S.btn}>Export CSV</button>
+          </div>
+        </div>
+        {actErr && <div style={{ padding: '0 16px 8px', color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{actErr}</div>}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={S.tbl}>
+            <thead><tr>
+              {th('full_name', 'CSR')}{th('state', 'Status')}{th('calls_in', 'In')}{th('calls_out', 'Out')}{th('handled', 'Handled')}
+              {th('intent', 'Intent', 'Wanted service or a new door')}{th('booked', 'Booked')}
+              {th('intent_rate', 'Intent rate')}{th('book_decision', 'Book / decision')}{th('book_all', 'Book / all')}
+              {th('avg_talk', 'Avg talk')}{th('avg_acw', 'Avg ACW', 'After-call work per handled call')}{th('logged_secs', 'Logged in')}<th style={S.th}></th>
+            </tr></thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={14} style={{ ...S.td, textAlign: 'center', color: 'light-dark(#5F6763, #b3c1c7)' }}>No CSRs in your view yet.</td></tr>}
+              {rows.map(r => {
+                const since = r.since ? Math.floor((Date.now() - new Date(r.since).getTime()) / 1000) : 0
+                // wrap-up over the location's target shows red (Blending → wrap-up time)
+                const wrapOver = r.state === 'wrap' && since > Number(d.wrap_limit || 60)
+                const st = wrapOver ? { label: 'Wrap-up over', color: 'light-dark(#b91c1c, #e86464)', bg: 'light-dark(#fee2e2, #391313)' } : (STATE[r.state] || STATE.offline)
+                const inOnly = (d.inbound_only || []).includes(r.id)
+                return (
+                  <tr key={r.id}>
+                    <td style={{ ...S.td, fontWeight: 700 }}>{r.full_name}<div style={{ fontWeight: 400, fontSize: 11.5, color: '#8a918d' }}>{[r.brand, r.location].filter(Boolean).join(' · ')}</div></td>
+                    <td style={S.td}>
+                      <span style={{ ...S.pill, color: st.color, background: st.bg }}>{st.label}{r.state === 'not_ready' && r.reason ? ` · ${r.reason}` : ''}</span>
+                      {r.state !== 'offline' && <div style={{ fontSize: 11.5, color: 'light-dark(#5F6763, #b3c1c7)', marginTop: 3 }}>{mmss(since)}{r.on_call_src ? ` · ${r.on_call_src}` : ''}</div>}
+                      {inOnly && <div style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#a16207, #c9821d)', marginTop: 2 }}>Inbound only</div>}
+                    </td>
+                    <td style={S.tdn}>{r.calls_in}</td><td style={S.tdn}>{r.calls_out}</td><td style={S.tdn}>{r.handled}</td>
+                    <td style={S.tdn}>{r.intent}</td><td style={{ ...S.tdn, fontWeight: 800, color: 'light-dark(#15803d, #20c55e)' }}>{r.booked}</td>
+                    <td style={S.tdn}>{pct(r.intent, r.handled)}</td><td style={S.tdn}>{pct(r.booked, r.intent)}</td><td style={S.tdn}>{pct(r.booked, r.handled)}</td>
+                    <td style={S.tdn}>{r.handled ? mmss(r.talk / r.handled) : '—'}</td><td style={S.tdn}>{r.handled ? mmss(r.wrap_secs / r.handled) : '—'}</td>
+                    <td style={S.tdn}>{hm(r.logged_secs)}</td>
+                    <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
+                      {r.state !== 'offline' && r.state !== 'on_call' && (<>
+                        {r.state !== 'not_ready' && <button disabled={busyId === r.id} onClick={() => setAgent(r, 'not_ready')} style={{ ...S.btn, padding: '4px 9px', fontSize: 12 }}>Not ready</button>}{' '}
+                        <button disabled={busyId === r.id} onClick={() => setAgent(r, 'offline')} style={{ ...S.btn, padding: '4px 9px', fontSize: 12 }}>Log out</button>
+                      </>)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+  )
+  const activity = (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+        <div style={S.card}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Phone lines</div>
+          {(d.lines || []).length === 0 ? <p style={S.mut}>No lines in your view.</p> : (
+            <table style={S.tbl}><thead><tr><th style={S.th}>Line</th><th style={S.th}>Calls</th><th style={S.th}>Answered</th><th style={S.th}>Missed</th></tr></thead>
+              <tbody>{d.lines.map((l, i) => (
+                <tr key={i}><td style={S.td}>{l.name}{!l.live && <div style={{ fontSize: 11.5, color: 'light-dark(#b45309, #e07524)' }}>No number connected (test)</div>}</td>
+                  <td style={S.tdn}>{l.calls}</td><td style={S.tdn}>{l.answered}</td><td style={{ ...S.tdn, color: l.missed ? 'light-dark(#b91c1c, #e86464)' : undefined, fontWeight: l.missed ? 800 : 400 }}>{l.missed}</td></tr>
+              ))}</tbody></table>
+          )}
+        </div>
+        <div style={S.card}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Latest calls</div>
+          {(d.recent || []).length === 0 ? <p style={S.mut}>No calls in this range.</p> : (
+            <table style={S.tbl}><tbody>{d.recent.slice(0, 12).map((c, i) => (
+              <tr key={i}>
+                <td style={{ ...S.td, whiteSpace: 'nowrap', color: 'light-dark(#5F6763, #b3c1c7)' }}>{tme(c.at)}</td>
+                <td style={S.td}><span style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#5F6763, #b3c1c7)', marginRight: 6 }}>{c.dir === 'in' ? 'IN' : 'OUT'}</span>{c.csr}<div style={{ fontSize: 11.5, color: '#8a918d' }}>{c.src} · …{c.last4}</div></td>
+                <td style={S.td}><span style={{ ...S.pill, fontSize: 11.5, color: c.group === 'sales' ? '#15803d' : c.group === 'service' ? '#0e7490' : '#64748b', background: 'light-dark(#f5f5f4, #1b2327)' }}>{c.label || 'No disposition'}</span></td>
+                <td style={{ ...S.tdn, color: 'light-dark(#5F6763, #b3c1c7)' }}>{mmss(c.talk)}</td>
+              </tr>
+            ))}</tbody></table>
+          )}
+        </div>
+      </div>
+  )
+  if (section === 'supervisor') return <div style={{ display: 'grid', gap: 14 }}>{csrCard}{activity}</div>
+
   const body = (
     <div style={{ display: 'grid', gap: 14 }}>
       {/* header */}
       <div style={{ ...S.card, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#14302A' }}>Wallboard <span style={{ fontWeight: 600, color: '#5F6763', fontSize: 14 }}>· {scopeLabel}</span></div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'light-dark(#14302A, #e8eef0)' }}>Wallboard <span style={{ fontWeight: 600, color: 'light-dark(#5F6763, #b3c1c7)', fontSize: 14 }}>· {scopeLabel}</span></div>
           <div style={S.mut}>{isToday ? 'Live · updates every ' + (tv ? 10 : 20) + ' seconds' : `${dates[0]} to ${dates[1]}`} · last update {tme(d.now)}{err ? ' · reconnecting…' : ''}</div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -195,7 +297,7 @@ export default function SupervisorWallboard({ clientId = null }) {
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Choose your widgets</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {TILES.map(t => (
-              <label key={t[0]} style={{ ...S.chip, background: tiles.includes(t[0]) ? '#E6F0EA' : '#fff' }}>
+              <label key={t[0]} style={{ ...S.chip, background: tiles.includes(t[0]) ? 'light-dark(#E6F0EA, #222c31)' : 'light-dark(#fff, #161d21)' }}>
                 <input type="checkbox" checked={tiles.includes(t[0])} onChange={() => setTiles(x => x.includes(t[0]) ? x.filter(y => y !== t[0]) : [...x, t[0]])} /> {t[1]}
               </label>
             ))}
@@ -208,7 +310,7 @@ export default function SupervisorWallboard({ clientId = null }) {
       )}
 
       {/* Advanced engine: live calls, monitoring, service level, TV links (2026-11-13) */}
-      {!tv && <CxLiveBoard clientId={clientId} />}
+      {!tv && <CxLiveBoard clientId={clientId} controls={false} />}
 
       {/* widgets (left) + leaderboard (right) */}
       <style>{'@media (max-width: 1000px){.wb-split{grid-template-columns:minmax(0,1fr) !important}}'}</style>
@@ -221,7 +323,7 @@ export default function SupervisorWallboard({ clientId = null }) {
             {shown.filter(t => t[2] === g).map(t => (
               <div key={t[0]} style={{ ...S.tile, ...(g === 'Live' && STATE[t[0]] ? { borderTop: `4px solid ${STATE[t[0]].color}` } : {}) }} title={t[4] || ''}>
                 <div style={{ fontSize: tv ? 40 : 30, fontWeight: 800, lineHeight: 1.1 }}>{t[3](d)}</div>
-                <div style={{ fontSize: 12.5, color: '#5F6763', marginTop: 4 }}>{t[1]}</div>
+                <div style={{ fontSize: 12.5, color: 'light-dark(#5F6763, #b3c1c7)', marginTop: 4 }}>{t[1]}</div>
                 {t[4] && !tv && <div style={{ fontSize: 11, color: '#8a918d', marginTop: 2 }}>{t[4]}</div>}
               </div>
             ))}
@@ -232,75 +334,10 @@ export default function SupervisorWallboard({ clientId = null }) {
       {tiles.includes('leaders') && <Leaderboard data={leaders} failed={leadersFailed} tv={tv} />}
       </div>
 
-      {/* CSR board */}
-      <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 6px', fontWeight: 800 }}>CSRs <span style={S.mut}>· {rows.length}</span></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={S.tbl}>
-            <thead><tr>
-              {th('full_name', 'CSR')}{th('state', 'Status')}{th('calls_in', 'In')}{th('calls_out', 'Out')}{th('handled', 'Handled')}
-              {th('intent', 'Intent', 'Wanted service or a new door')}{th('booked', 'Booked')}
-              {th('intent_rate', 'Intent rate')}{th('book_decision', 'Book / decision')}{th('book_all', 'Book / all')}
-              {th('avg_talk', 'Avg talk')}{th('avg_acw', 'Avg ACW', 'After-call work per handled call')}{th('logged_secs', 'Logged in')}
-            </tr></thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={13} style={{ ...S.td, textAlign: 'center', color: '#5F6763' }}>No CSRs in your view yet.</td></tr>}
-              {rows.map(r => {
-                const since = r.since ? Math.floor((Date.now() - new Date(r.since).getTime()) / 1000) : 0
-                // wrap-up over the location's target shows red (Blending → wrap-up time)
-                const wrapOver = r.state === 'wrap' && since > Number(d.wrap_limit || 60)
-                const st = wrapOver ? { label: 'Wrap-up over', color: '#b91c1c', bg: '#fee2e2' } : (STATE[r.state] || STATE.offline)
-                const inOnly = (d.inbound_only || []).includes(r.id)
-                return (
-                  <tr key={r.id}>
-                    <td style={{ ...S.td, fontWeight: 700 }}>{r.full_name}<div style={{ fontWeight: 400, fontSize: 11.5, color: '#8a918d' }}>{[r.brand, r.location].filter(Boolean).join(' · ')}</div></td>
-                    <td style={S.td}>
-                      <span style={{ ...S.pill, color: st.color, background: st.bg }}>{st.label}{r.state === 'not_ready' && r.reason ? ` · ${r.reason}` : ''}</span>
-                      {r.state !== 'offline' && <div style={{ fontSize: 11.5, color: '#5F6763', marginTop: 3 }}>{mmss(since)}{r.on_call_src ? ` · ${r.on_call_src}` : ''}</div>}
-                      {inOnly && <div style={{ fontSize: 11, fontWeight: 700, color: '#a16207', marginTop: 2 }}>Inbound only</div>}
-                    </td>
-                    <td style={S.tdn}>{r.calls_in}</td><td style={S.tdn}>{r.calls_out}</td><td style={S.tdn}>{r.handled}</td>
-                    <td style={S.tdn}>{r.intent}</td><td style={{ ...S.tdn, fontWeight: 800, color: '#15803d' }}>{r.booked}</td>
-                    <td style={S.tdn}>{pct(r.intent, r.handled)}</td><td style={S.tdn}>{pct(r.booked, r.intent)}</td><td style={S.tdn}>{pct(r.booked, r.handled)}</td>
-                    <td style={S.tdn}>{r.handled ? mmss(r.talk / r.handled) : '—'}</td><td style={S.tdn}>{r.handled ? mmss(r.wrap_secs / r.handled) : '—'}</td>
-                    <td style={S.tdn}>{hm(r.logged_secs)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-        <div style={S.card}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Phone lines</div>
-          {(d.lines || []).length === 0 ? <p style={S.mut}>No lines in your view.</p> : (
-            <table style={S.tbl}><thead><tr><th style={S.th}>Line</th><th style={S.th}>Calls</th><th style={S.th}>Answered</th><th style={S.th}>Missed</th></tr></thead>
-              <tbody>{d.lines.map((l, i) => (
-                <tr key={i}><td style={S.td}>{l.name}{!l.live && <div style={{ fontSize: 11.5, color: '#b45309' }}>No number connected (test)</div>}</td>
-                  <td style={S.tdn}>{l.calls}</td><td style={S.tdn}>{l.answered}</td><td style={{ ...S.tdn, color: l.missed ? '#b91c1c' : undefined, fontWeight: l.missed ? 800 : 400 }}>{l.missed}</td></tr>
-              ))}</tbody></table>
-          )}
-        </div>
-        <div style={S.card}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Latest calls</div>
-          {(d.recent || []).length === 0 ? <p style={S.mut}>No calls in this range.</p> : (
-            <table style={S.tbl}><tbody>{d.recent.slice(0, 12).map((c, i) => (
-              <tr key={i}>
-                <td style={{ ...S.td, whiteSpace: 'nowrap', color: '#5F6763' }}>{tme(c.at)}</td>
-                <td style={S.td}>{c.dir === 'in' ? '↘' : '↗'} {c.csr}<div style={{ fontSize: 11.5, color: '#8a918d' }}>{c.src} · …{c.last4}</div></td>
-                <td style={S.td}><span style={{ ...S.pill, fontSize: 11.5, color: c.group === 'sales' ? '#15803d' : c.group === 'service' ? '#0e7490' : '#64748b', background: '#f5f5f4' }}>{c.label || 'No disposition'}</span></td>
-                <td style={{ ...S.tdn, color: '#5F6763' }}>{mmss(c.talk)}</td>
-              </tr>
-            ))}</tbody></table>
-          )}
-        </div>
-      </div>
     </div>
   )
 
-  if (tv) return <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#F5F3EE', overflow: 'auto', padding: 20, fontFamily: 'Montserrat, Arial, sans-serif' }}>{body}</div>
+  if (tv) return <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'light-dark(#F5F3EE, #1b2327)', overflow: 'auto', padding: 20, fontFamily: 'Montserrat, Arial, sans-serif' }}>{body}</div>
   return body
 }
 function rate(r, k) {
@@ -313,18 +350,18 @@ function rate(r, k) {
 }
 
 const S = {
-  card: { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 14, padding: 16 },
-  mut: { fontSize: 12.5, color: '#5F6763', margin: 0 },
-  cap: { fontSize: 10.5, fontWeight: 700, letterSpacing: '.13em', textTransform: 'uppercase', color: '#56605B', margin: '0 0 6px' },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#E8E4DC, #2a3439)', borderRadius: 14, padding: 16 },
+  mut: { fontSize: 12.5, color: 'light-dark(#5F6763, #b3c1c7)', margin: 0 },
+  cap: { fontSize: 10.5, fontWeight: 700, letterSpacing: '.13em', textTransform: 'uppercase', color: 'light-dark(#56605B, #b3c1c7)', margin: '0 0 6px' },
   tiles: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 },
-  tile: { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 12, padding: '14px 14px 12px' },
-  sel: { border: '1px solid #E1DCD2', borderRadius: 10, padding: '8px 10px', fontSize: 13, background: '#fff', fontFamily: 'inherit' },
-  btn: { border: '1px solid #E1DCD2', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: '#fff', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' },
-  chip: { display: 'inline-flex', gap: 6, alignItems: 'center', border: '1px solid #E1DCD2', borderRadius: 999, padding: '6px 12px', fontSize: 12.5, cursor: 'pointer' },
+  tile: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#E8E4DC, #2a3439)', borderRadius: 12, padding: '14px 14px 12px' },
+  sel: { border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 10, padding: '8px 10px', fontSize: 13, background: 'light-dark(#fff, #161d21)', fontFamily: 'inherit' },
+  btn: { border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'light-dark(#fff, #161d21)', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' },
+  chip: { display: 'inline-flex', gap: 6, alignItems: 'center', border: '1px solid light-dark(#E1DCD2, #2a3439)', borderRadius: 999, padding: '6px 12px', fontSize: 12.5, cursor: 'pointer' },
   tbl: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { textAlign: 'left', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: '#56605B', padding: '8px 10px', background: '#F3F1EC', cursor: 'pointer', whiteSpace: 'nowrap' },
-  td: { padding: '9px 10px', borderTop: '1px solid #F1EEE8', verticalAlign: 'top' },
-  tdn: { padding: '9px 10px', borderTop: '1px solid #F1EEE8', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+  th: { textAlign: 'left', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'light-dark(#56605B, #b3c1c7)', padding: '8px 10px', background: 'light-dark(#F3F1EC, #1b2327)', cursor: 'pointer', whiteSpace: 'nowrap' },
+  td: { padding: '9px 10px', borderTop: '1px solid light-dark(#F1EEE8, #2a3439)', verticalAlign: 'top' },
+  tdn: { padding: '9px 10px', borderTop: '1px solid light-dark(#F1EEE8, #2a3439)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   pill: { display: 'inline-block', padding: '3px 9px', borderRadius: 999, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' },
 }
 export { Leaderboard }

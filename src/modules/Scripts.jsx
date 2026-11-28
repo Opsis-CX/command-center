@@ -193,8 +193,9 @@ function Editor({ id, clients, onBack, onDuplicated }) {
                 <L label="Do not…"><input style={S.input} value={cfg.voicemail?.dont || ''} onChange={e => setCfg({ voicemail: { ...(cfg.voicemail || {}), dont: e.target.value } })} /></L>
               </div>
               <H>If they say… (objections)</H>
-              <ListEditor items={cfg.objections || []} onChange={v => setCfg({ objections: v })} newItem={{ q: '', a: '' }}
-                cols={[{ k: 'q', l: 'They say', w: 260 }, { k: 'a', l: 'You say', area: true }]} />
+              <ListEditor items={cfg.objections || []} onChange={v => setCfg({ objections: v })} newItem={{ q: '', a: '', k: '' }}
+                cols={[{ k: 'q', l: 'They say', w: 240 }, { k: 'a', l: 'You say', area: true }, { k: 'k', l: 'Pop when caller says (words, | between)', w: 220 }]} />
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Live assist pops the "You say" line the moment the caller says one of these words — e.g. <code>email|e-mail</code>. Leave blank to skip the pop (the AI still uses the answer).</div>
             </div>
           )}
 
@@ -408,7 +409,7 @@ const S = {
   icon: { padding: '6px 9px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.3)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 12 },
   input: { display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14, fontFamily: 'inherit' },
   lbl: { display: 'block', fontSize: 12.5, fontWeight: 700, margin: '6px 0' },
-  h: { fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.4, color: '#0e7490', margin: '16px 0 4px' },
+  h: { fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.4, color: 'light-dark(#0e7490, #1da4c9)', margin: '16px 0 4px' },
   help: { fontSize: 13, opacity: 0.75, margin: '0 0 8px' },
   grid2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 },
   grid3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 },

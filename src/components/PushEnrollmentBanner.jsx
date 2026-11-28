@@ -90,29 +90,29 @@ function PushEnrollmentBannerInner({ profileId }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-      background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10,
+      background: 'light-dark(#FFFBEB, #393213)', border: '1px solid light-dark(#FDE68A, #64592b)', borderRadius: 10,
       padding: '11px 14px', margin: '0 0 14px',
     }}>
       <span style={{ fontSize: 18, lineHeight: 1 }}>🔔</span>
       <div style={{ flex: 1, minWidth: 200 }}>
         {done ? (
-          <div style={{ fontSize: 13.5, color: '#92400E', fontWeight: 600 }}>
+          <div style={{ fontSize: 13.5, color: 'light-dark(#92400E, #e1712d)', fontWeight: 600 }}>
             Notifications are on for this device.
           </div>
         ) : iosNeedsInstall ? (
-          <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.45 }}>
+          <div style={{ fontSize: 13, color: 'light-dark(#92400E, #e1712d)', lineHeight: 1.45 }}>
             <b>Turn on notifications for this iPhone.</b> Tap the Share button, choose
             “Add to Home Screen”, then open Command Center from that icon and come back here.
             iOS only allows notifications for installed apps.
           </div>
         ) : (
-          <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.45 }}>
+          <div style={{ fontSize: 13, color: 'light-dark(#92400E, #e1712d)', lineHeight: 1.45 }}>
             <b>You won't get notifications on this device yet.</b> Permission is granted per
             device, so turning it on elsewhere doesn't cover this one. You'll only be alerted
             for things aimed at you — DMs, mentions, assignments and open intervals.
           </div>
         )}
-        {err && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 5 }}>{err}</div>}
+        {err && <div style={{ fontSize: 12, color: 'light-dark(#b91c1c, #e86464)', marginTop: 5 }}>{err}</div>}
       </div>
       {!done && !iosNeedsInstall && (
         <button onClick={turnOn} disabled={busy}
@@ -127,8 +127,8 @@ function PushEnrollmentBannerInner({ profileId }) {
       {!done && (
         <button onClick={snooze} title={`Ask again in ${SNOOZE_DAYS} days`}
           style={{
-            border: '1px solid #FDE68A', borderRadius: 8, background: 'transparent',
-            color: '#92400E', fontSize: 13, padding: '8px 12px', cursor: 'pointer',
+            border: '1px solid light-dark(#FDE68A, #64592b)', borderRadius: 8, background: 'transparent',
+            color: 'light-dark(#92400E, #e1712d)', fontSize: 13, padding: '8px 12px', cursor: 'pointer',
             fontFamily: 'inherit', flexShrink: 0,
           }}>
           Later

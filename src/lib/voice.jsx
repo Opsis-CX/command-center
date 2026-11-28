@@ -31,6 +31,7 @@ import { supabase } from './supabase'
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.5/dist/twilio.min.js'
 const STATUS_POLL_MS = 30000
+const AUTO_ANSWER_MS = 1200      // ring this long, then answer on its own (Becky 11/27)
 
 let sdkPromise = null
 function loadSdk() {
@@ -79,7 +80,9 @@ const BLANK_AGENT = { state: 'offline', reason: null, since: null, inbound_membe
 export function VoiceProvider({ children, canDialNumbers = false, canCallPeople = true }) {
   const deviceRef = useRef(null)
   const callRef = useRef(null)
+  const mutedRef = useRef(false)
   const incomingRef = useRef(null)
+  const acceptRef = useRef(null)   // auto-answer calls this (set below, once acceptIncoming exists)
   const inboundRef = useRef(null)      // answered inbound call waiting for its disposition
   const timerRef = useRef(null)
   // status: idle | incoming | connecting | ringing | in-call | ended | error
@@ -96,6 +99,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   // Wire up events for an outgoing OR accepted incoming call.
   const wire = useCallback((c) => {
     callRef.current = c
+    mutedRef.current = false
     c.on('ringing', () => patch({ status: 'ringing' }))
     c.on('accept', () => {
       patch({ status: 'in-call', seconds: 0 })
@@ -138,10 +142,19 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     call.on('cancel', clear)   // caller hung up, or a teammate answered first
     call.on('reject', clear)
     call.on('disconnect', clear)
+    // 11/27 (Becky): auto-answer — the CSR doesn't choose whether to take the call. A short ring so they
+    // know it's coming, then it connects on its own.
+    setTimeout(() => { if (incomingRef.current === call) acceptRef.current?.() }, AUTO_ANSWER_MS)
   }, [patch])
 
-  const getDevice = useCallback(async () => {
-    if (deviceRef.current) return deviceRef.current
+  // One device per page, even if two callers ask at once (2026-11-22).
+  const devicePromiseRef = useRef(null)
+  const getDevice = useCallback(() => {
+    if (deviceRef.current) return Promise.resolve(deviceRef.current)
+    if (!devicePromiseRef.current) devicePromiseRef.current = makeDevice().catch(e => { devicePromiseRef.current = null; throw e })
+    return devicePromiseRef.current
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const makeDevice = async () => {
     const Twilio = await loadSdk()
     const token = await fetchToken()
     const device = new Twilio.Device(token, {
@@ -171,12 +184,20 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       }
       patch({ status: 'error', error: err?.message || 'Calling error' })
     })
-    device.on('registered', () => setRegistered(true))
-    device.on('unregistered', () => setRegistered(false))
+    // 2026-11-18 (Becky): the server only rings CSRs whose phone is really connected. While registered, the phone
+    // checks in every 30s (csr_phone_heartbeat); cx_offer skips anyone without a check-in in the last 90s, so a quick
+    // Offline → Ready toggle can't send a call to a phone that is still connecting.
+    const beat = (ok) => { supabase.rpc('csr_phone_heartbeat', { p_ok: ok }).then(() => {}, () => {}) }
+    let beatTimer = null
+    device.on('registered', () => {
+      setRegistered(true); beat(true)
+      clearInterval(beatTimer); beatTimer = setInterval(() => { if (device.state === 'registered') beat(true) }, 30000)
+    })
+    device.on('unregistered', () => { setRegistered(false); clearInterval(beatTimer); beatTimer = null; beat(false) })
     device.on('incoming', handleIncoming)
     deviceRef.current = device
     return device
-  }, [patch, handleIncoming])
+  }
 
   // ---------- single agent status ----------
   const applyRegistration = useCallback(async (a) => {
@@ -184,7 +205,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       if (a.state === 'ready' && a.inbound_member) {
         const d = await getDevice()
         d._wantRegistered = true
-        if (d.state !== 'registered') await d.register()
+        if (!['registered', 'registering'].includes(d.state)) await d.register()
       } else if (deviceRef.current?.state === 'registered' && !['on_call', 'wrap'].includes(a.state)) {
         deviceRef.current._wantRegistered = false
         await deviceRef.current.unregister()
@@ -215,6 +236,15 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       setStatusBusy(false)
     }
   }, [applyRegistration, patch])
+
+  // 2026-11-22 (Becky): Ready took forever on the CSR phone — the Ready button there saves the status and
+  // re-reads it, but only setStatus() connected the phone. Now ANY status change (button, poll, another screen)
+  // connects or disconnects the phone right away.
+  useEffect(() => {
+    if (agent.loaded) applyRegistration(agent)
+  }, [agent.loaded, agent.state, agent.inbound_member]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Load the calling library in the background so the first Ready doesn't wait on the download.
+  useEffect(() => { loadSdk().catch(() => {}) }, [])
 
   // On load: read my status and, if I'm Ready on an inbound line, register this browser.
   useEffect(() => {
@@ -305,6 +335,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       patch({ status: 'error', error: msg })
     }
   }, [patch, wire])
+  acceptRef.current = acceptIncoming
 
   const declineIncoming = useCallback(() => {
     const c = incomingRef.current
@@ -326,12 +357,22 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     else deviceRef.current?.disconnectAll?.()
   }, [])
 
-  const toggleMute = useCallback(() => {
+  // Mute (11/25 fix): muting only the browser mic wasn't reliable on CX-engine (conference) calls, so the
+  // CSR is also muted in the conference itself — the caller can't hear them either way.
+  const toggleMute = useCallback(async () => {
     const c = callRef.current
     if (!c) return
-    const next = !c.isMuted()
-    c.mute(next)
+    const next = !mutedRef.current
+    mutedRef.current = next
+    try { c.mute(next) } catch (e) { console.warn('local mute failed', e) }
     patch({ muted: next })
+    try {
+      const { data } = await supabase.rpc('csr_cx_my_call')
+      if (data?.interaction_id && ['connected', 'held'].includes(data.status)) {
+        const { error } = await supabase.functions.invoke('cx-control', { body: { action: next ? 'mute' : 'unmute', interaction_id: data.interaction_id } })
+        if (error) console.warn('conference mute failed', error)
+      }
+    } catch (e) { console.warn('conference mute failed', e) }
   }, [patch])
 
   const sendDigit = useCallback(d => { callRef.current?.sendDigits?.(d) }, [])
@@ -387,4 +428,13 @@ export function CallButton({ profileId, name, label, hasPhone = true, style }) {
       <span aria-hidden="true">📞</span>{label ? <span>{label}</span> : null}
     </button>
   )
+}
+
+// Calls onRing() when a call starts ringing this browser (or one was just answered). Used by the portals to
+// jump the CSR to the phone page — the guided call screen with the script — from wherever they are (2026-11-22).
+export function RingBounce({ onRing }) {
+  const voice = useVoice()
+  const ringing = !!(voice?.incoming || voice?.inboundCall)
+  useEffect(() => { if (ringing) onRing?.() }, [ringing]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
 }

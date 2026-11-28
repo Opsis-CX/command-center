@@ -29,15 +29,15 @@ export default function AccountSwitcher({ dark = true, style }) {
   if (list.length < 2) return null
   const cur = list.find(a => a.current)
   return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: dark ? '#fff' : '#1C2421', ...style }}>
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: dark ? '#fff' : 'light-dark(#1C2421, #e8eef0)', ...style }}>
       View as
       <select disabled={busy} value={cur?.email || ''}
         onChange={async e => { const v = e.target.value; if (!v || v === cur?.email) return; setBusy(true); setErr(''); try { await switchAccount(v) } catch (x) { setBusy(false); setErr(x.message) } }}
         style={{ background: dark ? 'rgba(255,255,255,0.15)' : '#fff', color: dark ? '#fff' : '#1C2421', border: dark ? '1px solid rgba(255,255,255,0.4)' : '1px solid #E1DCD2', borderRadius: 8, padding: '5px 8px', fontWeight: 700, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}>
-        {list.map(a => <option key={a.email} value={a.email} style={{ color: '#1C2421' }}>{a.label}</option>)}
+        {list.map(a => <option key={a.email} value={a.email} style={{ color: 'light-dark(#1C2421, #e8eef0)' }}>{a.label}</option>)}
       </select>
       {busy && <span style={{ fontSize: 12, opacity: 0.8 }}>Switching…</span>}
-      {err && <span style={{ fontSize: 12, color: dark ? '#FECACA' : '#b91c1c' }}>{err}</span>}
+      {err && <span style={{ fontSize: 12, color: dark ? '#FECACA' : 'light-dark(#b91c1c, #e86464)' }}>{err}</span>}
     </label>
   )
 }

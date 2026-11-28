@@ -48,16 +48,16 @@ export function invoiceHtml(s, payments, draft) {
   const addr = (a) => esc(a).replace(/\n/g, '<br>')
   const iss = s.issuer || {}
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(s.number || 'Draft invoice')}</title><style>
-    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:40px;font-size:13px}
+    body{font-family:Arial,Helvetica,sans-serif;color:light-dark(#222, #e8eef0);margin:40px;font-size:13px}
     h1{font-size:26px;letter-spacing:6px;font-weight:400;margin:0 0 18px}
     .head{display:flex;justify-content:space-between;gap:20px;margin-bottom:26px}.head b{font-size:15px}
     .cols{display:flex;gap:60px;margin-bottom:22px}.cols div{min-width:240px}
     h4{margin:0 0 6px;font-size:13px}
     table{width:100%;border-collapse:collapse;margin-top:8px}th{text-align:left;font-size:12px;border-bottom:2px solid #333;padding:6px 6px}
-    td{padding:8px 6px;border-bottom:1px solid #ddd;vertical-align:top}.r{text-align:right;white-space:nowrap}
+    td{padding:8px 6px;border-bottom:1px solid light-dark(#ddd, #2a3439);vertical-align:top}.r{text-align:right;white-space:nowrap}
     .tot{text-align:right;font-size:15px;font-weight:700;margin:14px 6px}
-    .draft{color:#b45309;font-weight:700;letter-spacing:2px;margin-bottom:8px}
-    .paid{font-size:22px;font-weight:700;color:#15803d;text-align:center;margin-top:26px;letter-spacing:2px}
+    .draft{color:light-dark(#b45309, #e07524);font-weight:700;letter-spacing:2px;margin-bottom:8px}
+    .paid{font-size:22px;font-weight:700;color:light-dark(#15803d, #20c55e);text-align:center;margin-top:26px;letter-spacing:2px}
   </style></head><body>
     ${draft ? '<div class="draft">DRAFT - NOT YET APPROVED</div>' : ''}
     <h1>INVOICE</h1>
@@ -388,7 +388,7 @@ function InvoicePage({ invoice: inv, type, entity, company, payments, onBack, re
                 <React.Fragment key={id || i}>
                   <tr data-line={l.product_name} style={l.flagged ? { background: 'var(--warn-bg, #fff7ed)' } : undefined}>
                     <td style={td}>{rowNo}.</td>
-                    <td style={td}><b>{l.product_name}</b>{l.flagged && <div role="note" data-flag style={{ color: '#b45309', fontSize: 12.5, marginTop: 2 }}>⚠ {l.flagged}</div>}
+                    <td style={td}><b>{l.product_name}</b>{l.flagged && <div role="note" data-flag style={{ color: 'light-dark(#b45309, #e07524)', fontSize: 12.5, marginTop: 2 }}>⚠ {l.flagged}</div>}
                       {(draft ? l.original : (l.edited && l.original)) && <div className="page-sub" style={{ margin: '2px 0 0', fontSize: 12 }} data-edited>Changed from {fmtQty((draft ? l.original : l.original).quantity, dec)} × {money((l.original).rate)}{(draft ? l.edit_reason : l.edit_reason) ? `: ${l.edit_reason}` : ''}</div>}</td>
                     <td style={td}>{l.description}</td>
                     <td style={num}>{fmtQty(l.quantity, dec)}</td><td style={num}>{money(l.rate)}</td><td style={num}>{money(l.amount)}</td>

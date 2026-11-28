@@ -1,7 +1,7 @@
 // ============================================================
 //  CxTrends — "Call trends" (2026-11-15). What callers are calling about, across every scored call
 //  (LightSpeed, Five9 and the phone engine): topics rising or falling this week vs the brand's normal,
-//  top topics, weekly lines, objections, not-booked reasons and booking rate by week.
+//  top topics. (11/16: weekly lines, objections, not-booked reasons and booking rate by week removed — repeated the dashboard.)
 //  Data: cx_trends(p_days, p_brand, p_client) — scoped to the login's client / brand.
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -74,7 +74,7 @@ export default function CxTrends({ clientId = null }) {
           {(d.top || []).map(t => (
             <div key={t.topic} style={{ display: 'grid', gridTemplateColumns: '200px 1fr 90px', gap: 10, alignItems: 'center', fontSize: 13 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.topic}>{t.topic}</span>
-              <span style={{ background: '#f1f5f9', borderRadius: 6, height: 14, position: 'relative' }}>
+              <span style={{ background: 'light-dark(#f1f5f9, #1b2327)', borderRadius: 6, height: 14, position: 'relative' }}>
                 <span style={{ position: 'absolute', inset: 0, width: `${(100 * t.total) / maxTop}%`, background: BAR, borderRadius: 6, opacity: 0.85 }} />
               </span>
               <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}><b>{t.total}</b> <span style={S.mut}>· {t.this_wk} this wk</span></span>
@@ -82,21 +82,8 @@ export default function CxTrends({ clientId = null }) {
           ))}
         </div>
       </div>
-
-      {weekly.weeks.length > 1 && (
-        <div style={S.card}>
-          <div style={S.h3}>Week by week — top topics</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
-            {weekly.rows.map(r => <Spark key={r.topic} title={r.topic} vals={r.vals} weeks={weekly.weeks} />)}
-          </div>
-        </div>
-      )}
-
-      <div style={S.cols}>
-        <List title="Top objections" rows={d.objections} />
-        <List title="Why calls didn’t book" rows={d.not_booked} />
-        <Booked rows={d.booked_by_week} />
-      </div>
+      {/* 11/16 (Becky): week-by-week topics, top objections, why calls didn't book and booking rate by week
+          removed here; they repeat the dashboard and its drill-downs. */}
     </div>
   )
 }
@@ -104,7 +91,7 @@ export default function CxTrends({ clientId = null }) {
 function Move({ s, up }) {
   const pct = s.pct == null ? 'new' : `${s.pct > 0 ? '+' : ''}${s.pct}%`
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderTop: '1px solid #f1f5f9', fontSize: 13 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderTop: '1px solid light-dark(#f1f5f9, #2a3439)', fontSize: 13 }}>
       <span><b>{s.topic}</b><div style={S.mut}>{s.this_wk} this week · usually {s.avg_wk}/week</div></span>
       <span style={{ fontWeight: 800, color: up ? UP : DOWN, whiteSpace: 'nowrap' }}>{up ? '▲' : '▼'} {pct}</span>
     </div>
@@ -136,7 +123,7 @@ function List({ title, rows }) {
       {(rows || []).map(r => (
         <div key={r.label} style={{ fontSize: 13, padding: '4px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{r.label}</span><b>{r.n}</b></div>
-          <div style={{ height: 6, background: '#f1f5f9', borderRadius: 4 }}><div style={{ width: `${(100 * r.n) / max}%`, height: 6, background: MUTE, borderRadius: 4 }} /></div>
+          <div style={{ height: 6, background: 'light-dark(#f1f5f9, #1b2327)', borderRadius: 4 }}><div style={{ width: `${(100 * r.n) / max}%`, height: 6, background: MUTE, borderRadius: 4 }} /></div>
         </div>
       ))}
     </div>
@@ -153,7 +140,7 @@ function Booked({ rows }) {
         return (
           <div key={r.week} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 90px', gap: 8, alignItems: 'center', fontSize: 13, padding: '3px 0' }}>
             <span>{fmtWeek(r.week)}</span>
-            <span style={{ height: 10, background: '#f1f5f9', borderRadius: 5 }}><span style={{ display: 'block', width: `${pct}%`, height: 10, background: BAR, borderRadius: 5 }} /></span>
+            <span style={{ height: 10, background: 'light-dark(#f1f5f9, #1b2327)', borderRadius: 5 }}><span style={{ display: 'block', width: `${pct}%`, height: 10, background: BAR, borderRadius: 5 }} /></span>
             <span style={{ textAlign: 'right' }}><b>{pct}%</b> <span style={S.mut}>{r.booked}/{r.opps}</span></span>
           </div>
         )
@@ -163,10 +150,10 @@ function Booked({ rows }) {
 }
 
 const S = {
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14 },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 14 },
   h2: { fontSize: 17, fontWeight: 800, color: G, marginBottom: 4 },
   h3: { fontSize: 15, fontWeight: 800, color: G, marginBottom: 4 },
-  mut: { fontSize: 12.5, color: '#64748b' },
+  mut: { fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)' },
   cols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 },
-  input: { padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid #cbd5e1' },
+  input: { padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)' },
 }

@@ -56,7 +56,7 @@ export default function TeamFavorites() {
     setLoading(true)
     const [{ data: profs }, { data: rows }] = await Promise.all([
       supabase.from('profiles')
-        .select('id, full_name, role, color, avatar_url, is_active')
+        .select('id, full_name, role, color, avatar_url, is_active').is('client_id', null)
         .eq('is_active', true).neq('role', 'client')
         .order('full_name'),
       supabase.from('team_favorites').select('*'),

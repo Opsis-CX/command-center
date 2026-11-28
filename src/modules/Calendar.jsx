@@ -179,7 +179,7 @@ function CalendarColors({ value, onChange, onClose }) {
           const prev = cur === RAINBOW
             ? (soft ? { background: RAINBOW_SOFT, color: '#3b2a5a', borderLeft: '3px solid #8b5cf6' } : { background: RAINBOW_GRAD, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.45)' })
             : soft
-              ? { background: `color-mix(in srgb, ${cur} 18%, #fff)`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
+              ? { background: `color-mix(in srgb, ${cur} 18%, light-dark(#fff, #161d21))`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
               : { background: cur, color: '#fff' }
           return (
             <div key={k} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
@@ -417,7 +417,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       // Stored in company time (sync v5) — show in the viewer's zone like everything else.
       start: g.all_day ? g.start_time : toViewerHHMM(g.event_date, g.start_time, COMPANY_TZ, viewerTZ),
       end: g.all_day ? g.end_time : toViewerHHMM(g.event_date, g.end_time, COMPANY_TZ, viewerTZ),
-      color: gcalConn?.color || '#EA4335', calendarName: g.calendar_name,
+      color: gcalConn?.color || 'light-dark(#EA4335, #e86a60)', calendarName: g.calendar_name,
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
     // Shared calendars: other people's manual events + intervals + Google events,
@@ -463,7 +463,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         kind: 'coaching', id: 'co-' + s.id, title, allDay: false,
         start: toViewerHHMM(s.session_date, s.start_time, COMPANY_TZ, viewerTZ),
         end: toViewerHHMM(s.session_date, s.end_time, COMPANY_TZ, viewerTZ),
-        color: isMock ? (calColors.mock || '#7C3AED') : (calColors.coaching || '#DB2777'), hangoutLink: s.meeting_url || undefined,
+        color: isMock ? (calColors.mock || 'light-dark(#7C3AED, #a378ec)') : (calColors.coaching || 'light-dark(#DB2777, #e5649e)'), hangoutLink: s.meeting_url || undefined,
       }
     })
     const order = (a, b) => {
@@ -749,8 +749,8 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
   const TaskRow = ({ t, overdue }) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '6px 0', fontSize: 12.5, lineHeight: 1.35 }}>
       <span style={{ width: 13, height: 13, marginTop: 2, borderRadius: '50%', border: '1.5px solid ' + (overdue ? '#DC2626' : (t.priority === 'high' ? COLORS.priority : 'var(--cal-line)')), flexShrink: 0 }} />
-      <span style={{ minWidth: 0, color: overdue ? '#DC2626' : 'var(--cal-ink)', fontWeight: overdue ? 600 : 400 }}>
-        {t.name}{overdue && <span style={{ color: '#DC2626', fontWeight: 400 }}> · due {fmtDue(t.due_date)}</span>}
+      <span style={{ minWidth: 0, color: overdue ? 'light-dark(#DC2626, #e76c6c)' : 'var(--cal-ink)', fontWeight: overdue ? 600 : 400 }}>
+        {t.name}{overdue && <span style={{ color: 'light-dark(#DC2626, #e76c6c)', fontWeight: 400 }}> · due {fmtDue(t.due_date)}</span>}
       </span>
     </div>
   )
@@ -764,7 +764,7 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
       </div>
       {pastDue.length > 0 && (
         <>
-          <div style={{ color: '#DC2626', fontSize: 11, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>PAST DUE ({pastDue.length})</div>
+          <div style={{ color: 'light-dark(#DC2626, #e76c6c)', fontSize: 11, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>PAST DUE ({pastDue.length})</div>
           {pastDue.map(t => <TaskRow key={t.id} t={t} overdue />)}
         </>
       )}
@@ -1332,7 +1332,7 @@ function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTas
             <span style={{ textDecoration: done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
             {onToggleTaskTimer && !done && (
               <button onClick={() => onToggleTaskTimer(t)} title={isRunning ? 'Stop timer' : 'Start timer'}
-                style={{ marginLeft: 'auto', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: isRunning ? '#DC2626' : '#16A34A' }}>
+                style={{ marginLeft: 'auto', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: isRunning ? 'light-dark(#DC2626, #e76c6c)' : '#16A34A' }}>
                 {isRunning ? '■ stop' : '▶ start'}
               </button>
             )}

@@ -56,7 +56,7 @@ export default function TimeAdmin() {
   const [eNote, setENote] = useState('')
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name')
+    supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true).order('full_name')
       .then(({ data }) => setPeople(data || []))
   }, [])
 
@@ -207,7 +207,7 @@ export default function TimeAdmin() {
         <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={load}>↻ Refresh</button>
       </div>
 
-      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
 
       <div style={{ display: 'flex', gap: 18, alignItems: 'baseline', marginBottom: 10, fontSize: 12.5, color: 'var(--ink-soft)', flexWrap: 'wrap' }}>
         <span><strong style={{ color: 'var(--ink)' }}>{filtered.length}</strong> entries</span>

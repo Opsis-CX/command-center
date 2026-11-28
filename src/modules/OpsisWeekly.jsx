@@ -29,10 +29,10 @@ import { notifySpotlight } from '../lib/notify'
 
 const OPS_ROLES = ['owner', 'admin', 'qa_reviewer', 'reviewer']  // may see fill rate / floor totals
 const CAT = {
-  general:         { label: 'General',         color: '#6b7280' },
-  command_center:  { label: 'Command Center',  color: '#0077b6' },
-  client:          { label: 'Client',          color: '#1f8a53' },
-  operational:     { label: 'Operational',     color: '#b45309' },
+  general:         { label: 'General',         color: 'light-dark(#6b7280, #9fb4bb)' },
+  command_center:  { label: 'Command Center',  color: 'light-dark(#0077b6, #1f9adb)' },
+  client:          { label: 'Client',          color: 'light-dark(#1f8a53, #2abb71)' },
+  operational:     { label: 'Operational',     color: 'light-dark(#b45309, #e07524)' },
 }
 
 function greetWord() {
@@ -280,7 +280,7 @@ export default function OpsisWeekly() {
               return (
                 <div key={a.id} style={{ padding: '11px 0', borderTop: '1px solid var(--line-soft)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 8px', borderRadius: 20, background: c.color + '22', color: c.color }}>{c.label}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 8px', borderRadius: 20, background: `color-mix(in srgb, ${c.color} 14%, transparent)`, color: c.color }}>{c.label}</span>
                     {a.pinned && <span title="Pinned" style={{ fontSize: 11 }}>📌</span>}
                   </div>
                   <div style={{ fontSize: 13.5, fontWeight: 600, margin: '6px 0 2px' }}>{a.title}</div>
@@ -316,7 +316,7 @@ function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
 
   useEffect(() => {
     if (!open) return
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name')
+    supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true).order('full_name')
       .then(({ data }) => setProfiles(data || []))
     supabase.from('tags').select('id, name').eq('namespace', 'team').order('name')
       .then(({ data }) => setTeams(data || []))

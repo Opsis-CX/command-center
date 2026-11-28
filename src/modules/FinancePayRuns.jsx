@@ -272,7 +272,7 @@ function PayRunPage({ run, lines: allLines, onBack, reload, flash }) {
                     <td style={td}>{emp ? <b data-emp>{emp}</b> : draft ? (
                       <div style={{ display: 'flex', gap: 4 }}><input aria-label={`Rippling number for ${l.full_name}`} inputMode="numeric" value={numbers[l.id] || ''} onChange={e => setNumbers({ ...numbers, [l.id]: e.target.value })} style={{ width: 80, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 6 }} />
                         <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 8px' }} onClick={() => saveNumber(l)} disabled={busy} aria-label={`Save the Rippling number for ${l.full_name}`}>Save</button></div>) : ''}</td>
-                    <td style={td}><b>{l.full_name}</b>{draft && l.flagged && counts(l) && <div role="note" data-flag style={{ color: '#b45309', fontSize: 12.5, marginTop: 2 }}>⚠ {l.flagged}</div>}
+                    <td style={td}><b>{l.full_name}</b>{draft && l.flagged && counts(l) && <div role="note" data-flag style={{ color: 'light-dark(#b45309, #e07524)', fontSize: 12.5, marginTop: 2 }}>⚠ {l.flagged}</div>}
                       {l.missing_rate && <div className="page-sub" style={{ margin: '2px 0 0', fontSize: 12 }} data-norate>No pay rate for some of these hours</div>}</td>
                     <td style={num} title={hms(counted_s)}>{hours2(counted_s)} h</td>
                     <td style={num} title={hms(secs)}><b>{hours2(secs)} h</b>{adjusted && <div className="page-sub" style={{ margin: '2px 0 0', fontSize: 12, whiteSpace: 'normal', textAlign: 'right' }} data-adjusted>Adjusted: {l.adjust_reason}</div>}</td>
